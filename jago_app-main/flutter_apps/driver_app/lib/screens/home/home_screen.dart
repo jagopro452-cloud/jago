@@ -17,6 +17,7 @@ import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
 import '../../services/vehicle_status_service.dart';
 import '../../services/alarm_service.dart';
+import '../../services/active_ride_persistence_service.dart';
 import '../../widgets/incoming_trip_sheet.dart';
 import '../../widgets/incoming_parcel_sheet.dart';
 import '../../services/fcm_service.dart';
@@ -66,6 +67,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   String _zone = '';
   bool _hasValidLocationFix = false;
   bool _hasLiveLocationAccess = false;
+  bool _hasRecoverableRideHint = false;
+  bool _recoveringActiveTrip = false;
   Timer? _locationTimer;
   StreamSubscription<Position>? _posStream; // live GPS stream — battery-efficient
   Position? _lastPosition; // cached position for server updates
@@ -174,7 +177,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           }
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      final cachedTrip = await ActiveRidePersistenceService.loadActiveRideSnapshot();
+      if (cachedTrip == null) return;
+      _hasRecoverableRideHint = true;
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => TripScreen(trip: cachedTrip)),
+      );
+    }
   }
 
   // ── App state recovery: if driver has an active trip, go to TripScreen directly ──
@@ -208,32 +220,63 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   }
 
   Future<void> _recoverActiveTrip() async {
+    if (_recoveringActiveTrip) return;
+    _recoveringActiveTrip = true;
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/api/app/driver/active-trip'),
         headers: headers,
       );
-      if (res.statusCode != 200) return;
+      if (res.statusCode != 200) {
+        final cachedTrip =
+            await ActiveRidePersistenceService.loadActiveRideSnapshot();
+        if (cachedTrip == null) return;
+        _hasRecoverableRideHint = true;
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => TripScreen(trip: cachedTrip)),
+        );
+        return;
+      }
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final trip = data['trip'];
-      if (trip == null) return;
+      if (trip == null) {
+        _hasRecoverableRideHint = false;
+        await ActiveRidePersistenceService.clearActiveRide();
+        return;
+      }
       final status = _normalizeRecoveredTripStatus(
         (trip['canonicalState'] ?? trip['currentStatus'] ?? trip['current_status'] ?? '')
             .toString(),
       );
-      if (!['accepted', 'arrived', 'on_the_way', 'driver_assigned'].contains(status)) return;
+      if (!['accepted', 'arrived', 'on_the_way', 'driver_assigned'].contains(status)) {
+        _hasRecoverableRideHint = false;
+        await ActiveRidePersistenceService.clearActiveRide();
+        return;
+      }
       trip['currentStatus'] = status;
       trip['status'] = status;
+      _hasRecoverableRideHint = true;
+      await ActiveRidePersistenceService.persistActiveRide(
+        Map<String, dynamic>.from(trip as Map),
+        lastLat: _lastPosition?.latitude ?? _center.latitude,
+        lastLng: _lastPosition?.longitude ?? _center.longitude,
+        wasOnline: _isOnline,
+      );
       if (!mounted) return;
       // Navigate directly to trip screen — driver was mid-trip when app crashed
       Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => TripScreen(trip: trip),
-        ),
-      );
-    } catch (_) {}
+          context,
+          MaterialPageRoute(
+          builder: (_) => TripScreen(trip: Map<String, dynamic>.from(trip)),
+          ),
+        );
+    } catch (_) {
+    } finally {
+      _recoveringActiveTrip = false;
+    }
   }
 
   Future<void> _checkPendingFcmTrip() async {
@@ -426,10 +469,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     if (state == AppLifecycleState.resumed) {
       _consumeQueuedAlertAction();
       _checkPendingFcmTrip();
+      _recoverActiveTrip();
     }
     if (state == AppLifecycleState.paused) {
       // App backgrounded — suspend GPS stream + server poll to save battery
       // Socket stays connected so the driver still receives trip requests via FCM
+      if (_hasRecoverableRideHint) {
+        return;
+      }
       _locationTimer?.cancel();
       _locationTimer = null;
       _posStream?.cancel();
@@ -796,6 +843,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       final reqHeaders = await AuthService.getHeaders();
 
       _socket.sendLocation(lat: lat, lng: lng, speed: pos.speed);
+      ActiveRidePersistenceService.updateTrackingHeartbeat(
+        lat: lat,
+        lng: lng,
+        heading: pos.heading.isNaN ? 0 : pos.heading,
+        speed: pos.speed,
+        wasOnline: _isOnline,
+      );
       // Fire-and-forget — don't await; avoids blocking the timer tick
       http.post(
         Uri.parse(ApiConfig.driverLocation),
@@ -1072,6 +1126,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       );
       return;
     }
+    await ActiveRidePersistenceService.persistActiveRide(
+      Map<String, dynamic>.from(fullTrip),
+      lastLat: _lastPosition?.latitude ?? _center.latitude,
+      lastLng: _lastPosition?.longitude ?? _center.longitude,
+      wasOnline: _isOnline,
+    );
+    _hasRecoverableRideHint = true;
     Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: fullTrip!)));
   }
 

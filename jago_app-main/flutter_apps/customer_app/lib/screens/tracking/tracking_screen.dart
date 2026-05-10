@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
@@ -58,9 +59,26 @@ class _TrackingScreenState extends State<TrackingScreen>
   bool _isConnected = true;
   StreamSubscription? _connSub;
   Timer? _pollTimer;
+  Timer? _driverSmoothingTimer;
+  Timer? _waitingLifecycleTimer;
+  int _lastDriverLocationAtMs = 0;
+  int _lastTripEventAtMs = 0;
+  int _lastRouteRefreshAtMs = 0;
+  int _lastCameraSyncAtMs = 0;
+  String _lastTripStateVersion = '';
+  String _lastRouteKey = '';
+  String _lastCameraViewKey = '';
+  double _driverHeading = 0;
+  int _waitingElapsedSeconds = 0;
+  int _waitingBillableSeconds = 0;
+  int _waitingGraceSeconds = 0;
+  double _waitingCharge = 0;
+  double _waitingChargePerMin = 0;
+  bool _waitingActive = false;
 
   bool _isArriving = false; // "Pilot is about to arrive" flag
   bool _resolvedParcelMode = false;
+  LatLng? _lastRouteOriginLatLng;
 
   // Custom Top Banner state
   String? _bannerMessage;
@@ -109,22 +127,12 @@ class _TrackingScreenState extends State<TrackingScreen>
     // Eagerly join the trip room
     _socket.trackTrip(widget.tripId);
 
-    _subs.add(_socket.onDriverLocation.listen((data) {
-      if (!mounted) return;
-      final lat = double.tryParse(data['lat']?.toString() ?? '');
-      final lng = double.tryParse(data['lng']?.toString() ?? '');
-      if (lat != null && lng != null) {
-        _checkArrivingStatus(lat, lng);
-        setState(() {
-          _driverLatLng = LatLng(lat, lng);
-          _updateMapMarkers();
-          _fetchRouteForStatus(); // Keep route updated as driver moves
-        });
-      }
-    }));
+    _subs.add(_socket.onDriverLocation.listen(_applyDriverLocationEvent));
 
     _subs.add(_socket.onTripStatus.listen((data) {
       try {
+        _applyRealtimeTripPayload(data, shouldPollOnTransition: true);
+        return;
         final newStatus = _normalizeTrackingStatus(
           data['canonicalState']?.toString() ??
               data['currentStatus']?.toString() ??
@@ -228,10 +236,15 @@ class _TrackingScreenState extends State<TrackingScreen>
       }
     }));
 
+    _subs.add(_socket.onTripRecovered.listen((data) {
+      _applyRealtimeTripPayload(data, shouldPollOnTransition: true);
+    }));
+
     // Detailed driver assignment info
     _subs.add(_socket.onDriverAssigned.listen((data) {
       if (!mounted) return;
       _searchTimeoutTimer?.cancel();
+      _applyRealtimeTripPayload(data);
       final driverData = data['driver'];
       final driverId = data['driverId']?.toString();
       final driverMap =
@@ -344,6 +357,324 @@ class _TrackingScreenState extends State<TrackingScreen>
       _pollTimer?.cancel();
       _showNoDriversDialog();
     }));
+  }
+
+  int? _parseEventAtMs(dynamic value) {
+    final raw = value?.toString();
+    if (raw == null || raw.isEmpty) return null;
+    return DateTime.tryParse(raw)?.millisecondsSinceEpoch;
+  }
+
+  int _statusRank(String status) {
+    switch (status) {
+      case 'searching':
+        return 0;
+      case 'driver_assigned':
+        return 1;
+      case 'accepted':
+        return 2;
+      case 'arrived':
+        return 3;
+      case 'in_progress':
+      case 'on_the_way':
+        return 4;
+      case 'completed':
+      case 'cancelled':
+        return 5;
+      default:
+        return 0;
+    }
+  }
+
+  Map<String, dynamic>? _extractTripMap(Map<String, dynamic> payload) {
+    final rawTrip = payload['trip'] ?? payload['order'];
+    if (rawTrip is Map) {
+      return Map<String, dynamic>.from(rawTrip);
+    }
+    if (payload.containsKey('tripId') ||
+        payload.containsKey('status') ||
+        payload.containsKey('currentStatus')) {
+      return Map<String, dynamic>.from(payload);
+    }
+    return null;
+  }
+
+  void _applyRealtimeTripPayload(
+    Map<String, dynamic> payload, {
+    bool shouldPollOnTransition = false,
+  }) {
+    if (!mounted) return;
+    final tripMap = _extractTripMap(Map<String, dynamic>.from(payload));
+    if (tripMap == null) return;
+
+    final nextStateVersion = tripMap['stateVersion']?.toString() ??
+        payload['stateVersion']?.toString() ??
+        '';
+    final nextEventAt = _parseEventAtMs(
+          tripMap['serverTimestamp'] ?? payload['serverTimestamp'],
+        ) ??
+        0;
+    if (nextStateVersion.isNotEmpty &&
+        nextStateVersion == _lastTripStateVersion &&
+        nextEventAt <= _lastTripEventAtMs) {
+      return;
+    }
+    if (nextEventAt != 0 && nextEventAt < _lastTripEventAtMs) {
+      return;
+    }
+
+    final isParcelMode = widget.isParcel || _resolvedParcelMode;
+    final rawStatus = (tripMap['canonicalState'] ??
+                tripMap['currentStatus'] ??
+                tripMap['current_status'] ??
+                tripMap['status'])
+            ?.toString() ??
+        _status;
+    final normalizedStatus =
+        _normalizeTrackingStatus(rawStatus, isParcel: isParcelMode);
+    final resolvedStatus =
+        normalizedStatus == 'payment_pending' ? 'completed' : normalizedStatus;
+    if (_statusRank(resolvedStatus) < _statusRank(_status)) {
+      return;
+    }
+
+    final previousStatus = _status;
+    final statusChanged = resolvedStatus != previousStatus;
+    final merged = Map<String, dynamic>.from(_trip ?? const <String, dynamic>{})
+      ..addAll(tripMap);
+    if (tripMap['driver'] is Map) {
+      final driverMap = Map<String, dynamic>.from(tripMap['driver']);
+      merged['driverId'] =
+          driverMap['id']?.toString() ?? driverMap['userId']?.toString();
+      merged['driverName'] =
+          driverMap['fullName'] ?? driverMap['full_name'] ?? merged['driverName'];
+      merged['driverPhone'] = driverMap['phone'] ?? merged['driverPhone'];
+      merged['driverRating'] = driverMap['rating'] ?? driverMap['avgRating'];
+      merged['driverPhoto'] =
+          driverMap['photo'] ?? driverMap['profilePhoto'] ?? merged['driverPhoto'];
+      merged['driverVehicleNumber'] = driverMap['vehicleNumber'] ??
+          driverMap['vehicle_number'] ??
+          merged['driverVehicleNumber'];
+      merged['driverVehicleModel'] = driverMap['vehicleModel'] ??
+          driverMap['vehicle_model'] ??
+          merged['driverVehicleModel'];
+      merged['vehicleName'] = driverMap['vehicleCategory'] ??
+          driverMap['vehicle_category'] ??
+          merged['vehicleName'];
+      merged['driverLat'] = driverMap['lat'] ?? merged['driverLat'];
+      merged['driverLng'] = driverMap['lng'] ?? merged['driverLng'];
+    }
+    merged['tripType'] = merged['tripType'] ??
+        merged['trip_type'] ??
+        (isParcelMode ? 'parcel' : 'ride');
+
+    setState(() {
+      _trip = merged;
+      _status = resolvedStatus;
+      if (isParcelMode) _resolvedParcelMode = true;
+      if (resolvedStatus == 'completed') {
+        _walletPendingAmount = double.tryParse(
+              merged['walletPendingAmount']?.toString() ??
+                  merged['pendingPaymentAmount']?.toString() ??
+                  '0',
+            ) ??
+            _walletPendingAmount;
+      }
+    });
+
+    if (nextStateVersion.isNotEmpty) {
+      _lastTripStateVersion = nextStateVersion;
+    }
+    if (nextEventAt != 0) {
+      _lastTripEventAtMs = nextEventAt;
+    }
+
+    _syncWaitingLifecycle(merged);
+
+    final dLat = double.tryParse(merged['driverLat']?.toString() ?? '');
+    final dLng = double.tryParse(merged['driverLng']?.toString() ?? '');
+    if (dLat != null && dLng != null && dLat != 0) {
+      _applyDriverLocationEvent({
+        'lat': dLat,
+        'lng': dLng,
+        'heading': merged['heading'],
+        'serverTimestamp':
+            merged['serverTimestamp'] ?? payload['serverTimestamp'],
+      });
+    } else {
+      _updateMapMarkers();
+      _refreshRouteForStatus(force: true);
+      _maybeSyncTrackingCamera(force: true);
+    }
+
+    if (statusChanged) {
+      _handleStatusTransition(resolvedStatus);
+      HapticFeedback.lightImpact();
+      if (shouldPollOnTransition) {
+        _pollStatus();
+        Future.delayed(const Duration(milliseconds: 1500), _pollStatus);
+        Future.delayed(const Duration(milliseconds: 3000), _pollStatus);
+      }
+    }
+
+    if (resolvedStatus == 'completed' || resolvedStatus == 'cancelled') {
+      _pollTimer?.cancel();
+      _waitingLifecycleTimer?.cancel();
+      if (shouldPollOnTransition) {
+        _pollStatus();
+      }
+    }
+  }
+
+  void _applyDriverLocationEvent(Map<String, dynamic> data) {
+    if (!mounted) return;
+    final lat = double.tryParse(data['lat']?.toString() ?? '');
+    final lng = double.tryParse(data['lng']?.toString() ?? '');
+    if (lat == null || lng == null) return;
+    final eventAt = _parseEventAtMs(data['serverTimestamp']) ?? 0;
+    if (eventAt != 0 && eventAt < _lastDriverLocationAtMs) {
+      return;
+    }
+    if (eventAt != 0) {
+      _lastDriverLocationAtMs = eventAt;
+    }
+
+    final target = LatLng(lat, lng);
+    _checkArrivingStatus(lat, lng);
+
+    final incomingHeading =
+        double.tryParse(data['heading']?.toString() ?? '') ?? double.nan;
+    if (!incomingHeading.isNaN) {
+      _driverHeading = incomingHeading;
+    } else if (_driverLatLng != null) {
+      _driverHeading = _bearingBetween(_driverLatLng!, target);
+    }
+
+    _startDriverSmoothing(target);
+    if (_shouldRefreshRoute(target, eventAt: eventAt)) {
+      _refreshRouteForStatus(force: true);
+    }
+  }
+
+  bool _shouldRefreshRoute(LatLng nextDriverPoint, {int eventAt = 0}) {
+    final target = _routeTargetForStatus();
+    if (target == null) {
+      return false;
+    }
+    final nextRouteKey = _routeKeyForTarget(target);
+    if (_polylines.isEmpty || nextRouteKey != _lastRouteKey) {
+      return true;
+    }
+    final previousOrigin = _lastRouteOriginLatLng;
+    if (previousOrigin != null &&
+        _distanceMeters(previousOrigin, nextDriverPoint) < 40) {
+      return false;
+    }
+    final now = eventAt == 0 ? DateTime.now().millisecondsSinceEpoch : eventAt;
+    if (now - _lastRouteRefreshAtMs < 5000) {
+      return false;
+    }
+    _lastRouteRefreshAtMs = now;
+    return true;
+  }
+
+  void _startDriverSmoothing(LatLng target) {
+    _driverSmoothingTimer?.cancel();
+    final start = _driverLatLng ?? target;
+    const totalSteps = 6;
+    var step = 0;
+    _driverSmoothingTimer =
+        Timer.periodic(const Duration(milliseconds: 220), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      step += 1;
+      final t = step / totalSteps;
+      final next = LatLng(
+        start.latitude + (target.latitude - start.latitude) * t,
+        start.longitude + (target.longitude - start.longitude) * t,
+      );
+      setState(() {
+        _driverLatLng = next;
+      });
+      _updateMapMarkers();
+      _maybeSyncTrackingCamera();
+      if (step >= totalSteps) {
+        timer.cancel();
+      }
+    });
+  }
+
+  double _bearingBetween(LatLng from, LatLng to) {
+    final lat1 = from.latitude * math.pi / 180;
+    final lng1 = from.longitude * math.pi / 180;
+    final lat2 = to.latitude * math.pi / 180;
+    final lng2 = to.longitude * math.pi / 180;
+    final y = math.sin(lng2 - lng1) * math.cos(lat2);
+    final x = math.cos(lat1) * math.sin(lat2) -
+        math.sin(lat1) * math.cos(lat2) * math.cos(lng2 - lng1);
+    return ((math.atan2(y, x) * 180 / math.pi) + 360) % 360;
+  }
+
+  void _syncWaitingLifecycle(Map<String, dynamic> trip) {
+    final lifecycle = trip['lifecycle'];
+    final waiting =
+        lifecycle is Map ? Map<String, dynamic>.from(lifecycle['waiting'] ?? {}) : null;
+    if (waiting == null || waiting.isEmpty) {
+      _waitingLifecycleTimer?.cancel();
+      if (mounted) {
+        setState(() {
+          _waitingActive = false;
+          _waitingElapsedSeconds = 0;
+          _waitingBillableSeconds = 0;
+          _waitingGraceSeconds = 0;
+          _waitingCharge = 0;
+          _waitingChargePerMin = 0;
+        });
+      }
+      return;
+    }
+
+    final baseElapsed = int.tryParse(waiting['elapsedSeconds']?.toString() ?? '0') ?? 0;
+    final baseBillable =
+        int.tryParse(waiting['billableSeconds']?.toString() ?? '0') ?? 0;
+    final graceSeconds =
+        int.tryParse(waiting['graceSeconds']?.toString() ?? '0') ?? 0;
+    final chargePerMin =
+        double.tryParse(waiting['waitingChargePerMin']?.toString() ?? '0') ?? 0;
+    final baseCharge =
+        double.tryParse(waiting['waitingCharge']?.toString() ?? '0') ?? 0;
+    final active = waiting['active'] == true;
+    final serverAt = _parseEventAtMs(trip['serverTimestamp']) ??
+        DateTime.now().millisecondsSinceEpoch;
+
+    void applyTick() {
+      if (!mounted) return;
+      final extraSeconds = active
+          ? ((DateTime.now().millisecondsSinceEpoch - serverAt) / 1000).floor()
+          : 0;
+      final elapsed = math.max(0, baseElapsed + extraSeconds);
+      final billable = math.max(0, elapsed - graceSeconds);
+      final charge = chargePerMin > 0
+          ? double.parse(((billable / 60) * chargePerMin).toStringAsFixed(2))
+          : baseCharge;
+      setState(() {
+        _waitingActive = active;
+        _waitingElapsedSeconds = elapsed;
+        _waitingBillableSeconds = billable;
+        _waitingGraceSeconds = graceSeconds;
+        _waitingChargePerMin = chargePerMin;
+        _waitingCharge = charge;
+      });
+    }
+
+    _waitingLifecycleTimer?.cancel();
+    applyTick();
+    if (active) {
+      _waitingLifecycleTimer =
+          Timer.periodic(const Duration(seconds: 1), (_) => applyTick());
+    }
   }
 
   // No drivers available → set cancelled state (UI handled by _buildCancelledCard)
@@ -505,15 +836,20 @@ class _TrackingScreenState extends State<TrackingScreen>
       _showStatusBanner('Pilot accepted your ride', JT.primary);
       _announceStatus('accepted');
       _updateMapMarkers();
+      _refreshRouteForStatus(force: true);
+      _maybeSyncTrackingCamera(force: true);
     } else if (newStatus == 'arrived') {
       _showStatusBanner('Your pilot has arrived', const Color(0xFF10B981));
       _announceStatus('arrived');
       _updateMapMarkers();
+      _refreshRouteForStatus(force: true);
+      _maybeSyncTrackingCamera(force: true);
     } else if (newStatus == 'in_progress' || newStatus == 'on_the_way') {
       _animateToDestination();
       _showStatusBanner('Ride started • Have a safe journey!', JT.primary);
-      _fetchRouteForStatus();
+      _refreshRouteForStatus(force: true);
       _updateMapMarkers();
+      _maybeSyncTrackingCamera(force: true);
     } else if (newStatus == 'completed') {
       _showStatusBanner('Trip Completed • Thank you!', const Color(0xFF10B981));
       setState(() => _polylines.clear());
@@ -569,6 +905,10 @@ class _TrackingScreenState extends State<TrackingScreen>
   }
 
   Future<void> _fetchRouteForStatus() async {
+    await _refreshRouteForStatus(force: false);
+  }
+
+  Future<void> _refreshRouteForStatus({required bool force}) async {
     if (_driverLatLng == null || _trip == null) return;
 
     // Status rank: search=0, assigned/accepted=1/2, arrived=3, on_the_way=4
@@ -579,6 +919,8 @@ class _TrackingScreenState extends State<TrackingScreen>
 
     if (!isGoingToPickup && !isGoingToDrop) {
       if (_polylines.isNotEmpty) setState(() => _polylines.clear());
+      _lastRouteKey = '';
+      _lastRouteOriginLatLng = null;
       return;
     }
 
@@ -595,9 +937,20 @@ class _TrackingScreenState extends State<TrackingScreen>
 
     if (destLat == 0 || destLng == 0) return;
 
+    final target = LatLng(destLat, destLng);
+    if (!force && !_shouldRefreshRoute(_driverLatLng!, eventAt: 0)) {
+      _maybeSyncTrackingCamera();
+      return;
+    }
+    _lastRouteRefreshAtMs = DateTime.now().millisecondsSinceEpoch;
+
     // Fetch route from driver to target
     await _fetchRoute(
-        _driverLatLng!.latitude, _driverLatLng!.longitude, destLat, destLng);
+        _driverLatLng!.latitude,
+        _driverLatLng!.longitude,
+        target.latitude,
+        target.longitude,
+      );
   }
 
   Future<void> _fetchRoute(
@@ -634,42 +987,72 @@ class _TrackingScreenState extends State<TrackingScreen>
               endCap: Cap.roundCap,
             ));
           });
-
-          // Fit markers and route in view if significant movement occurred
-          _fitMarkersToScreen();
+          _lastRouteOriginLatLng = LatLng(fromLat, fromLng);
+          _lastRouteKey = _routeKeyForLatLngs(LatLng(fromLat, fromLng), LatLng(toLat, toLng));
+          _maybeSyncTrackingCamera(force: true);
         }
       }
     } catch (_) {}
   }
 
-  void _fitMarkersToScreen() {
-    if (_mapController == null || _driverLatLng == null) return;
+  LatLng? _routeTargetForStatus() {
+    if (_trip == null) return null;
+    final targetLat = (_status == 'in_progress' || _status == 'on_the_way')
+        ? double.tryParse(_trip?['destinationLat']?.toString() ?? '') ?? 0.0
+        : double.tryParse(_trip?['pickupLat']?.toString() ?? '') ?? 0.0;
+    final targetLng = (_status == 'in_progress' || _status == 'on_the_way')
+        ? double.tryParse(_trip?['destinationLng']?.toString() ?? '') ?? 0.0
+        : double.tryParse(_trip?['pickupLng']?.toString() ?? '') ?? 0.0;
+    if (targetLat == 0 || targetLng == 0) return null;
+    return LatLng(targetLat, targetLng);
+  }
 
-    final pLat = double.tryParse(_trip?['pickupLat']?.toString() ?? '') ?? 0.0;
-    final pLng = double.tryParse(_trip?['pickupLng']?.toString() ?? '') ?? 0.0;
-    final dLat =
-        double.tryParse(_trip?['destinationLat']?.toString() ?? '') ?? 0.0;
-    final dLng =
-        double.tryParse(_trip?['destinationLng']?.toString() ?? '') ?? 0.0;
+  double _distanceMeters(LatLng a, LatLng b) {
+    return Geolocator.distanceBetween(
+      a.latitude,
+      a.longitude,
+      b.latitude,
+      b.longitude,
+    );
+  }
 
-    double targetLat =
-        (_status == 'in_progress' || _status == 'on_the_way') ? dLat : pLat;
-    double targetLng =
-        (_status == 'in_progress' || _status == 'on_the_way') ? dLng : pLng;
+  String _routeKeyForTarget(LatLng target) {
+    return '${_status}_${target.latitude.toStringAsFixed(5)}_${target.longitude.toStringAsFixed(5)}';
+  }
 
-    if (targetLat == 0) return;
+  String _routeKeyForLatLngs(LatLng from, LatLng to) {
+    return '${_status}_${from.latitude.toStringAsFixed(5)}_${from.longitude.toStringAsFixed(5)}_${to.latitude.toStringAsFixed(5)}_${to.longitude.toStringAsFixed(5)}';
+  }
 
+  void _maybeSyncTrackingCamera({bool force = false}) {
+    final controller = _mapController;
+    final driver = _driverLatLng;
+    final target = _routeTargetForStatus();
+    if (controller == null || driver == null) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final viewKey = target == null ? 'driver_only_${_status}' : _routeKeyForTarget(target);
+    if (!force &&
+        viewKey == _lastCameraViewKey &&
+        now - _lastCameraSyncAtMs < 2400) {
+      return;
+    }
+    _lastCameraSyncAtMs = now;
+    _lastCameraViewKey = viewKey;
+    if (target == null) {
+      controller.animateCamera(CameraUpdate.newLatLng(driver));
+      return;
+    }
     final bounds = LatLngBounds(
       southwest: LatLng(
-        math.min(_driverLatLng!.latitude, targetLat),
-        math.min(_driverLatLng!.longitude, targetLng),
+        math.min(driver.latitude, target.latitude),
+        math.min(driver.longitude, target.longitude),
       ),
       northeast: LatLng(
-        math.max(_driverLatLng!.latitude, targetLat),
-        math.max(_driverLatLng!.longitude, targetLng),
+        math.max(driver.latitude, target.latitude),
+        math.max(driver.longitude, target.longitude),
       ),
     );
-    _mapController?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 120));
+    controller.animateCamera(CameraUpdate.newLatLngBounds(bounds, 120));
   }
 
   void _updateMapMarkers() async {
@@ -700,11 +1083,9 @@ class _TrackingScreenState extends State<TrackingScreen>
         position: _driverLatLng!,
         icon: await _getMarkerIcon(vName),
         anchor: const Offset(0.5, 0.5),
+        rotation: _driverHeading,
+        flat: true,
       ));
-      if (_status != 'completed') {
-        _mapController
-            ?.animateCamera(CameraUpdate.newLatLngZoom(_driverLatLng!, 16));
-      }
     }
 
     // 3. Destination Marker (visible during and after trip)
@@ -726,20 +1107,6 @@ class _TrackingScreenState extends State<TrackingScreen>
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
       ));
 
-      if (_driverLatLng != null && _mapController != null) {
-        final bounds = LatLngBounds(
-          southwest: LatLng(
-            _driverLatLng!.latitude < dLat ? _driverLatLng!.latitude : dLat,
-            _driverLatLng!.longitude < dLng ? _driverLatLng!.longitude : dLng,
-          ),
-          northeast: LatLng(
-            _driverLatLng!.latitude > dLat ? _driverLatLng!.latitude : dLat,
-            _driverLatLng!.longitude > dLng ? _driverLatLng!.longitude : dLng,
-          ),
-        );
-        _mapController
-            ?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 100));
-      }
     }
 
     // 3. Nearby Pilots (visible only during searching)
@@ -802,13 +1169,23 @@ class _TrackingScreenState extends State<TrackingScreen>
     return 12742 * math.asin(math.sqrt(a));
   }
 
+  String _formatDurationShort(int seconds) {
+    final mins = (seconds ~/ 60).toString().padLeft(2, '0');
+    final secs = (seconds % 60).toString().padLeft(2, '0');
+    return '$mins:$secs';
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     for (final s in _subs) s.cancel();
     _incomingCallSub?.cancel();
     _pollTimer?.cancel();
+    _driverSmoothingTimer?.cancel();
+    _waitingLifecycleTimer?.cancel();
     _searchTimeoutTimer?.cancel();
+    _nearbyDriversTimer?.cancel();
+    _bannerTimer?.cancel();
     _pulseCtrl.dispose();
     _tts.stop();
     // Don't disconnect socket — it's a shared singleton
@@ -823,6 +1200,11 @@ class _TrackingScreenState extends State<TrackingScreen>
       }
       _socket.trackTrip(widget.tripId);
       _pollStatus();
+      _updateMapMarkers();
+      if (_driverLatLng != null) {
+        _refreshRouteForStatus(force: true);
+        _maybeSyncTrackingCamera(force: true);
+      }
     }
   }
 
@@ -1176,6 +1558,10 @@ class _TrackingScreenState extends State<TrackingScreen>
         final data = jsonDecode(res.body);
         final trip = data['trip'] ?? data['order'];
         if (trip != null) {
+          _applyRealtimeTripPayload(
+            Map<String, dynamic>.from(data is Map ? data : {'trip': trip}),
+          );
+          return;
           final rawStatus = (trip['currentStatus'] ??
                       trip['current_status'] ??
                       trip['status'])
@@ -1508,7 +1894,8 @@ class _TrackingScreenState extends State<TrackingScreen>
                         _mapController = c;
                         if (_driverLatLng != null) {
                           _updateMapMarkers();
-                          _fetchRouteForStatus();
+                          _refreshRouteForStatus(force: true);
+                          _maybeSyncTrackingCamera(force: true);
                         }
                       },
                       markers: _markers,
@@ -1593,6 +1980,10 @@ class _TrackingScreenState extends State<TrackingScreen>
                                       const SizedBox(height: 16),
                                     ],
                                     if (trip != null) ...[
+                                      if (_status == 'arrived')
+                                        _buildWaitingLifecycleCard(),
+                                      if (_status == 'arrived')
+                                        const SizedBox(height: 12),
                                       if (_status == 'in_progress' ||
                                           _status == 'on_the_way')
                                         _buildInProgressPanel(trip)
@@ -1703,7 +2094,10 @@ class _TrackingScreenState extends State<TrackingScreen>
         (_status == 'driver_assigned' ||
             _status == 'accepted' ||
             _status == 'arrived');
-    final eta = _trip?['etaMinutes']?.toString() ?? '5';
+    final waitMetric = _waitingActive
+        ? _formatDurationShort(_waitingElapsedSeconds)
+        : (_trip?['etaMinutes']?.toString() ?? '5 MIN');
+    final waitLabel = _waitingActive ? 'WAITING' : 'ETA';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1831,11 +2225,16 @@ class _TrackingScreenState extends State<TrackingScreen>
                                   fontSize: 11,
                                   fontWeight: FontWeight.w600,
                                   color: const Color(0xFF94A3B8))),
-                          Text('$eta MIN',
+                          Text(waitMetric,
                               style: GoogleFonts.poppins(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w800,
                                   color: const Color(0xFF0F172A))),
+                          Text(waitLabel,
+                              style: GoogleFonts.poppins(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF94A3B8))),
                         ],
                       ),
                     ],
@@ -2222,6 +2621,24 @@ class _TrackingScreenState extends State<TrackingScreen>
     );
   }
 
+  Widget _pill(String label, String value, Color color) => Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.15))),
+      child: Column(children: [
+        Text(value,
+            style: GoogleFonts.poppins(
+                color: color, fontSize: 13, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        Text(label,
+            style: GoogleFonts.poppins(
+                color: JT.textSecondary,
+                fontSize: 9,
+                fontWeight: FontWeight.w500)),
+      ]));
+
 
   Widget _buildCancelledCard() {
     return Container(
@@ -2478,6 +2895,77 @@ class _TrackingScreenState extends State<TrackingScreen>
                 ],
               ),
               const Icon(Icons.security_rounded, color: Colors.blue, size: 18),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWaitingLifecycleCard() {
+    final chargeText = _waitingCharge > 0
+        ? 'Waiting charges live: Rs ${_waitingCharge.toStringAsFixed(2)}'
+        : 'Grace time active before waiting charges start';
+    final billableText = _waitingBillableSeconds > 0
+        ? '${_formatDurationShort(_waitingBillableSeconds)} billable'
+        : '${_formatDurationShort(_waitingGraceSeconds)} grace window';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.timer_rounded,
+                    color: Color(0xFFF59E0B), size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Driver has arrived',
+                        style: GoogleFonts.poppins(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF0F172A))),
+                    Text(chargeText,
+                        style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: const Color(0xFF92400E))),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _pill('Elapsed', _formatDurationShort(_waitingElapsedSeconds),
+                    const Color(0xFFF59E0B)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _pill(
+                    'Billing',
+                    _waitingCharge > 0
+                        ? 'Rs ${_waitingCharge.toStringAsFixed(2)}'
+                        : billableText,
+                    const Color(0xFFB45309)),
+              ),
             ],
           ),
         ],

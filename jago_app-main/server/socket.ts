@@ -15,7 +15,16 @@ import {
   checkSpeedAnomaly,
 } from "./ai";
 import { parseEnv } from "./config/env";
-import { noteSocketAuthFailure, noteSocketDisconnect } from "./ops-state";
+import {
+  getRideTelemetrySnapshot,
+  noteRideLifecycle,
+  noteRideReconnect,
+  noteRideRecovery,
+  noteRideSocketAnomaly,
+  noteRideTracking,
+  noteSocketAuthFailure,
+  noteSocketDisconnect,
+} from "./ops-state";
 import { buildTripRealtimePayload, canTransitionRideState, getCanonicalRideState, toLegacyRideStatus } from "./utils/ride-state";
 import { driverCanHandleDispatchService } from "./utils/service-dispatch";
 
@@ -31,6 +40,18 @@ const customerSockets = new Map<string, string>();
 // This prevents momentary network blips from removing drivers from active dispatch searches.
 const pendingOfflineTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const DRIVER_OFFLINE_GRACE_MS = 90_000; // 90 seconds
+const nearbySubscriptions = new Map<string, {
+  userId: string;
+  lat: number;
+  lng: number;
+  radiusKm: number;
+  serviceType: string;
+  vehicleCategoryId?: string;
+  parcelVehicleCategory?: string;
+  requestedSeats: number;
+}>();
+const nearbyRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+let adminTelemetryEmitTimer: ReturnType<typeof setTimeout> | null = null;
 
 function camelize(obj: any): any {
   if (!obj || typeof obj !== "object") return obj;
@@ -80,10 +101,144 @@ async function emitTripSnapshot(tripId: string, extra: Record<string, any> = {})
   const payload = await loadTripRealtimePayload(tripId);
   if (!payload) return null;
   const merged = { ...payload, ...extra };
+  noteRideLifecycle(merged, extra.recovered ? "recovered" : "lifecycle");
   if (payload.customerId) io.to(`user:${payload.customerId}`).emit("trip:status_update", merged);
   if (payload.driverId) io.to(`user:${payload.driverId}`).emit("trip:status_update", merged);
   io.to(`trip:${tripId}`).emit("trip:status_update", merged);
+  scheduleAdminTelemetryEmit();
   return merged;
+}
+
+function scheduleAdminTelemetryEmit() {
+  if (adminTelemetryEmitTimer) return;
+  adminTelemetryEmitTimer = setTimeout(() => {
+    adminTelemetryEmitTimer = null;
+    if (!io) return;
+    io.to("admin:ops").emit("ops:ride_telemetry", getRideTelemetrySnapshot());
+  }, 700);
+}
+
+async function buildNearbyDriversSnapshot(filter: {
+  lat: number;
+  lng: number;
+  radiusKm: number;
+  serviceType: string;
+  vehicleCategoryId?: string;
+  parcelVehicleCategory?: string;
+  requestedSeats: number;
+}) {
+  const rawDrivers = await rawDb.execute(rawSql`
+    SELECT
+      u.id,
+      u.full_name,
+      COALESCE(dd.avg_rating, 5.0) as rating,
+      dl.lat,
+      dl.lng,
+      dl.heading,
+      vc.name as vehicle_name,
+      vc.id as vehicle_category_id,
+      COALESCE(vc.vehicle_type, vc.type, '') as vehicle_type,
+      COALESCE(dd.service_eligibility, '') as service_eligibility,
+      COALESCE(dd.parcel_eligibility, '') as parcel_eligibility
+    FROM driver_locations dl
+    JOIN users u ON u.id = dl.driver_id
+    JOIN driver_details dd ON dd.user_id = u.id
+    LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+    WHERE dl.is_online=true AND u.is_active=true AND u.is_locked=false
+      AND u.current_trip_id IS NULL
+      AND u.verification_status = 'approved'
+      AND (dl.lat - ${filter.lat})*(dl.lat - ${filter.lat}) + (dl.lng - ${filter.lng})*(dl.lng - ${filter.lng}) < ${filter.radiusKm * filter.radiusKm / 10000}
+    ORDER BY (dl.lat - ${filter.lat})*(dl.lat - ${filter.lat}) + (dl.lng - ${filter.lng})*(dl.lng - ${filter.lng}) ASC
+    LIMIT 40
+  `);
+
+  const drivers = (await Promise.all(
+    rawDrivers.rows.map(async (row: any) => {
+      const driver = camelize(row) as any;
+      const canHandle = await driverCanHandleDispatchService({
+        driverId: driver.id,
+        serviceType: filter.serviceType,
+        pickupLat: filter.lat,
+        pickupLng: filter.lng,
+        requestedVehicleCategoryId: filter.vehicleCategoryId,
+        parcelVehicleCategory: filter.parcelVehicleCategory,
+        requestedSeats: filter.requestedSeats,
+      }).catch(() => false);
+      if (!canHandle) return null;
+      return {
+        ...driver,
+        markerType: filter.serviceType === "parcel" ? "parcel" : "ride",
+      };
+    })
+  )).filter(Boolean).slice(0, 20);
+
+  const settingsR = await rawDb.execute(rawSql`
+    SELECT key_name, value
+    FROM business_settings
+    WHERE key_name IN ('nearby_driver_count_exposed', 'nearby_driver_grouping_enabled')
+  `).catch(() => ({ rows: [] as any[] }));
+  const settings = Object.fromEntries(
+    (settingsR.rows as any[]).map((row) => [String(row.key_name), String(row.value || "")]),
+  );
+  const exposeCounts = ["1", "true", "yes", "on"].includes(
+    String(settings.nearby_driver_count_exposed || "false").toLowerCase(),
+  );
+  const groupingEnabled = !["0", "false", "no", "off"].includes(
+    String(settings.nearby_driver_grouping_enabled || "true").toLowerCase(),
+  );
+
+  const availabilityText = drivers.length > 0
+    ? exposeCounts
+      ? `${drivers.length} nearby drivers available`
+      : "Nearby drivers available"
+    : "Looking for nearby drivers";
+
+  return {
+    drivers,
+    summary: {
+      availabilityText,
+      exposeCounts,
+      visibleDriverCount: exposeCounts ? drivers.length : null,
+      groupingEnabled,
+      serviceType: filter.serviceType,
+      vehicleCategoryId: filter.vehicleCategoryId || null,
+      parcelVehicleCategory: filter.parcelVehicleCategory || null,
+      generatedAt: new Date().toISOString(),
+    },
+  };
+}
+
+async function emitNearbyDriversSnapshot(socket: Socket, subscription: {
+  lat: number;
+  lng: number;
+  radiusKm: number;
+  serviceType: string;
+  vehicleCategoryId?: string;
+  parcelVehicleCategory?: string;
+  requestedSeats: number;
+}) {
+  const snapshot = await buildNearbyDriversSnapshot(subscription);
+  socket.emit("nearby:drivers_snapshot", snapshot);
+}
+
+function scheduleNearbyRefresh() {
+  for (const [socketId, subscription] of Array.from(nearbySubscriptions.entries())) {
+    if (nearbyRefreshTimers.has(socketId)) continue;
+    const targetSocket = io.sockets.sockets.get(socketId);
+    if (!targetSocket) {
+      nearbySubscriptions.delete(socketId);
+      continue;
+    }
+    nearbyRefreshTimers.set(socketId, setTimeout(async () => {
+      nearbyRefreshTimers.delete(socketId);
+      const liveSocket = io.sockets.sockets.get(socketId);
+      if (!liveSocket) {
+        nearbySubscriptions.delete(socketId);
+        return;
+      }
+      await emitNearbyDriversSnapshot(liveSocket, subscription).catch(() => undefined);
+    }, 900));
+  }
 }
 
 async function persistSafetyAlert(alert: any, driverId: string) {
@@ -110,6 +265,22 @@ async function persistSafetyAlert(alert: any, driverId: string) {
 async function verifySocketToken(token: string | undefined, claimedUserId: string | undefined): Promise<{ userId: string; userType: string } | null> {
   if (!token || !claimedUserId) return null;
   try {
+    if (String(claimedUserId).startsWith("admin:")) {
+      const adminId = String(claimedUserId).replace(/^admin:/, "");
+      const adminR = await rawDb.execute(rawSql`
+        SELECT id FROM admins
+        WHERE id = ${adminId}::uuid
+          AND auth_token = ${token}
+          AND is_active = true
+          AND (auth_token_expires_at IS NULL OR auth_token_expires_at > NOW())
+        LIMIT 1
+      `);
+      if (!adminR.rows.length) return null;
+      return {
+        userId: `admin:${(adminR.rows[0] as any).id as string}`,
+        userType: "admin",
+      };
+    }
     const r = await rawDb.execute(rawSql`
       SELECT id, user_type FROM users
       WHERE id = ${claimedUserId}::uuid
@@ -171,6 +342,12 @@ export function setupSocket(httpServer: HttpServer) {
     // Join personal room
     socket.join(`user:${userId}`);
 
+    if (userType === "admin") {
+      socket.join("admin:ops");
+      socket.emit("ops:ride_telemetry", getRideTelemetrySnapshot());
+      return;
+    }
+
     if (userType === "driver") {
       driverSockets.set(userId, socket.id);
       socket.join(`drivers`);
@@ -213,6 +390,15 @@ export function setupSocket(httpServer: HttpServer) {
           `);
           const tripId = (tripR.rows[0] as any)?.current_trip_id;
           if (tripId) {
+            noteRideTracking({
+              tripId,
+              driverId: userId,
+              lat,
+              lng,
+              heading,
+              speed,
+              serverTimestamp: new Date().toISOString(),
+            });
             io.to(`trip:${tripId}`).emit("driver:location_update", {
               lat,
               lng,
@@ -261,6 +447,8 @@ export function setupSocket(httpServer: HttpServer) {
               } catch { }
             }
           }
+          scheduleAdminTelemetryEmit();
+          scheduleNearbyRefresh();
         } catch (e: any) {
           console.error("[SOCKET] driver:location error:", e.message);
         }
@@ -280,11 +468,24 @@ export function setupSocket(httpServer: HttpServer) {
           `);
           if (r.rows.length) {
             socket.join(`trip:${tripId}`);
+            noteRideReconnect({
+              tripId,
+              driverId: userId,
+              source: "driver_socket_rejoin",
+            });
             const payload = await loadTripRealtimePayload(tripId);
             if (payload) {
               socket.emit("trip:recovered", payload);
               socket.emit("trip:status_update", payload);
+              noteRideRecovery({
+                tripId,
+                driverId: userId,
+                customerId: payload.customerId?.toString?.() || null,
+                source: "driver_socket_rejoin",
+                success: true,
+              });
             }
+            scheduleAdminTelemetryEmit();
             console.log(`[SOCKET] Driver ${userId} rejoined trip room trip:${tripId} after reconnect`);
           }
         } catch (_) { }
@@ -348,6 +549,7 @@ export function setupSocket(httpServer: HttpServer) {
             if (pending) { clearTimeout(pending); pendingOfflineTimers.delete(userId); }
           }
           console.log(`[SOCKET] Driver ${userId} ${isOnline ? "ONLINE" : "offline"} lat=${lat} lng=${lng}`);
+          scheduleNearbyRefresh();
 
           // If driver just came online, check for searching trips nearby
           if (isOnline && hasValidCoords && lat != null && lng != null) {
@@ -629,6 +831,11 @@ export function setupSocket(httpServer: HttpServer) {
             arrived_at: status === "arrived" ? (currentTrip.arrived_at || new Date().toISOString()) : currentTrip.arrived_at,
           });
           if (status === currentTrip.current_status || currentCanonical === nextCanonical) {
+            noteRideSocketAnomaly({
+              tripId,
+              driverId: userId,
+              type: "duplicate_suppressed",
+            });
             const currentPayload = await emitTripSnapshot(tripId, otp ? { otp } : {});
             socket.emit("driver:trip_status_ok", {
               tripId,
@@ -640,6 +847,11 @@ export function setupSocket(httpServer: HttpServer) {
           }
           if (status !== currentTrip.current_status &&
             !canTransitionRideState(currentTrip.current_status, status)) {
+            noteRideSocketAnomaly({
+              tripId,
+              driverId: userId,
+              type: "ordering_violation",
+            });
             socket.emit("error", { message: "Invalid trip state transition" });
             return;
           }
@@ -900,6 +1112,45 @@ export function setupSocket(httpServer: HttpServer) {
       });
 
       // ── Customer: cancel trip ──────────────────────────────────────────────
+      socket.on("customer:subscribe_nearby", async (data: {
+        lat: number;
+        lng: number;
+        radiusKm?: number;
+        serviceType?: string;
+        vehicleCategoryId?: string;
+        parcelVehicleCategory?: string;
+        seats?: number;
+      }) => {
+        try {
+          const lat = Number(data.lat);
+          const lng = Number(data.lng);
+          if (!isFinite(lat) || !isFinite(lng)) return;
+          const subscription = {
+            userId,
+            lat,
+            lng,
+            radiusKm: Math.max(1, Math.min(12, Number(data.radiusKm) || 5)),
+            serviceType: String(data.serviceType || "ride").trim().toLowerCase() || "ride",
+            vehicleCategoryId: data.vehicleCategoryId ? String(data.vehicleCategoryId) : undefined,
+            parcelVehicleCategory: data.parcelVehicleCategory ? String(data.parcelVehicleCategory) : undefined,
+            requestedSeats: Math.max(1, Math.min(8, Number(data.seats) || 1)),
+          };
+          nearbySubscriptions.set(socket.id, subscription);
+          await emitNearbyDriversSnapshot(socket, subscription);
+        } catch (e: any) {
+          console.error("[SOCKET] customer:subscribe_nearby error:", e.message);
+        }
+      });
+
+      socket.on("customer:unsubscribe_nearby", () => {
+        nearbySubscriptions.delete(socket.id);
+        const pending = nearbyRefreshTimers.get(socket.id);
+        if (pending) {
+          clearTimeout(pending);
+          nearbyRefreshTimers.delete(socket.id);
+        }
+      });
+
       socket.on("customer:cancel_trip", async (data: { tripId: string }) => {
         try {
           const { tripId } = data;
@@ -1140,8 +1391,26 @@ export function setupSocket(httpServer: HttpServer) {
     socket.on("disconnect", (reason) => {
       driverSockets.delete(userId);
       customerSockets.delete(userId);
+      nearbySubscriptions.delete(socket.id);
+      const pendingNearby = nearbyRefreshTimers.get(socket.id);
+      if (pendingNearby) {
+        clearTimeout(pendingNearby);
+        nearbyRefreshTimers.delete(socket.id);
+      }
       noteSocketDisconnect(reason, userType);
       if (userType === "driver") {
+        rawDb.execute(rawSql`
+          SELECT current_trip_id FROM users WHERE id=${userId}::uuid LIMIT 1
+        `).then((tripR) => {
+          const activeTripId = (tripR.rows[0] as any)?.current_trip_id?.toString?.();
+          if (!activeTripId) return;
+          noteRideReconnect({
+            tripId: activeTripId,
+            driverId: userId,
+            source: `socket_disconnect:${reason}`,
+          });
+          scheduleAdminTelemetryEmit();
+        }).catch(() => undefined);
         // Grace period: don't mark offline immediately — reconnect within 90s keeps driver visible.
         // This prevents momentary network blips from removing driver from active dispatch.
         // If driver explicitly called driver:online with isOnline=false, that already updated DB directly.
@@ -1156,7 +1425,21 @@ export function setupSocket(httpServer: HttpServer) {
             rawDb.execute(rawSql`
               UPDATE users SET is_online=false WHERE id=${userId}::uuid
             `).catch(() => { });
+            rawDb.execute(rawSql`
+              SELECT current_trip_id FROM users WHERE id=${userId}::uuid LIMIT 1
+            `).then((tripR) => {
+              const activeTripId = (tripR.rows[0] as any)?.current_trip_id?.toString?.();
+              if (!activeTripId) return;
+              noteRideRecovery({
+                tripId: activeTripId,
+                driverId: userId,
+                source: "offline_grace_expired",
+                success: false,
+              });
+              scheduleAdminTelemetryEmit();
+            }).catch(() => undefined);
             console.log(`[SOCKET] Driver ${userId} offline (grace period expired, reason=${reason})`);
+            scheduleNearbyRefresh();
           }
         }, DRIVER_OFFLINE_GRACE_MS);
         pendingOfflineTimers.set(userId, timer);

@@ -11,10 +11,14 @@ class SocketService {
   IO.Socket? _socket;
   bool _isConnected = false;
   String? _activeTripId; // stored so we can re-join trip room after server restart
+  int _lastTripEventAtMs = 0;
+  int _lastDriverLocationAtMs = 0;
+  String _lastTripStateVersion = '';
 
   final _driverAssignedController = StreamController<Map<String, dynamic>>.broadcast();
   final _driverLocationController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripStatusController = StreamController<Map<String, dynamic>>.broadcast();
+  final _tripRecoveredController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripCancelledController = StreamController<Map<String, dynamic>>.broadcast();
   final _connectedController = StreamController<bool>.broadcast();
   final _chatMessageController = StreamController<Map<String, dynamic>>.broadcast();
@@ -22,6 +26,7 @@ class SocketService {
   final _noDriversController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripSearchingController = StreamController<Map<String, dynamic>>.broadcast();
   final _paymentPendingController = StreamController<Map<String, dynamic>>.broadcast();
+  final _nearbyDriversController = StreamController<Map<String, dynamic>>.broadcast();
   final _callIncomingController = StreamController<Map<String, dynamic>>.broadcast();
   final _callOfferController = StreamController<Map<String, dynamic>>.broadcast();
   final _callAnswerController = StreamController<Map<String, dynamic>>.broadcast();
@@ -32,6 +37,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onDriverAssigned => _driverAssignedController.stream;
   Stream<Map<String, dynamic>> get onDriverLocation => _driverLocationController.stream;
   Stream<Map<String, dynamic>> get onTripStatus => _tripStatusController.stream;
+  Stream<Map<String, dynamic>> get onTripRecovered => _tripRecoveredController.stream;
   Stream<Map<String, dynamic>> get onTripCancelled => _tripCancelledController.stream;
   Stream<bool> get onConnectionChanged => _connectedController.stream;
   Stream<Map<String, dynamic>> get onChatMessage => _chatMessageController.stream;
@@ -39,6 +45,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onNoDrivers => _noDriversController.stream;
   Stream<Map<String, dynamic>> get onTripSearching => _tripSearchingController.stream;
   Stream<Map<String, dynamic>> get onPaymentPending => _paymentPendingController.stream;
+  Stream<Map<String, dynamic>> get onNearbyDrivers => _nearbyDriversController.stream;
   Stream<Map<String, dynamic>> get onCallIncoming => _callIncomingController.stream;
   Stream<Map<String, dynamic>> get onCallOffer => _callOfferController.stream;
   Stream<Map<String, dynamic>> get onCallAnswer => _callAnswerController.stream;
@@ -162,16 +169,44 @@ class SocketService {
 
     // Real-time driver GPS location
     _socket!.on('driver:location_update', (data) {
-      _driverLocationController.add(Map<String, dynamic>.from(data));
+      final payload = Map<String, dynamic>.from(data);
+      final eventAt = _parseTimestampMs(payload['serverTimestamp']);
+      if (eventAt != null && eventAt < _lastDriverLocationAtMs) {
+        return;
+      }
+      if (eventAt != null) {
+        _lastDriverLocationAtMs = eventAt;
+      }
+      _driverLocationController.add(payload);
     });
 
     // Trip status changed (arrived, in_progress, completed, cancelled)
     _socket!.on('trip:status_update', (data) {
       if (data == null) return;
       try {
-        _tripStatusController.add(Map<String, dynamic>.from(data));
+        final payload = Map<String, dynamic>.from(data);
+        if (_isStaleTripPayload(payload)) {
+          return;
+        }
+        _rememberTripPayload(payload);
+        _tripStatusController.add(payload);
       } catch (e) {
         print('[SOCKET] Error processing trip:status_update: $e');
+      }
+    });
+
+    _socket!.on('trip:recovered', (data) {
+      if (data == null) return;
+      try {
+        final payload = Map<String, dynamic>.from(data);
+        if (_isStaleTripPayload(payload)) {
+          return;
+        }
+        _rememberTripPayload(payload);
+        _tripRecoveredController.add(payload);
+        _tripStatusController.add(payload);
+      } catch (e) {
+        print('[SOCKET] Error processing trip:recovered: $e');
       }
     });
 
@@ -233,6 +268,15 @@ class SocketService {
       _paymentPendingController.add(Map<String, dynamic>.from(data));
     });
 
+    _socket!.on('nearby:drivers_snapshot', (data) {
+      if (data == null) return;
+      try {
+        _nearbyDriversController.add(Map<String, dynamic>.from(data));
+      } catch (e) {
+        print('[SOCKET] Error processing nearby:drivers_snapshot: $e');
+      }
+    });
+
     // ── WebRTC Call Signaling ──────────────────────────────────
     _socket!.on('call:incoming', (data) {
       _callIncomingController.add(Map<String, dynamic>.from(data));
@@ -272,6 +316,32 @@ class SocketService {
       _socket!.emit('customer:leave_trip', {'tripId': tripId});
     }
     _activeTripId = null;
+  }
+
+  void subscribeNearbyDrivers({
+    required double lat,
+    required double lng,
+    String serviceType = 'ride',
+    String? vehicleCategoryId,
+    String? parcelVehicleCategory,
+    int seats = 1,
+    double radiusKm = 5,
+  }) {
+    if (_socket == null || !(_isConnected || _socket!.connected)) return;
+    _socket!.emit('customer:subscribe_nearby', {
+      'lat': lat,
+      'lng': lng,
+      'serviceType': serviceType,
+      'vehicleCategoryId': vehicleCategoryId,
+      'parcelVehicleCategory': parcelVehicleCategory,
+      'seats': seats,
+      'radiusKm': radiusKm,
+    });
+  }
+
+  void unsubscribeNearbyDrivers() {
+    if (_socket == null || !(_isConnected || _socket!.connected)) return;
+    _socket!.emit('customer:unsubscribe_nearby');
   }
 
   // Cancel a trip
@@ -339,6 +409,7 @@ class SocketService {
     _driverAssignedController.close();
     _driverLocationController.close();
     _tripStatusController.close();
+    _tripRecoveredController.close();
     _tripCancelledController.close();
     _connectedController.close();
     _chatMessageController.close();
@@ -346,11 +417,45 @@ class SocketService {
     _noDriversController.close();
     _tripSearchingController.close();
     _paymentPendingController.close();
+    _nearbyDriversController.close();
     _callIncomingController.close();
     _callOfferController.close();
     _callAnswerController.close();
     _callIceController.close();
     _callEndedController.close();
     _callRejectedController.close();
+  }
+
+  int? _parseTimestampMs(dynamic value) {
+    final raw = value?.toString();
+    if (raw == null || raw.isEmpty) return null;
+    return DateTime.tryParse(raw)?.millisecondsSinceEpoch;
+  }
+
+  bool _isStaleTripPayload(Map<String, dynamic> payload) {
+    final nextStateVersion = payload['stateVersion']?.toString() ?? '';
+    final nextEventAt = _parseTimestampMs(payload['serverTimestamp']);
+    if (nextStateVersion.isNotEmpty &&
+        _lastTripStateVersion.isNotEmpty &&
+        nextStateVersion == _lastTripStateVersion &&
+        nextEventAt != null &&
+        nextEventAt <= _lastTripEventAtMs) {
+      return true;
+    }
+    if (nextEventAt != null && nextEventAt < _lastTripEventAtMs) {
+      return true;
+    }
+    return false;
+  }
+
+  void _rememberTripPayload(Map<String, dynamic> payload) {
+    final nextStateVersion = payload['stateVersion']?.toString() ?? '';
+    final nextEventAt = _parseTimestampMs(payload['serverTimestamp']);
+    if (nextStateVersion.isNotEmpty) {
+      _lastTripStateVersion = nextStateVersion;
+    }
+    if (nextEventAt != null) {
+      _lastTripEventAtMs = nextEventAt;
+    }
   }
 }

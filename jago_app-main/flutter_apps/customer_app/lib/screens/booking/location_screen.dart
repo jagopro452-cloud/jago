@@ -521,6 +521,9 @@ class _LocationScreenState extends State<LocationScreen>
           title: 'Select Drop Location',
           initialLat: _pickupLat != 0 ? _pickupLat : null,
           initialLng: _pickupLng != 0 ? _pickupLng : null,
+          serviceType: widget.serviceType,
+          vehicleCategoryId: widget.vehicleCategoryId,
+          vehicleCategoryName: widget.vehicleCategoryName,
         ),
       ),
     );

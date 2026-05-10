@@ -4,7 +4,12 @@ import { log } from "./index";
 import { getFirebaseAdminAsync, notifyDriverNewRide, notifyDriverNewParcel, notifyCustomerDriverAccepted, notifyCustomerDriverArrived, notifyCustomerTripCompleted, notifyTripCancelled, sendFcmNotification } from "./fcm";
 import { sendCustomSms } from "./sms";
 import { getSocketHealthSnapshot, io } from "./socket";
-import { getOpsSnapshot, noteRuntimeConfigFailure, noteRuntimeConfigPublish } from "./ops-state";
+import {
+  getOpsSnapshot,
+  getRideTelemetrySnapshot,
+  noteRuntimeConfigFailure,
+  noteRuntimeConfigPublish,
+} from "./ops-state";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
@@ -16362,9 +16367,24 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           totalCollected: parseFloat(g.total_collected ?? 0),
           totalTrips: parseInt(g.total_trips ?? 0),
         },
+        observability: {
+          ops: getOpsSnapshot(),
+          rideTelemetry: getRideTelemetrySnapshot().summary,
+        },
         status: 'ok',
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e), status: "error" }); }
+  });
+
+  app.get("/api/admin/ride-telemetry", requireAdminAuth, async (_req, res) => {
+    try {
+      res.json({
+        status: "ok",
+        ...getRideTelemetrySnapshot(),
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: safeErrMsg(e), status: "error" });
+    }
   });
 
   app.post("/api/admin/services/toggle", requireAdminAuth, async (req, res) => {

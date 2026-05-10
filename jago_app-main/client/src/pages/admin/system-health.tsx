@@ -37,6 +37,69 @@ interface HealthData {
     totalCollected: number;
     totalTrips: number;
   };
+  observability?: {
+    ops?: {
+      socket?: {
+        authFailures: number;
+        disconnects: number;
+      };
+    };
+    rideTelemetry?: {
+      activeRides: number;
+      waitingRides: number;
+      reconnectingRides: number;
+      recoveryPendingRides: number;
+      staleTrackingRides: number;
+      weakSignalRides: number;
+      criticalAlerts: number;
+      warningAlerts: number;
+    };
+  };
+}
+
+interface RideTelemetryResponse {
+  status: string;
+  generatedAt: string;
+  thresholds: {
+    delayedMs: number;
+    staleMs: number;
+    frozenMs: number;
+  };
+  summary: {
+    activeRides: number;
+    waitingRides: number;
+    reconnectingRides: number;
+    recoveryPendingRides: number;
+    staleTrackingRides: number;
+    weakSignalRides: number;
+    criticalAlerts: number;
+    warningAlerts: number;
+  };
+  rides: Array<{
+    tripId: string;
+    refId: string | null;
+    driverName: string | null;
+    customerName: string | null;
+    vehicleCategory: string | null;
+    canonicalState: string;
+    trackingFreshness: "healthy" | "delayed" | "stale" | "frozen";
+    driverOperationalState: string;
+    reconnectCount: number;
+    recoveryCount: number;
+    waitingActive: boolean;
+    waitingCharge: number;
+    staleDurationSeconds: number;
+    unhealthyReason: string | null;
+    updatedAt: string;
+  }>;
+  alerts: Array<{
+    id: string;
+    tripId: string;
+    code: string;
+    severity: "info" | "warning" | "critical";
+    message: string;
+    at: string;
+  }>;
 }
 
 interface VehicleStatus {
@@ -72,6 +135,13 @@ const VEHICLE_COLORS: Record<string, string> = {
   auto: "#F59E0B",
   cab: "#10B981",
   premium: "#111827",
+};
+
+const FRESHNESS_COLORS: Record<string, string> = {
+  healthy: "#16A34A",
+  delayed: "#D97706",
+  stale: "#DC2626",
+  frozen: "#7C3AED",
 };
 
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {
@@ -135,6 +205,20 @@ export default function SystemHealthPage() {
     refetchInterval: 5000,
   });
 
+  const {
+    data: rideTelemetry,
+    isLoading: rideTelemetryLoading,
+    error: rideTelemetryError,
+    refetch: refetchRideTelemetry,
+  } = useQuery<RideTelemetryResponse>({
+    queryKey: ["/api/admin/ride-telemetry"],
+    queryFn: () => fetch("/api/admin/ride-telemetry").then(r => {
+      if (!r.ok) throw new Error("Ride telemetry unavailable");
+      return r.json();
+    }),
+    refetchInterval: autoRefresh ? 5000 : false,
+  });
+
   const [toggling, setToggling] = useState<string | null>(null);
   const [vehicleToggling, setVehicleToggling] = useState<string | null>(null);
 
@@ -180,6 +264,7 @@ export default function SystemHealthPage() {
 
   const isOk = data?.status === "ok";
   const hasStaleTrips = (data?.trips.staleSearching ?? 0) > 0;
+  const rideSummary = rideTelemetry?.summary;
 
   return (
     <AdminLayout>
@@ -253,6 +338,153 @@ export default function SystemHealthPage() {
                 </div>
                 <div style={{ fontSize: 12, color: "#6B7280" }}>
                   Live Platform Control active · Individual service toggles enabled · Real-time Flutter sync
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 28 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <h5 style={{ margin: 0, fontWeight: 900, letterSpacing: -0.3 }}>Active Ride Telemetry</h5>
+                  <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>
+                    Recovery, stale tracking, waiting lifecycle, and reconnect health from centralized ride-state telemetry.
+                  </div>
+                </div>
+                <button
+                  onClick={() => refetchRideTelemetry()}
+                  className="btn btn-sm btn-outline-dark"
+                  style={{ borderRadius: 10 }}
+                >
+                  <i className="bi bi-broadcast-pin me-1" />Refresh Telemetry
+                </button>
+              </div>
+
+              {rideTelemetryError && (
+                <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 14, padding: 14, color: "#B91C1C", marginBottom: 14 }}>
+                  <i className="bi bi-exclamation-triangle-fill me-2" />
+                  {(rideTelemetryError as Error).message}
+                </div>
+              )}
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 16 }}>
+                <KpiCard icon="🚕" label="Active Rides" value={rideSummary?.activeRides ?? "—"} accent="#2563EB" />
+                <KpiCard icon="🔁" label="Reconnecting" value={rideSummary?.reconnectingRides ?? "—"} accent="#7C3AED" />
+                <KpiCard icon="⏳" label="Waiting Rides" value={rideSummary?.waitingRides ?? "—"} accent="#D97706" />
+                <KpiCard icon="📡" label="Stale Tracking" value={rideSummary?.staleTrackingRides ?? "—"} accent="#DC2626" />
+                <KpiCard icon="🩺" label="Weak Signal" value={rideSummary?.weakSignalRides ?? "—"} accent="#0EA5E9" />
+                <KpiCard icon="🚨" label="Critical Alerts" value={rideSummary?.criticalAlerts ?? "—"} accent="#B91C1C" />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.7fr) minmax(300px, 1fr)", gap: 16 }}>
+                <div style={{ background: "#fff", borderRadius: 18, border: "1px solid #E5E7EB", boxShadow: "0 8px 24px rgba(15,23,42,0.06)", overflow: "hidden" }}>
+                  <div style={{ padding: "16px 18px", borderBottom: "1px solid #EEF2F7", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontWeight: 800, color: "#0F172A" }}>Live Ride Health</div>
+                      <div style={{ fontSize: 12, color: "#64748B" }}>
+                        {rideTelemetryLoading && !rideTelemetry ? "Loading telemetry…" : `Updated ${rideTelemetry?.generatedAt ? new Date(rideTelemetry.generatedAt).toLocaleTimeString("en-IN") : "—"}`}
+                      </div>
+                    </div>
+                    <StatusPill ok={(rideSummary?.criticalAlerts ?? 0) === 0 && (rideSummary?.staleTrackingRides ?? 0) === 0} label={(rideSummary?.criticalAlerts ?? 0) > 0 ? "Ops Attention" : "Telemetry Live"} />
+                  </div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr style={{ background: "#F8FAFC", textAlign: "left" }}>
+                          <th style={{ padding: "12px 16px", fontSize: 12, color: "#64748B" }}>Trip</th>
+                          <th style={{ padding: "12px 16px", fontSize: 12, color: "#64748B" }}>State</th>
+                          <th style={{ padding: "12px 16px", fontSize: 12, color: "#64748B" }}>Tracking</th>
+                          <th style={{ padding: "12px 16px", fontSize: 12, color: "#64748B" }}>Recovery</th>
+                          <th style={{ padding: "12px 16px", fontSize: 12, color: "#64748B" }}>Waiting</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(rideTelemetry?.rides || []).slice(0, 8).map((ride) => (
+                          <tr key={ride.tripId} style={{ borderTop: "1px solid #EEF2F7" }}>
+                            <td style={{ padding: "14px 16px" }}>
+                              <div style={{ fontWeight: 800, color: "#0F172A" }}>{ride.refId || ride.tripId.slice(0, 8)}</div>
+                              <div style={{ fontSize: 12, color: "#64748B" }}>{ride.driverName || "Driver"} → {ride.customerName || "Customer"}</div>
+                              <div style={{ fontSize: 11, color: "#94A3B8" }}>{ride.vehicleCategory || "Unassigned vehicle"}</div>
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <div style={{ fontWeight: 700, textTransform: "capitalize", color: "#111827" }}>{ride.canonicalState.replaceAll("_", " ")}</div>
+                              <div style={{ fontSize: 11, color: "#64748B", textTransform: "capitalize" }}>{ride.driverOperationalState.replaceAll("_", " ")}</div>
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <span style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                padding: "4px 10px",
+                                borderRadius: 999,
+                                background: `${FRESHNESS_COLORS[ride.trackingFreshness] || "#64748B"}18`,
+                                color: FRESHNESS_COLORS[ride.trackingFreshness] || "#64748B",
+                                fontWeight: 800,
+                                fontSize: 12,
+                                textTransform: "capitalize",
+                              }}>
+                                <span style={{ width: 7, height: 7, borderRadius: "50%", background: FRESHNESS_COLORS[ride.trackingFreshness] || "#64748B" }} />
+                                {ride.trackingFreshness}
+                              </span>
+                              <div style={{ fontSize: 11, color: "#64748B", marginTop: 6 }}>
+                                {ride.unhealthyReason || "Tracking healthy"}
+                              </div>
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <div style={{ fontWeight: 700, color: "#0F172A" }}>{ride.recoveryCount} recoveries</div>
+                              <div style={{ fontSize: 11, color: "#64748B" }}>{ride.reconnectCount} reconnects · {ride.staleDurationSeconds}s stale</div>
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <div style={{ fontWeight: 700, color: ride.waitingActive ? "#D97706" : "#0F172A" }}>
+                                {ride.waitingActive ? `₹${Number(ride.waitingCharge || 0).toFixed(2)}` : "—"}
+                              </div>
+                              <div style={{ fontSize: 11, color: "#64748B" }}>
+                                {ride.waitingActive ? "Waiting active" : "No waiting charge"}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {!rideTelemetryLoading && !(rideTelemetry?.rides || []).length && (
+                          <tr>
+                            <td colSpan={5} style={{ padding: 24, textAlign: "center", color: "#64748B" }}>
+                              No active ride telemetry yet.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div style={{ background: "#fff", borderRadius: 18, border: "1px solid #E5E7EB", boxShadow: "0 8px 24px rgba(15,23,42,0.06)", overflow: "hidden" }}>
+                  <div style={{ padding: "16px 18px", borderBottom: "1px solid #EEF2F7" }}>
+                    <div style={{ fontWeight: 800, color: "#0F172A" }}>Recovery Alerts</div>
+                    <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>
+                      Frozen rides, reconnect storms, and failed recovery attempts.
+                    </div>
+                  </div>
+                  <div style={{ padding: 14, display: "grid", gap: 10 }}>
+                    {(rideTelemetry?.alerts || []).slice(0, 6).map((alert) => (
+                      <div key={alert.id} style={{
+                        borderRadius: 14,
+                        padding: "12px 14px",
+                        background: alert.severity === "critical" ? "#FEF2F2" : "#FFF7ED",
+                        border: `1px solid ${alert.severity === "critical" ? "#FECACA" : "#FED7AA"}`,
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                          <div style={{ fontWeight: 800, color: "#111827" }}>{alert.message}</div>
+                          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", color: alert.severity === "critical" ? "#B91C1C" : "#C2410C" }}>
+                            {alert.severity}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>
+                          Trip {alert.tripId.slice(0, 8)} · {new Date(alert.at).toLocaleTimeString("en-IN")}
+                        </div>
+                      </div>
+                    ))}
+                    {!rideTelemetryLoading && !(rideTelemetry?.alerts || []).length && (
+                      <div style={{ color: "#64748B", fontSize: 13 }}>No active recovery alerts.</div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

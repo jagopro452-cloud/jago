@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -8,6 +9,7 @@ import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
+import '../../services/socket_service.dart';
 
 /// Result returned by [MapLocationPicker] when user confirms a location.
 class PickedLocation {
@@ -42,12 +44,18 @@ class MapLocationPicker extends StatefulWidget {
   /// Optional initial position. If null, uses device GPS.
   final double? initialLat;
   final double? initialLng;
+  final String serviceType;
+  final String? vehicleCategoryId;
+  final String? vehicleCategoryName;
 
   const MapLocationPicker({
     super.key,
     this.title = 'Select Location',
     this.initialLat,
     this.initialLng,
+    this.serviceType = 'ride',
+    this.vehicleCategoryId,
+    this.vehicleCategoryName,
   });
 
   @override
@@ -55,8 +63,21 @@ class MapLocationPicker extends StatefulWidget {
 }
 
 class _MapLocationPickerState extends State<MapLocationPicker> {
+  final SocketService _socket = SocketService();
   GoogleMapController? _mapController;
   LatLng? _pendingCamera; // camera move queued before map ready
+  final Map<String, BitmapDescriptor> _markerIconCache = {};
+  final Map<String, LatLng> _vehiclePositions = {};
+  final Map<String, double> _vehicleHeadings = {};
+  final Map<String, String> _vehicleTypes = {};
+  final Map<String, String> _vehicleTitles = {};
+  Set<Marker> _nearbyVehicleMarkers = {};
+  StreamSubscription? _nearbyDriversSub;
+  StreamSubscription? _socketConnSub;
+  Timer? _nearbyResubscribeDebounce;
+  Timer? _nearbyInterpolationTimer;
+  String _availabilityText = 'Looking for nearby drivers';
+  bool _groupingEnabled = true;
 
   // Current center of the map (source of truth)
   // null until GPS is confirmed — avoids biasing search toward a hardcoded city
@@ -169,13 +190,27 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       _lng = widget.initialLng!;
       _locationLoading = false;
       _reverseGeocode(_lat!, _lng!);
+      _subscribeNearbyDrivers();
     } else {
       _getCurrentLocation();
     }
+    _socket.connect(ApiConfig.socketUrl);
+    _nearbyDriversSub =
+        _socket.onNearbyDrivers.listen(_handleNearbyDriversSnapshot);
+    _socketConnSub = _socket.onConnectionChanged.listen((connected) {
+      if (connected) {
+        _subscribeNearbyDrivers();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _socket.unsubscribeNearbyDrivers();
+    _nearbyDriversSub?.cancel();
+    _socketConnSub?.cancel();
+    _nearbyResubscribeDebounce?.cancel();
+    _nearbyInterpolationTimer?.cancel();
     _searchCtrl.dispose();
     _searchFocus.dispose();
     _debounce?.cancel();
@@ -207,6 +242,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
             _pendingCamera = target;
           }
           _reverseGeocode(_lat, _lng);
+          _subscribeNearbyDrivers();
           return;
         }
         // Ensure loading is stopped even if no location is found
@@ -216,6 +252,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           _locationLoading = false;
           _address = 'Location services disabled. Showing default.';
         });
+        _subscribeNearbyDrivers();
         return;
       }
       var perm = await Geolocator.checkPermission();
@@ -229,6 +266,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           _lng = 80.6480;
           _address = 'Location permission is needed to detect your current location.';
         });
+        _subscribeNearbyDrivers();
         return;
       }
       if (perm == LocationPermission.deniedForever) {
@@ -238,6 +276,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           _lng = 80.6480;
           _address = 'Location permission is blocked. Enable it from settings.';
         });
+        _subscribeNearbyDrivers();
         return;
       }
 
@@ -257,6 +296,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           _pendingCamera = target;
         }
         _reverseGeocode(_lat, _lng);
+        _subscribeNearbyDrivers();
       }
 
       final pos = await Geolocator.getCurrentPosition(
@@ -281,6 +321,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         _pendingCamera = target;
       }
       _reverseGeocode(_lat, _lng);
+      _subscribeNearbyDrivers();
     } catch (e) {
       setState(() => _locationLoading = false);
     }
@@ -390,6 +431,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
 
   void _onCameraIdle() {
     _reverseGeocode(_lat, _lng);
+    _scheduleNearbySubscription();
   }
 
   void _onCameraMove(CameraPosition pos) {
@@ -399,6 +441,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
 
   void _onMyLocationTap() async {
     await _getCurrentLocation();
+    _subscribeNearbyDrivers();
   }
 
   void _confirmLocation() {
@@ -408,6 +451,183 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         PickedLocation(lat: _lat!, lng: _lng!, address: _address),
       );
     }
+  }
+
+  void _scheduleNearbySubscription() {
+    _nearbyResubscribeDebounce?.cancel();
+    _nearbyResubscribeDebounce =
+        Timer(const Duration(milliseconds: 450), _subscribeNearbyDrivers);
+  }
+
+  void _subscribeNearbyDrivers() {
+    final lat = _lat;
+    final lng = _lng;
+    if (lat == null || lng == null) return;
+    _socket.subscribeNearbyDrivers(
+      lat: lat,
+      lng: lng,
+      serviceType: widget.serviceType,
+      vehicleCategoryId: widget.vehicleCategoryId,
+      parcelVehicleCategory:
+          widget.serviceType == 'parcel' ? widget.vehicleCategoryName : null,
+      radiusKm: 5,
+    );
+  }
+
+  Future<BitmapDescriptor> _getVehicleMarkerIcon(String vehicleType) async {
+    if (_markerIconCache.containsKey(vehicleType)) {
+      return _markerIconCache[vehicleType]!;
+    }
+    final descriptor = await _drawVehicleMarker(vehicleType);
+    _markerIconCache[vehicleType] = descriptor;
+    return descriptor;
+  }
+
+  Future<BitmapDescriptor> _drawVehicleMarker(String vehicleType) async {
+    const size = 72.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size, size));
+
+    Color bg;
+    String emoji;
+    final normalized = vehicleType.toLowerCase();
+    if (normalized.contains('bike')) {
+      bg = const Color(0xFF2563EB);
+      emoji = '🏍️';
+    } else if (normalized.contains('auto')) {
+      bg = const Color(0xFF0891B2);
+      emoji = '🛺';
+    } else if (normalized.contains('parcel') ||
+        normalized.contains('cargo') ||
+        normalized.contains('truck') ||
+        normalized.contains('pickup')) {
+      bg = const Color(0xFFEA580C);
+      emoji = '📦';
+    } else if (normalized.contains('premium') || normalized.contains('suv')) {
+      bg = const Color(0xFF7C3AED);
+      emoji = '🚘';
+    } else {
+      bg = const Color(0xFF059669);
+      emoji = '🚗';
+    }
+
+    final shadowPaint = Paint()
+      ..color = bg.withValues(alpha: 0.28)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+    canvas.drawCircle(
+        const Offset(size / 2, size / 2 + 2), size / 2 - 8, shadowPaint);
+
+    canvas.drawCircle(
+        const Offset(size / 2, size / 2), size / 2 - 10, Paint()..color = bg);
+    canvas.drawCircle(
+      const Offset(size / 2, size / 2),
+      size / 2 - 10,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3,
+    );
+
+    final tp = TextPainter(
+      text: TextSpan(text: emoji, style: const TextStyle(fontSize: 26)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, Offset((size - tp.width) / 2, (size - tp.height) / 2 - 1));
+
+    final image = await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    return BitmapDescriptor.bytes(data!.buffer.asUint8List());
+  }
+
+  void _handleNearbyDriversSnapshot(Map<String, dynamic> snapshot) {
+    if (!mounted) return;
+    final summary = snapshot['summary'] is Map<String, dynamic>
+        ? Map<String, dynamic>.from(snapshot['summary'])
+        : <String, dynamic>{};
+    final drivers =
+        (snapshot['drivers'] as List<dynamic>? ?? const []).cast<dynamic>();
+    final nextTargets = <String, LatLng>{};
+    final nextHeadings = <String, double>{};
+    final nextTypes = <String, String>{};
+    final nextTitles = <String, String>{};
+
+    for (final raw in drivers) {
+      final driver = Map<String, dynamic>.from(raw as Map);
+      final id = driver['id']?.toString() ?? '';
+      final lat = double.tryParse(driver['lat']?.toString() ?? '');
+      final lng = double.tryParse(driver['lng']?.toString() ?? '');
+      if (id.isEmpty || lat == null || lng == null) continue;
+      nextTargets[id] = LatLng(lat, lng);
+      nextHeadings[id] =
+          double.tryParse(driver['heading']?.toString() ?? '0') ?? 0;
+      nextTypes[id] = (driver['vehicleName'] ??
+              driver['vehicle_name'] ??
+              driver['vehicleType'] ??
+              'car')
+          .toString();
+      nextTitles[id] = driver['fullName']?.toString() ?? 'Nearby driver';
+    }
+
+    final removedIds = _vehiclePositions.keys
+        .where((id) => !nextTargets.containsKey(id))
+        .toList(growable: false);
+    for (final id in removedIds) {
+      _vehiclePositions.remove(id);
+      _vehicleHeadings.remove(id);
+      _vehicleTypes.remove(id);
+      _vehicleTitles.remove(id);
+    }
+
+    _nearbyInterpolationTimer?.cancel();
+    final startPositions = Map<String, LatLng>.from(_vehiclePositions);
+    var step = 0;
+    const totalSteps = 5;
+    _nearbyInterpolationTimer =
+        Timer.periodic(const Duration(milliseconds: 180), (timer) async {
+      step += 1;
+      final t = step / totalSteps;
+      nextTargets.forEach((id, target) {
+        final start = startPositions[id] ?? target;
+        _vehiclePositions[id] = LatLng(
+          start.latitude + (target.latitude - start.latitude) * t,
+          start.longitude + (target.longitude - start.longitude) * t,
+        );
+        _vehicleHeadings[id] = nextHeadings[id] ?? 0;
+        _vehicleTypes[id] = nextTypes[id] ?? 'car';
+        _vehicleTitles[id] = nextTitles[id] ?? 'Nearby driver';
+      });
+      await _rebuildNearbyMarkers();
+      if (step >= totalSteps) {
+        timer.cancel();
+      }
+    });
+
+    setState(() {
+      _availabilityText =
+          summary['availabilityText']?.toString() ?? _availabilityText;
+      _groupingEnabled = summary['groupingEnabled'] != false;
+    });
+  }
+
+  Future<void> _rebuildNearbyMarkers() async {
+    final markers = <Marker>{};
+    for (final entry in _vehiclePositions.entries) {
+      final id = entry.key;
+      final icon = await _getVehicleMarkerIcon(_vehicleTypes[id] ?? 'car');
+      markers.add(Marker(
+        markerId: MarkerId('nearby_$id'),
+        position: entry.value,
+        icon: icon,
+        rotation: _vehicleHeadings[id] ?? 0,
+        anchor: const Offset(0.5, 0.5),
+        flat: true,
+        infoWindow: InfoWindow(title: _vehicleTitles[id] ?? 'Nearby driver'),
+      ));
+    }
+    if (!mounted) return;
+    setState(() {
+      _nearbyVehicleMarkers = markers;
+    });
   }
 
   // ─── Build ──────────────────────────────────────────────────────────────
@@ -426,6 +646,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                 target: LatLng(_lat!, _lng!),
                 zoom: 15,
               ),
+              markers: _nearbyVehicleMarkers,
               myLocationEnabled: true,
               myLocationButtonEnabled: false,
               zoomControlsEnabled: false,
@@ -437,16 +658,11 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                   _pendingCamera = null;
                 }
               },
-            onCameraMove: (pos) {
-              // High performance: update values without setState
-              _lat = pos.target.latitude;
-              _lng = pos.target.longitude;
-            },
-            onCameraIdle: () {
-              // Only update UI and geocode when map stops moving
-              if (mounted) setState(() {});
-              _reverseGeocode(_lat, _lng);
-            },
+              onCameraMove: _onCameraMove,
+              onCameraIdle: () {
+                if (mounted) setState(() {});
+                _onCameraIdle();
+              },
             ),
           if (_locationLoading)
             const Center(child: CircularProgressIndicator()),
@@ -465,10 +681,10 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         margin: const EdgeInsets.only(bottom: 6),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.8),
+                          color: Colors.black.withValues(alpha: 0.8),
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 4)),
+                            BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 4)),
                           ],
                         ),
                         child: Text(
@@ -482,7 +698,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                         width: 8, height: 4,
                         margin: const EdgeInsets.only(top: 2),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.3),
+                          color: Colors.black.withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
@@ -516,6 +732,95 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         ),
 
           // ── Bottom card (address + confirm) ─────────────────────────
+          Positioned(
+            top: _showSearch ? 124 : 72,
+            left: 16,
+            right: 16,
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: _locationLoading ? 0 : 1,
+                duration: const Duration(milliseconds: 180),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.96),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: _groupingEnabled
+                            ? JT.primary.withValues(alpha: 0.18)
+                            : const Color(0xFFEA580C).withValues(alpha: 0.18),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 18,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: _nearbyVehicleMarkers.isEmpty
+                                ? const Color(0xFFF59E0B)
+                                : const Color(0xFF16A34A),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: (_nearbyVehicleMarkers.isEmpty
+                                        ? const Color(0xFFF59E0B)
+                                        : const Color(0xFF16A34A))
+                                    .withValues(alpha: 0.32),
+                                blurRadius: 10,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Flexible(
+                          child: Text(
+                            _availabilityText,
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.poppins(
+                              color: JT.textPrimary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (widget.serviceType == 'parcel') ...[
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF7ED),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              (widget.vehicleCategoryName ?? 'Parcel').toUpperCase(),
+                              style: GoogleFonts.poppins(
+                                color: const Color(0xFFEA580C),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
           Positioned(
             bottom: 0,
             left: 0,

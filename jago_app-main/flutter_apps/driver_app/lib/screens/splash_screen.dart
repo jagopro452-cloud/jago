@@ -5,11 +5,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/jago_theme.dart';
 import '../services/auth_service.dart';
+import '../services/active_ride_persistence_service.dart';
 import 'home/home_screen.dart';
 import 'auth/login_screen.dart';
 import 'onboarding/language_select_screen.dart';
 import 'onboarding/driver_onboarding_screen.dart';
 import 'onboarding/terms_screen.dart';
+import 'trip/trip_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -103,6 +105,18 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     }
     final hasSession = await AuthService.rehydrateStoredSession();
     if (!mounted) return;
+    if (hasSession) {
+      final cachedTrip = await ActiveRidePersistenceService.loadActiveRideSnapshot();
+      if (!mounted) return;
+      if (cachedTrip != null) {
+        Navigator.pushReplacement(context, PageRouteBuilder(
+          pageBuilder: (_, __, ___) => TripScreen(trip: cachedTrip),
+          transitionDuration: const Duration(milliseconds: 600),
+          transitionsBuilder: (_, anim, __, child) => FadeTransition(opacity: anim, child: child),
+        ));
+        return;
+      }
+    }
     Navigator.pushReplacement(context, PageRouteBuilder(
       pageBuilder: (_, __, ___) => hasSession ? const HomeScreen() : const LoginScreen(),
       transitionDuration: const Duration(milliseconds: 600),

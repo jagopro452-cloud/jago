@@ -128,6 +128,18 @@ Use the manual device flow in `docs/MANUAL_TESTING_GUIDE.md` plus the ops endpoi
 - `GET /api/health`
 - `GET /api/ops/ready` with `x-ops-key`
 - `GET /api/ops/metrics` with `x-ops-key`
+- `GET /api/admin/system-health` with admin bearer
+- `GET /api/admin/ride-telemetry` with admin bearer
+
+Use the evidence capture helper for every staging validation round:
+
+```bash
+npm run ops:staging-evidence -- --base-url=https://staging.example.com --ops-key=... --admin-token=...
+```
+
+Realtime release sign-off must follow:
+
+- `docs/ops/FINAL_REALTIME_OPERATIONS_RELEASE_GATE_2026-05.md`
 
 ## 10) Cloud deployment
 

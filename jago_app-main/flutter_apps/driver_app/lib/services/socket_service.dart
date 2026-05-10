@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
+import 'active_ride_persistence_service.dart';
 
 class SocketService {
   static final SocketService _instance = SocketService._internal();
@@ -15,13 +16,19 @@ class SocketService {
   bool _wasOnline = false;
   double? _lastLat;
   double? _lastLng;
+  double _lastHeading = 0;
+  double _lastSpeed = 0;
   String? _activeTripId; // tracks current trip for room rejoin on reconnect
   DateTime? _lastLocationSentAt; // for auto-offline detection
   Timer? _heartbeatTimer;
+  int _lastTripEventAtMs = 0;
+  String _lastTripStateVersion = '';
+  final List<Map<String, dynamic>> _pendingLocationPayloads = [];
 
   final _newTripController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripCancelledController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripStatusController = StreamController<Map<String, dynamic>>.broadcast();
+  final _tripRecoveredController = StreamController<Map<String, dynamic>>.broadcast();
   final _connectedController = StreamController<bool>.broadcast();
   final _tripTakenController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripTimeoutController = StreamController<Map<String, dynamic>>.broadcast();
@@ -40,6 +47,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onNewTrip => _newTripController.stream;
   Stream<Map<String, dynamic>> get onTripCancelled => _tripCancelledController.stream;
   Stream<Map<String, dynamic>> get onTripStatus => _tripStatusController.stream;
+  Stream<Map<String, dynamic>> get onTripRecovered => _tripRecoveredController.stream;
   Stream<bool> get onConnectionChanged => _connectedController.stream;
   Stream<Map<String, dynamic>> get onTripTaken => _tripTakenController.stream;
   Stream<Map<String, dynamic>> get onTripTimeout => _tripTimeoutController.stream;
@@ -83,6 +91,14 @@ class SocketService {
 
     if (userId.isEmpty) return;
 
+    final persistedTracking = await ActiveRidePersistenceService.loadTrackingContext();
+    _activeTripId ??= persistedTracking['tripId']?.toString();
+    _wasOnline = persistedTracking['wasOnline'] == true || _wasOnline;
+    _lastLat ??= persistedTracking['lastLat'] as double?;
+    _lastLng ??= persistedTracking['lastLng'] as double?;
+    _lastHeading = (persistedTracking['heading'] as double?) ?? _lastHeading;
+    _lastSpeed = (persistedTracking['speed'] as double?) ?? _lastSpeed;
+
     _socket = IO.io(
       baseUrl,
       IO.OptionBuilder()
@@ -98,25 +114,12 @@ class SocketService {
     _socket!.on('connect', (_) {
       _isConnected = true;
       _connectedController.add(true);
+      _restoreDriverRuntimeState();
     });
 
     // On reconnect after server restart: restore online status so driver stays visible
     _socket!.on('reconnect', (_) {
-      if (_wasOnline) {
-        _socket!.emit('driver:online', {
-          'isOnline': true,
-          if (_lastLat != null) 'lat': _lastLat,
-          if (_lastLng != null) 'lng': _lastLng,
-        });
-      }
-      // Rejoin active trip room so server routes trip events to this socket again
-      if (_activeTripId != null) {
-        _socket!.emit('driver:rejoin_trip', {'tripId': _activeTripId});
-        // Also re-emit last location so server has fresh data for this trip
-        if (_lastLat != null && _lastLng != null) {
-          _socket!.emit('driver:location', {'lat': _lastLat, 'lng': _lastLng, 'heading': 0, 'speed': 0});
-        }
-      }
+      _restoreDriverRuntimeState();
     });
 
     _socket!.on('disconnect', (_) {
@@ -133,7 +136,22 @@ class SocketService {
     });
 
     _socket!.on('trip:status_update', (data) {
-      _tripStatusController.add(Map<String, dynamic>.from(data));
+      final payload = Map<String, dynamic>.from(data);
+      if (_isStaleTripPayload(payload)) {
+        return;
+      }
+      _rememberTripPayload(payload);
+      _tripStatusController.add(payload);
+    });
+
+    _socket!.on('trip:recovered', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      if (_isStaleTripPayload(payload)) {
+        return;
+      }
+      _rememberTripPayload(payload);
+      _tripRecoveredController.add(payload);
+      _tripStatusController.add(payload);
     });
 
     _socket!.on('trip:request_taken', (data) {
@@ -218,10 +236,25 @@ class SocketService {
       final last = _lastLocationSentAt;
       if (last == null) return;
       final stale = DateTime.now().difference(last).inSeconds >= 15;
+      if (stale &&
+          _isConnected &&
+          _activeTripId != null &&
+          _lastLat != null &&
+          _lastLng != null) {
+        _postLocationViaHttp(
+          lat: _lastLat!,
+          lng: _lastLng!,
+          heading: _lastHeading,
+          speed: _lastSpeed,
+        );
+        _socket?.emit('driver:rejoin_trip', {'tripId': _activeTripId});
+        return;
+      }
       if (stale && _isConnected) {
         // GPS failed or app went background — mark driver offline
         _socket!.emit('driver:online', {'isOnline': false});
         _wasOnline = false;
+        ActiveRidePersistenceService.updateTrackingHeartbeat(wasOnline: false);
       }
     });
   }
@@ -230,6 +263,16 @@ class SocketService {
   /// Also joins the room immediately if connected.
   void setActiveTrip(String? tripId) {
     _activeTripId = tripId;
+    if (tripId == null || tripId.isEmpty) {
+      ActiveRidePersistenceService.clearActiveRide();
+    } else {
+      ActiveRidePersistenceService.updateTrackingHeartbeat(
+        tripId: tripId,
+        wasOnline: _wasOnline,
+        lat: _lastLat,
+        lng: _lastLng,
+      );
+    }
     if (tripId != null && _isConnected && _socket != null) {
       _socket!.emit('driver:rejoin_trip', {'tripId': tripId});
     }
@@ -238,16 +281,31 @@ class SocketService {
   void sendLocation({required double lat, required double lng, double heading = 0, double speed = 0}) {
     _lastLat = lat;
     _lastLng = lng;
+    _lastHeading = heading;
+    _lastSpeed = speed;
     _lastLocationSentAt = DateTime.now();
+    final payload = {
+      'lat': lat,
+      'lng': lng,
+      'heading': heading,
+      'speed': speed,
+    };
+    ActiveRidePersistenceService.updateTrackingHeartbeat(
+      tripId: _activeTripId,
+      lat: lat,
+      lng: lng,
+      heading: heading,
+      speed: speed,
+      wasOnline: _wasOnline,
+    );
     if (_isConnected) {
-      _socket!.emit('driver:location', {
-        'lat': lat,
-        'lng': lng,
-        'heading': heading,
-        'speed': speed,
-      });
+      _socket!.emit('driver:location', payload);
       return;
     }
+    if (_pendingLocationPayloads.length >= 8) {
+      _pendingLocationPayloads.removeAt(0);
+    }
+    _pendingLocationPayloads.add(payload);
     _postLocationViaHttp(
       lat: lat,
       lng: lng,
@@ -288,6 +346,12 @@ class SocketService {
     _wasOnline = isOnline;
     if (lat != null) _lastLat = lat;
     if (lng != null) _lastLng = lng;
+    ActiveRidePersistenceService.updateTrackingHeartbeat(
+      tripId: _activeTripId,
+      wasOnline: isOnline,
+      lat: _lastLat,
+      lng: _lastLng,
+    );
     if (_isConnected) {
       _socket!.emit('driver:online', {
         'isOnline': isOnline,
@@ -411,6 +475,7 @@ class SocketService {
     _newTripController.close();
     _tripCancelledController.close();
     _tripStatusController.close();
+    _tripRecoveredController.close();
     _connectedController.close();
     _tripTakenController.close();
     _tripTimeoutController.close();
@@ -425,5 +490,67 @@ class SocketService {
     _callIceController.close();
     _callEndedController.close();
     _callRejectedController.close();
+  }
+
+  int? _parseTimestampMs(dynamic value) {
+    final raw = value?.toString();
+    if (raw == null || raw.isEmpty) return null;
+    return DateTime.tryParse(raw)?.millisecondsSinceEpoch;
+  }
+
+  bool _isStaleTripPayload(Map<String, dynamic> payload) {
+    final nextStateVersion = payload['stateVersion']?.toString() ?? '';
+    final nextEventAt = _parseTimestampMs(payload['serverTimestamp']);
+    if (nextStateVersion.isNotEmpty &&
+        _lastTripStateVersion.isNotEmpty &&
+        nextStateVersion == _lastTripStateVersion &&
+        nextEventAt != null &&
+        nextEventAt <= _lastTripEventAtMs) {
+      return true;
+    }
+    if (nextEventAt != null && nextEventAt < _lastTripEventAtMs) {
+      return true;
+    }
+    return false;
+  }
+
+  void _rememberTripPayload(Map<String, dynamic> payload) {
+    final nextStateVersion = payload['stateVersion']?.toString() ?? '';
+    final nextEventAt = _parseTimestampMs(payload['serverTimestamp']);
+    if (nextStateVersion.isNotEmpty) {
+      _lastTripStateVersion = nextStateVersion;
+    }
+    if (nextEventAt != null) {
+      _lastTripEventAtMs = nextEventAt;
+    }
+  }
+
+  void _restoreDriverRuntimeState() {
+    if (!_isConnected || _socket == null) return;
+    if (_wasOnline) {
+      _socket!.emit('driver:online', {
+        'isOnline': true,
+        if (_lastLat != null) 'lat': _lastLat,
+        if (_lastLng != null) 'lng': _lastLng,
+      });
+    }
+    if (_activeTripId != null) {
+      _socket!.emit('driver:rejoin_trip', {'tripId': _activeTripId});
+    }
+    if (_pendingLocationPayloads.isNotEmpty) {
+      for (final payload in List<Map<String, dynamic>>.from(_pendingLocationPayloads)) {
+        _socket!.emit('driver:location', payload);
+      }
+      _pendingLocationPayloads.clear();
+      return;
+    }
+    if (_lastLat != null && _lastLng != null) {
+      _socket!.emit('driver:location', {
+        'lat': _lastLat,
+        'lng': _lastLng,
+        'heading': _lastHeading,
+        'speed': _lastSpeed,
+      });
+    }
   }
 }
