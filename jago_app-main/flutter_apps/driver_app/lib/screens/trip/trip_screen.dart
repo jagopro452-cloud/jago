@@ -13,6 +13,7 @@ import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/active_ride_persistence_service.dart';
+import '../../services/trip_navigation_controller.dart';
 import '../../services/socket_service.dart';
 import '../../services/call_service.dart';
 import '../call/call_screen.dart';
@@ -89,6 +90,8 @@ class _TripScreenState extends State<TripScreen>
   String _lastRouteKey = '';
   String _lastCameraViewKey = '';
   LatLng? _lastRouteOriginLatLng;
+  String? _routeIssue;
+  int _arrivedGeofenceMeters = 250;
   int _waitingElapsedSeconds = 0;
   int _waitingBillableSeconds = 0;
   int _waitingGraceSeconds = 0;
@@ -218,6 +221,17 @@ class _TripScreenState extends State<TripScreen>
   bool get _canOpenOtpStage => _isPickupArrivalStage;
 
   bool get _isTripInMotion => _isDestinationNavigationStage;
+
+  TripNavigationSnapshot get _navigationSnapshot =>
+      TripNavigationController.resolve(
+        trip: _trip,
+        rawState: _canonicalRouteState,
+        routeReady: _polylines.isNotEmpty,
+        nearPickup: _nearPickup,
+        waitingActive: _waitingActive,
+        distanceMeters: _distanceToTargetM,
+        etaSec: _etaSec,
+      );
 
   double _pickupLat() => _tripDouble(_trip, const ['pickupLat', 'pickup_lat']);
   double _pickupLng() => _tripDouble(_trip, const ['pickupLng', 'pickup_lng']);
@@ -354,7 +368,7 @@ class _TripScreenState extends State<TripScreen>
   }
 
   LatLng? _routeTargetForCurrentStatus() {
-    return _activeRouteTarget();
+    return TripNavigationController.targetForState(_trip, _canonicalRouteState);
   }
 
   String _routeKeyForTarget(LatLng target) {
@@ -1052,6 +1066,9 @@ class _TripScreenState extends State<TripScreen>
     final destLat = target?.latitude ?? 0;
     final destLng = target?.longitude ?? 0;
     if (destLat == 0 || destLng == 0) {
+      if (mounted) {
+        setState(() => _routeIssue = 'Navigation target unavailable for current trip stage.');
+      }
       print('[ROUTE] Skipping fetch — no valid destination coords (status=$_status)');
       return;
     }
@@ -1100,16 +1117,35 @@ class _TripScreenState extends State<TripScreen>
             ));
             _distanceToTargetM = distKm * 1000;
             _etaSec = (durMin * 60).round();
+            _routeIssue = null;
           });
           _lastRouteOriginLatLng = LatLng(fromLat, fromLng);
           _lastRouteKey = _routeKeyForTarget(LatLng(toLat, toLng));
           _maybeSyncTripCamera(force: true);
+        } else if (mounted) {
+          setState(() => _routeIssue = 'Navigation route is not available yet. Pull to refresh trip details.');
         }
+      } else if (mounted) {
+        setState(() => _routeIssue = 'Route service failed to return directions. Check network and retry navigation.');
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) {
+        setState(() => _routeIssue = 'Could not load live route. Check network and retry.');
+      }
+    }
   }
 
   // ── Location updates ──────────────────────────────────────────────────────
+
+  String? _arrivedPreflightError(Position? latestPos) {
+    return TripNavigationController.validateArrivedPreflight(
+      trip: _trip,
+      driverLocation: latestPos == null
+          ? null
+          : LatLng(latestPos.latitude, latestPos.longitude),
+      geofenceMeters: _arrivedGeofenceMeters,
+    );
+  }
 
   Future<void> _startLocationUpdates() async {
     _locationTimer?.cancel();
@@ -1246,11 +1282,16 @@ class _TripScreenState extends State<TripScreen>
     try {
       if (_isPickupNavigationStage) {
         final latestPos = await _resolveTripLocation(fallback: _lastTripPosition);
-        if (latestPos == null) {
+        final arrivedError = _arrivedPreflightError(latestPos);
+        if (arrivedError != null) {
           _showSnack(
-            'Live GPS is required before marking arrived. Please enable location and try again.',
+            arrivedError,
             error: true,
           );
+          setState(() => _loading = false);
+          return;
+        }
+        if (latestPos == null) {
           setState(() => _loading = false);
           return;
         }
@@ -2186,6 +2227,10 @@ class _TripScreenState extends State<TripScreen>
 
     await _fetchRouteForCurrentStatus(force: true);
     _maybeSyncTripCamera(force: true);
+    if (_polylines.isEmpty) {
+      _showSnack(_routeIssue ?? 'Live route is still loading. Please wait a moment and tap Navigate again.', error: true);
+      return;
+    }
 
     final candidates = <Uri>[
       Uri.parse('google.navigation:q=$targetLat,$targetLng&mode=d'),
@@ -2400,9 +2445,10 @@ class _TripScreenState extends State<TripScreen>
   // ── Top bar ───────────────────────────────────────────────────────────────
 
   Widget _buildTopBar(String pickup, String dest) {
+    final nav = _navigationSnapshot;
     final stepInfo = _getStepInfo();
-    final isOnTheWay = _isTripInMotion;
-    final isArrived = _isPickupArrivalStage;
+    final isOnTheWay = nav.isDestinationNavigationStage;
+    final isArrived = nav.isPickupArrivalStage;
     final Color barColor = isOnTheWay
         ? JT.success
         : isArrived
@@ -2442,11 +2488,11 @@ class _TripScreenState extends State<TripScreen>
         Expanded(
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(stepInfo['label'] as String,
+          Text(nav.headline,
               style: GoogleFonts.poppins(
                   color: barColor, fontSize: 14, fontWeight: FontWeight.w400)),
           const SizedBox(height: 2),
-          Text(isOnTheWay ? dest : pickup,
+          Text(nav.targetLabel.isNotEmpty ? nav.targetLabel : (isOnTheWay ? dest : pickup),
               style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 11),
               maxLines: 1,
               overflow: TextOverflow.ellipsis),
@@ -2480,12 +2526,12 @@ class _TripScreenState extends State<TripScreen>
   }
 
   Widget _buildNavigationInstructions() {
-    final isOnTheWay = _isTripInMotion;
-    if (_isPickupArrivalStage) return const SizedBox.shrink();
+    final nav = _navigationSnapshot;
+    final isOnTheWay = nav.isDestinationNavigationStage;
+    if (nav.isPickupArrivalStage) return const SizedBox.shrink();
 
     final Color accentColor = isOnTheWay ? JT.success : JT.primary;
-    final String instruction =
-        isOnTheWay ? 'Head to Destination' : 'Head to Pickup';
+    final String instruction = nav.headline;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -2515,9 +2561,10 @@ class _TripScreenState extends State<TripScreen>
                       fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  _etaSec > 0
-                      ? 'EST. ARRIVAL: ${_formatEta(_etaSec)}'
-                      : 'FOLLOW THE ROUTE',
+                  _routeIssue ??
+                      (nav.routeReady
+                          ? 'EST. ARRIVAL: ${nav.etaLabel}'
+                          : nav.helperLabel),
                   style: GoogleFonts.poppins(
                       color: Colors.white70,
                       fontSize: 11,
@@ -2533,7 +2580,7 @@ class _TripScreenState extends State<TripScreen>
                   color: Colors.black.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8)),
               child: Text(
-                _formatDist(_distanceToTargetM),
+                nav.distanceLabel,
                 style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -2666,10 +2713,11 @@ class _TripScreenState extends State<TripScreen>
   // ── Live stats (distance/ETA/timer) ───────────────────────────────────────
 
   Widget _buildLiveStats() {
-    final isOnTheWay = _isTripInMotion;
-    final isNavigating = _isPickupNavigationStage;
+    final nav = _navigationSnapshot;
+    final isOnTheWay = nav.isDestinationNavigationStage;
+    final isNavigating = nav.isPickupNavigationStage;
 
-    if (_isPickupArrivalStage) {
+    if (nav.isPickupArrivalStage) {
       return Container(
           margin: const EdgeInsets.only(bottom: 6),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -2753,9 +2801,9 @@ class _TripScreenState extends State<TripScreen>
                   fontSize: 15,
                   fontWeight: FontWeight.w500)),
           const SizedBox(width: 6),
-          Text('away',
-              style:
-                  GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12)),
+          Text(nav.routeReady ? 'away' : 'route loading',
+              style: GoogleFonts.poppins(
+                  color: JT.textSecondary, fontSize: 12)),
           const SizedBox(width: 12),
           const Icon(Icons.access_time_rounded,
               size: 13, color: JT.iconInactive),
@@ -2901,11 +2949,14 @@ class _TripScreenState extends State<TripScreen>
 
   Widget _buildActionBtn() {
     final step = _getStepInfo();
-    final isOnTheWay = _isTripInMotion;
-    final showGlow = _nearPickup && _isPickupNavigationStage;
+    final nav = _navigationSnapshot;
+    final isOnTheWay = nav.isDestinationNavigationStage;
+    final showGlow = nav.nearPickup && nav.isPickupNavigationStage;
+    final pickupCoordsMissing =
+        nav.isPickupNavigationStage && (_pickupLat() == 0 || _pickupLng() == 0);
 
     return GestureDetector(
-      onTap: _loading ? null : _nextStep,
+      onTap: (_loading || pickupCoordsMissing) ? null : _nextStep,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         width: double.infinity,
@@ -3115,14 +3166,13 @@ class _TripScreenState extends State<TripScreen>
   // ── Step info ─────────────────────────────────────────────────────────────
 
   Map<String, dynamic> _getStepInfo() {
-    switch (_canonicalRouteState) {
-      case 'driver_assigned':
-      case 'accepted':
+    final nav = _navigationSnapshot;
+    switch (nav.canonicalState) {
       case 'heading_to_pickup':
         return {
-          'label': 'Navigating to Pickup',
+          'label': nav.headline,
           'icon': Icons.navigation_rounded,
-          'action': 'Arrived at Pickup'
+          'action': nav.actionLabel
         };
       case 'arrived':
       case 'waiting':

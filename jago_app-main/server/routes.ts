@@ -8894,6 +8894,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           message: "Pickup coordinates were missing during arrival confirmation",
           severity: "critical",
           canonicalState: currentCanonical,
+          details: {
+            trip_state: tripRow.current_status,
+            pickup_lat: pickupLat,
+            pickup_lng: pickupLng,
+          },
         });
         return res.status(409).json({ message: "Pickup location is missing for this trip. Please refresh trip details." });
       }
@@ -8910,8 +8915,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           message: "Arrived at pickup blocked because live driver location was missing",
           severity: "critical",
           canonicalState: currentCanonical,
+          details: {
+            trip_state: tripRow.current_status,
+            driver_live_lat: liveLat || null,
+            driver_live_lng: liveLng || null,
+            pickup_lat: pickupLat,
+            pickup_lng: pickupLng,
+          },
         });
-        return res.status(409).json({ message: "Live driver location required before marking arrived." });
+        return res.status(409).json({
+          message: "Live driver location required before marking arrived.",
+          code: "ARRIVAL_LIVE_LOCATION_REQUIRED",
+          details: {
+            tripState: tripRow.current_status,
+            driverLiveLat: liveLat || null,
+            driverLiveLng: liveLng || null,
+            pickupLat,
+            pickupLng,
+          },
+        });
       }
       const distanceMeters = haversineKm(driverLat, driverLng, pickupLat, pickupLng) * 1000;
       if (distanceMeters > geofenceMeters) {
@@ -8922,10 +8944,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           code: "arrival_geofence_mismatch",
           message: `Driver was ${Math.round(distanceMeters)}m away from pickup while marking arrived`,
           canonicalState: currentCanonical,
+          details: {
+            trip_state: tripRow.current_status,
+            driver_live_lat: driverLat,
+            driver_live_lng: driverLng,
+            pickup_lat: pickupLat,
+            pickup_lng: pickupLng,
+            distance_meters: Math.round(distanceMeters),
+            allowed_radius: Math.round(geofenceMeters),
+          },
         });
         return res.status(409).json({
           message: `Driver is too far from pickup to mark arrived (${Math.round(distanceMeters)}m).`,
           code: "ARRIVAL_GEOFENCE_MISMATCH",
+          details: {
+            tripState: tripRow.current_status,
+            driverLiveLat: driverLat,
+            driverLiveLng: driverLng,
+            pickupLat,
+            pickupLng,
+            distanceMeters: Math.round(distanceMeters),
+            allowedRadius: Math.round(geofenceMeters),
+          },
         });
       }
 
@@ -8947,8 +8987,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           message: "Trip state changed before arrival confirmation could be persisted",
           severity: "critical",
           canonicalState: currentCanonical,
+          details: {
+            trip_state: tripRow.current_status,
+            canonical_state: currentCanonical,
+            driver_live_lat: driverLat,
+            driver_live_lng: driverLng,
+            pickup_lat: pickupLat,
+            pickup_lng: pickupLng,
+            distance_meters: Math.round(distanceMeters),
+            allowed_radius: Math.round(geofenceMeters),
+          },
         });
-        return res.status(409).json({ message: "Trip state changed before arrival confirmation. Please refresh." });
+        return res.status(409).json({
+          message: "Trip state changed before arrival confirmation. Please refresh.",
+          code: "ARRIVAL_STATE_RACE",
+          details: {
+            tripState: tripRow.current_status,
+            canonicalState: currentCanonical,
+            driverLiveLat: driverLat,
+            driverLiveLng: driverLng,
+            pickupLat,
+            pickupLng,
+            distanceMeters: Math.round(distanceMeters),
+            allowedRadius: Math.round(geofenceMeters),
+          },
+        });
       }
       const otp = tripRow?.pickup_otp;
       await appendTripStatus(tripId, 'driver_arriving', 'driver', 'Driver reached pickup');

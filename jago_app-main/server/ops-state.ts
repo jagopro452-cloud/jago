@@ -59,6 +59,7 @@ type RideOpsAlert = {
   lastHeartbeatAt: string | null;
   recoveryAttempts: number;
   at: string;
+  details?: Record<string, unknown>;
 };
 
 type RideTelemetry = {
@@ -243,7 +244,13 @@ function recomputeRideHealth(entry: RideTelemetry) {
   entry.unhealthyReason = null;
 }
 
-function pushRideAlert(entry: RideTelemetry, code: string, severity: RideTelemetrySeverity, message: string) {
+function pushRideAlert(
+  entry: RideTelemetry,
+  code: string,
+  severity: RideTelemetrySeverity,
+  message: string,
+  details?: Record<string, unknown>,
+) {
   const latest = rideAlerts[0];
   if (latest && latest.tripId === entry.tripId && latest.code === code) {
     return;
@@ -260,6 +267,7 @@ function pushRideAlert(entry: RideTelemetry, code: string, severity: RideTelemet
     lastHeartbeatAt: entry.lastSocketHeartbeatAt || entry.lastLocationAt,
     recoveryAttempts: entry.recoveryCount,
     at: nowIso(),
+    details,
   });
   if (rideAlerts.length > ALERT_HISTORY_LIMIT) {
     rideAlerts.length = ALERT_HISTORY_LIMIT;
@@ -480,6 +488,7 @@ export function noteRideRouteFailure(event: {
   message: string;
   severity?: RideTelemetrySeverity;
   canonicalState?: string | null;
+  details?: Record<string, unknown>;
 }) {
   const tripId = String(event.tripId || "").trim();
   if (!tripId) return;
@@ -496,6 +505,7 @@ export function noteRideRouteFailure(event: {
     event.code,
     event.severity || "warning",
     event.message,
+    event.details,
   );
   finalizeRideTelemetry(entry);
 }
