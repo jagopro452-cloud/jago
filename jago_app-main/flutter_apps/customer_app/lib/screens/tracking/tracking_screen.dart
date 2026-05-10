@@ -68,6 +68,9 @@ class _TrackingScreenState extends State<TrackingScreen>
   String _lastTripStateVersion = '';
   String _lastRouteKey = '';
   String _lastCameraViewKey = '';
+  String? _routeIssue;
+  int _routeEtaSec = 0;
+  double _routeDistanceM = 0;
   double _driverHeading = 0;
   int _waitingElapsedSeconds = 0;
   int _waitingBillableSeconds = 0;
@@ -1024,14 +1027,55 @@ class _TrackingScreenState extends State<TrackingScreen>
     await _refreshRouteForStatus(force: false);
   }
 
+  bool get _isPickupPhase =>
+      _status == 'accepted' || _status == 'driver_assigned';
+  bool get _isArrivedPhase =>
+      _status == 'arrived';
+  bool get _isDestinationPhase =>
+      _status == 'in_progress' || _status == 'on_the_way';
+
+  String _trackingHeadline() {
+    if (_status == 'searching') return 'Finding the best Pilot for you...';
+    if (_isPickupPhase) {
+      return _isArriving
+          ? 'Your pilot is about to arrive'
+          : 'Pilot is navigating to pickup';
+    }
+    if (_isArrivedPhase) {
+      return _waitingActive ? 'Driver is waiting at pickup' : 'Your pilot has arrived';
+    }
+    if (_isDestinationPhase) {
+      return 'Trip is live to your destination';
+    }
+    if (_status == 'completed') return 'Your ride is ended';
+    if (_status == 'cancelled') return 'Trip Cancelled';
+    return 'Loading...';
+  }
+
+  String _trackingSubhead() {
+    if (_status == 'searching') return 'Nearby vehicles and pilot matching is active';
+    if (_isPickupPhase) {
+      return _polylines.isNotEmpty
+          ? 'Driver route to pickup is active'
+          : 'Preparing live pickup route';
+    }
+    if (_isArrivedPhase) {
+      return _waitingActive ? 'Waiting timer and pickup hold are active' : 'Secure pickup handoff in progress';
+    }
+    if (_isDestinationPhase) {
+      return _polylines.isNotEmpty
+          ? 'Destination route and ETA are active'
+          : 'Preparing destination route';
+    }
+    return 'Live tracking active';
+  }
+
   Future<void> _refreshRouteForStatus({required bool force}) async {
     if (_driverLatLng == null || _trip == null) return;
 
     // Status rank: search=0, assigned/accepted=1/2, arrived=3, on_the_way=4
-    final isGoingToPickup = _status == 'accepted' ||
-        _status == 'driver_assigned' ||
-        _status == 'arrived';
-    final isGoingToDrop = _status == 'in_progress' || _status == 'on_the_way';
+    final isGoingToPickup = _isPickupPhase || _isArrivedPhase;
+    final isGoingToDrop = _isDestinationPhase;
 
     if (!isGoingToPickup && !isGoingToDrop) {
       if (_polylines.isNotEmpty) setState(() => _polylines.clear());
@@ -1051,7 +1095,12 @@ class _TrackingScreenState extends State<TrackingScreen>
           double.tryParse(_trip?['destinationLng']?.toString() ?? '') ?? 0.0;
     }
 
-    if (destLat == 0 || destLng == 0) return;
+    if (destLat == 0 || destLng == 0) {
+      if (mounted) {
+        setState(() => _routeIssue = 'Route target unavailable for current trip stage.');
+      }
+      return;
+    }
 
     final target = LatLng(destLat, destLng);
     if (!force && !_shouldRefreshRoute(_driverLatLng!, eventAt: 0)) {
@@ -1089,6 +1138,9 @@ class _TrackingScreenState extends State<TrackingScreen>
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final overviewPolyline = data['overviewPolyline']?.toString();
+        final distKm = (data['totalDistanceKm'] as num?)?.toDouble() ?? 0.0;
+        final durMin =
+            (data['totalDurationMinutes'] as num?)?.toDouble() ?? 0.0;
         if (overviewPolyline != null && mounted) {
           final pts = _decodePolyline(overviewPolyline);
           setState(() {
@@ -1102,21 +1154,32 @@ class _TrackingScreenState extends State<TrackingScreen>
               startCap: Cap.roundCap,
               endCap: Cap.roundCap,
             ));
+            _routeDistanceM = distKm * 1000;
+            _routeEtaSec = (durMin * 60).round();
+            _routeIssue = null;
           });
           _lastRouteOriginLatLng = LatLng(fromLat, fromLng);
           _lastRouteKey = _routeKeyForLatLngs(LatLng(fromLat, fromLng), LatLng(toLat, toLng));
           _maybeSyncTrackingCamera(force: true);
+        } else if (mounted) {
+          setState(() => _routeIssue = 'Live route is not available yet. Refreshing tracking…');
         }
+      } else if (mounted) {
+        setState(() => _routeIssue = 'Route service failed to return directions.');
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) {
+        setState(() => _routeIssue = 'Could not load live route. Check connection and retry.');
+      }
+    }
   }
 
   LatLng? _routeTargetForStatus() {
     if (_trip == null) return null;
-    final targetLat = (_status == 'in_progress' || _status == 'on_the_way')
+    final targetLat = _isDestinationPhase
         ? double.tryParse(_trip?['destinationLat']?.toString() ?? '') ?? 0.0
         : double.tryParse(_trip?['pickupLat']?.toString() ?? '') ?? 0.0;
-    final targetLng = (_status == 'in_progress' || _status == 'on_the_way')
+    final targetLng = _isDestinationPhase
         ? double.tryParse(_trip?['destinationLng']?.toString() ?? '') ?? 0.0
         : double.tryParse(_trip?['pickupLng']?.toString() ?? '') ?? 0.0;
     if (targetLat == 0 || targetLng == 0) return null;
@@ -2212,7 +2275,9 @@ class _TrackingScreenState extends State<TrackingScreen>
             _status == 'arrived');
     final waitMetric = _waitingActive
         ? _formatDurationShort(_waitingElapsedSeconds)
-        : (_trip?['etaMinutes']?.toString() ?? '5 MIN');
+        : (_routeEtaSec > 0
+            ? _formatDurationShort(_routeEtaSec)
+            : (_trip?['etaMinutes']?.toString() ?? '5 MIN'));
     final waitLabel = _waitingActive ? 'WAITING' : 'ETA';
 
     return Column(
@@ -2783,48 +2848,46 @@ class _TrackingScreenState extends State<TrackingScreen>
     switch (status) {
       case 'searching':
         return {
-          'label': 'Finding the best Pilot for you...',
+          'label': _trackingHeadline(),
           'icon': Icons.radar_rounded,
           'color': const Color(0xFF2D8CFF)
         };
       case 'driver_assigned':
       case 'accepted':
         return {
-          'label': _isArriving
-              ? 'Your pilot is about to arrive'
-              : 'Pilot accepted your ride',
+          'label': _trackingHeadline(),
           'icon':
               _isArriving ? Icons.bolt_rounded : Icons.electric_bike_rounded,
           'color': const Color(0xFF2D8CFF)
         };
       case 'arrived':
         return {
-          'label': 'Your pilot is arrived',
+          'label': _trackingHeadline(),
           'icon': Icons.location_on_rounded,
           'color': const Color(0xFF10B981)
         };
       case 'in_progress':
       case 'on_the_way':
         return {
-          'label': 'Your ride is started',
+          'label': _trackingHeadline(),
           'icon': Icons.auto_awesome_rounded,
           'color': const Color(0xFF2D8CFF)
         };
       case 'completed':
         return {
-          'label': 'Your ride is ended',
+          'label': _trackingHeadline(),
           'icon': Icons.check_circle_rounded,
           'color': JT.primary
         };
       case 'cancelled':
         return {
-          'label': 'Trip Cancelled',
+          'label': _trackingHeadline(),
           'icon': Icons.cancel_rounded,
           'color': JT.primaryDark
         };
       default:
         return {
-          'label': 'Loading...',
+          'label': _trackingHeadline(),
           'icon': Icons.hourglass_empty_rounded,
           'color': const Color(0xFF94A3B8)
         };
