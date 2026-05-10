@@ -8690,7 +8690,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           (SELECT phone FROM users WHERE id=customer_id) as customer_phone
         FROM trip_requests WHERE id=${tripId}::uuid
           AND driver_id=${driver.id}::uuid
-          AND current_status = 'arrived'
+          AND current_status IN ('arrived', 'waiting', 'otp_pending')
       `);
       if (!r.rows.length) {
         noteRideRouteFailure({
@@ -8744,8 +8744,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         SET current_status='on_the_way',
             ride_started_at=COALESCE(ride_started_at, NOW()),
             updated_at=NOW()
-        WHERE id=${tripId}::uuid RETURNING *
+        WHERE id=${tripId}::uuid
+          AND driver_id=${driver.id}::uuid
+          AND current_status IN ('arrived', 'waiting', 'otp_pending')
+        RETURNING *
       `);
+      if (!updated.rows.length) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          customerId: trip.customer_id,
+          code: "pickup_otp_state_race",
+          message: "Trip state changed before OTP-based start could be persisted",
+          severity: "critical",
+          canonicalState: getCanonicalRideState(trip),
+        });
+        return res.status(409).json({ message: "Trip state changed before start confirmation. Please refresh." });
+      }
       const updatedTrip = camelize(updated.rows[0]);
       await appendTripStatus(tripId, 'trip_started', 'driver', 'Pickup OTP verified');
       await logRideLifecycleEvent(tripId, 'trip_started', driver.id, 'driver', { via: 'verify-pickup-otp' });
@@ -8920,7 +8935,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             arrived_at=COALESCE(arrived_at, NOW()),
             updated_at=NOW()
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
-          AND current_status IN ('accepted','driver_assigned')
+          AND current_status IN ('accepted','driver_assigned','heading_to_pickup')
         RETURNING id, pickup_otp, customer_id
       `);
       if (!updR.rows.length) {
@@ -8992,7 +9007,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!tripInfo.rows.length) return res.status(404).json({ message: "Trip not found" });
       const tripRow = tripInfo.rows[0] as any;
-      if (tripRow.current_status !== 'arrived') {
+      if (!['arrived', 'waiting', 'otp_pending'].includes(String(tripRow.current_status))) {
         return res.status(400).json({ message: `Cannot start trip in status: ${tripRow.current_status}` });
       }
       if (!pickupOtp || !String(pickupOtp).trim()) {
@@ -9008,6 +9023,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         UPDATE trip_requests
         SET current_status='on_the_way', ride_started_at=COALESCE(ride_started_at, NOW()), updated_at=NOW()
         WHERE id=${tripId}::uuid AND driver_id=${driver.id}::uuid
+          AND current_status IN ('arrived', 'waiting', 'otp_pending')
         RETURNING id
       `);
       if (!startR.rows.length) return res.status(400).json({ message: "Trip update failed � driver mismatch or trip already moved" });
@@ -9047,7 +9063,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         WHERE tr.id=${tripId}::uuid AND tr.driver_id=${driver.id}::uuid`);
       if (!tripInfo.rows.length) return res.status(404).json({ message: "Trip not found" });
       const tripRow = tripInfo.rows[0] as any;
-      if (tripRow.current_status !== 'on_the_way') return res.status(400).json({ message: `Cannot complete trip in status: ${tripRow.current_status}. Ride must be in progress.` });
+      if (!['on_the_way', 'in_progress', 'heading_to_destination'].includes(String(tripRow.current_status))) {
+        return res.status(400).json({ message: `Cannot complete trip in status: ${tripRow.current_status}. Ride must be in progress.` });
+      }
       if ((tripRow.trip_type === 'parcel' || tripRow.trip_type === 'delivery') && tripRow.delivery_otp) {
         return res.status(400).json({ message: "Verify delivery OTP before completing this parcel trip." });
       }
