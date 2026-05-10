@@ -8798,7 +8798,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/driver/arrived", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
-      const { tripId } = req.body;
+      const { tripId, lat, lng, heading, speed } = req.body;
       if (!tripId) {
         return res.status(400).json({ message: "tripId required" });
       }
@@ -8844,8 +8844,44 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const pickupLat = Number(tripRow.pickup_lat) || 0;
       const pickupLng = Number(tripRow.pickup_lng) || 0;
-      const driverLat = Number(tripRow.driver_lat) || 0;
-      const driverLng = Number(tripRow.driver_lng) || 0;
+      const liveLat = Number(lat) || 0;
+      const liveLng = Number(lng) || 0;
+      const driverLat = liveLat || Number(tripRow.driver_lat) || 0;
+      const driverLng = liveLng || Number(tripRow.driver_lng) || 0;
+      if (liveLat && liveLng) {
+        await rawDb.execute(rawSql`
+          INSERT INTO driver_locations (
+            driver_id, lat, lng, heading, speed, is_online, updated_at
+          ) VALUES (
+            ${driver.id}::uuid,
+            ${liveLat},
+            ${liveLng},
+            ${Number(heading) || 0},
+            ${Number(speed) || 0},
+            true,
+            NOW()
+          )
+          ON CONFLICT (driver_id) DO UPDATE SET
+            lat = EXCLUDED.lat,
+            lng = EXCLUDED.lng,
+            heading = EXCLUDED.heading,
+            speed = EXCLUDED.speed,
+            is_online = true,
+            updated_at = NOW()
+        `).catch(dbCatch("db"));
+      }
+      if (!pickupLat || !pickupLng) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          customerId: tripRow.customer_id,
+          code: "arrived_missing_pickup_coordinates",
+          message: "Pickup coordinates were missing during arrival confirmation",
+          severity: "critical",
+          canonicalState: currentCanonical,
+        });
+        return res.status(409).json({ message: "Pickup location is missing for this trip. Please refresh trip details." });
+      }
       const geofenceMetersR = await rawDb.execute(rawSql`
         SELECT value FROM business_settings WHERE key_name='driver_arrived_geofence_meters' LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));

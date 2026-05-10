@@ -254,6 +254,36 @@ class _TripScreenState extends State<TripScreen>
     return fallback;
   }
 
+  Future<void> _pushDriverLocationSnapshot(
+    Position pos, {
+    bool awaitServer = false,
+  }) async {
+    final payload = {
+      'lat': pos.latitude,
+      'lng': pos.longitude,
+      'heading': pos.heading.isNaN ? 0 : pos.heading,
+      'speed': pos.speed,
+      'isOnline': true,
+    };
+    _socket.sendLocation(
+      lat: pos.latitude,
+      lng: pos.longitude,
+      heading: pos.heading.isNaN ? 0 : pos.heading,
+      speed: pos.speed,
+    );
+    final headers = await AuthService.getHeaders();
+    final request = http.post(
+      Uri.parse(ApiConfig.driverLocation),
+      headers: {...headers, 'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    if (awaitServer) {
+      await request.timeout(const Duration(seconds: 6));
+      return;
+    }
+    request.catchError((_) => http.Response('', 500));
+  }
+
   void _mergeTripState(Map<String, dynamic>? nextTrip, {String? fallbackStatus}) {
     if (nextTrip == null && fallbackStatus == null) return;
     final merged =
@@ -962,10 +992,9 @@ class _TripScreenState extends State<TripScreen>
     );
   }
 
-  Future<Position?> _resolveTripLocation() async {
-    Position? fallback;
+  Future<Position?> _resolveTripLocation({Position? fallback}) async {
     try {
-      fallback = await Geolocator.getLastKnownPosition();
+      fallback ??= await Geolocator.getLastKnownPosition();
     } catch (_) {}
 
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -1154,23 +1183,7 @@ class _TripScreenState extends State<TripScreen>
     _locationTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       final pos = _lastTripPosition;
       if (pos == null || !mounted) return;
-      _socket.sendLocation(
-          lat: pos.latitude,
-          lng: pos.longitude,
-          heading: pos.heading.isNaN ? 0 : pos.heading,
-          speed: pos.speed);
-      final locHeaders = await AuthService.getHeaders();
-      http
-          .post(Uri.parse(ApiConfig.driverLocation),
-              headers: {...locHeaders, 'Content-Type': 'application/json'},
-              body: jsonEncode({
-                'lat': pos.latitude,
-                'lng': pos.longitude,
-                'heading': pos.heading.isNaN ? 0 : pos.heading,
-                'speed': pos.speed,
-                'isOnline': true
-              }))
-          .catchError((_) => http.Response('', 500));
+      await _pushDriverLocationSnapshot(pos);
     });
   }
 
@@ -1232,9 +1245,34 @@ class _TripScreenState extends State<TripScreen>
 
     try {
       if (_isPickupNavigationStage) {
+        final latestPos = await _resolveTripLocation(fallback: _lastTripPosition);
+        if (latestPos == null) {
+          _showSnack(
+            'Live GPS is required before marking arrived. Please enable location and try again.',
+            error: true,
+          );
+          setState(() => _loading = false);
+          return;
+        }
+        _lastTripPosition = latestPos;
+        if (mounted) {
+          setState(() => _center = LatLng(latestPos.latitude, latestPos.longitude));
+          _updateSelfMarker(
+            latestPos.latitude,
+            latestPos.longitude,
+            heading: latestPos.heading.isNaN ? 0 : latestPos.heading,
+          );
+        }
+        await _pushDriverLocationSnapshot(latestPos, awaitServer: true);
         final res = await http.post(Uri.parse(ApiConfig.driverArrived),
             headers: {...h, 'Content-Type': 'application/json'},
-            body: jsonEncode({'tripId': tripId}));
+            body: jsonEncode({
+              'tripId': tripId,
+              'lat': latestPos.latitude,
+              'lng': latestPos.longitude,
+              'heading': latestPos.heading.isNaN ? 0 : latestPos.heading,
+              'speed': latestPos.speed,
+            }));
         if (!mounted) return;
         if (res.statusCode == 200) {
           Map<String, dynamic>? responseBody;
