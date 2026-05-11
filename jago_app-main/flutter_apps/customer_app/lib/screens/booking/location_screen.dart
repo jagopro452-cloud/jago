@@ -896,79 +896,80 @@ class _LocationScreenState extends State<LocationScreen>
             ),
             padding:
                 const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            child: Row(children: [
-              // Pick on Map
-              _actionChip(
-                Icons.map_rounded,
-                'Pick on Map',
-                onTap: _pickDropOnMap,
-              ),
-              const SizedBox(width: 8),
-              // Add Stop
-              if (!_showStop)
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
                 _actionChip(
-                  Icons.add_location_alt_rounded,
-                  'Add Stop',
-                  onTap: () {
-                    setState(() => _showStop = true);
-                    Future.delayed(const Duration(milliseconds: 100), () {
-                      if (mounted) _stopFocus.requestFocus();
-                    });
-                  },
+                  Icons.map_rounded,
+                  'Pick on Map',
+                  onTap: _pickDropOnMap,
                 ),
-              if (_showStop)
-                _actionChip(
-                  Icons.remove_circle_outline_rounded,
-                  'Remove Stop',
-                  onTap: () {
-                    setState(() {
-                      _showStop = false;
-                      _stop = '';
-                      _stopCtrl.clear();
-                    });
-                  },
-                  isDestructive: true,
-                ),
-              const Spacer(),
-              // Proceed button (shows when drop is selected)
-              if (_drop.isNotEmpty)
-                GestureDetector(
-                  onTap: _proceedToVehicles,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [_accent, _accent.withValues(alpha: 0.8)],
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _accent.withValues(alpha: 0.35),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Text(
-                        'See Vehicles',
-                        style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.arrow_forward_rounded,
-                          color: Colors.white, size: 14),
-                    ]),
+                const SizedBox(width: 8),
+                if (!_showStop)
+                  _actionChip(
+                    Icons.add_location_alt_rounded,
+                    'Add Stop',
+                    onTap: () {
+                      setState(() => _showStop = true);
+                      Future.delayed(const Duration(milliseconds: 100), () {
+                        if (mounted) _stopFocus.requestFocus();
+                      });
+                    },
                   ),
-                ),
-            ]),
+                if (_showStop)
+                  _actionChip(
+                    Icons.remove_circle_outline_rounded,
+                    'Remove Stop',
+                    onTap: () {
+                      setState(() {
+                        _showStop = false;
+                        _stop = '';
+                        _stopCtrl.clear();
+                      });
+                    },
+                    isDestructive: true,
+                  ),
+                if (_drop.isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  GestureDetector(
+                    onTap: _proceedToVehicles,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [_accent, _accent.withValues(alpha: 0.8)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _accent.withValues(alpha: 0.35),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text(
+                          'See Vehicles',
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_forward_rounded,
+                            color: Colors.white, size: 14),
+                      ]),
+                    ),
+                  ),
+                ],
+              ]),
+            ),
           ),
         ]),
       ),
@@ -1215,9 +1216,14 @@ class _LocationScreenState extends State<LocationScreen>
           border: Border.all(color: const Color(0xFFF1F5FA)),
           boxShadow: [
             BoxShadow(
+              color: _accent.withValues(alpha: 0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+            BoxShadow(
               color: Colors.black.withValues(alpha: 0.02),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
           ],
         ),

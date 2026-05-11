@@ -2769,7 +2769,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                   const SizedBox(width: 10),
                   Flexible(
                     child: Text(
-                      'Message $driverName...',
+                      'Message $driverName',
                       style: GoogleFonts.poppins(
                           fontSize: 13, color: JT.textSecondary),
                       maxLines: 1,
@@ -3023,7 +3023,8 @@ class _TrackingScreenState extends State<TrackingScreen>
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.12)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3107,10 +3108,10 @@ class _TrackingScreenState extends State<TrackingScreen>
   }
 
   Widget _pill(String label, String value, Color color) => Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
           color: color.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: color.withValues(alpha: 0.15))),
       child: Column(children: [
         Text(value,

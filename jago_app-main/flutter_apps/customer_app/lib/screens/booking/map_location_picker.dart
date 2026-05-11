@@ -1092,7 +1092,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
               focusNode: _searchFocus,
               style: GoogleFonts.poppins(fontSize: 15, color: JT.textPrimary),
               decoration: InputDecoration(
-                hintText: 'Search for a place...',
+                hintText: 'Search destination or landmark',
                 hintStyle: GoogleFonts.poppins(fontSize: 15, color: JT.textSecondary),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 14),
@@ -1168,7 +1168,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   Widget _buildBottomCard(double bottomPadding) {
     final etaText = _previewEtaSec > 0
         ? '${(_previewEtaSec / 60).ceil()} mins'
-        : 'Refreshing';
+        : 'Updating';
     final distanceText = _previewDistanceM > 0
         ? (_previewDistanceM < 1000
             ? '${_previewDistanceM.round()} m'
@@ -1191,6 +1191,41 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
               width: 36, height: 4,
               decoration: BoxDecoration(color: const Color(0xFFDCE9FF), borderRadius: BorderRadius.circular(2)),
             ),
+          ),
+          const SizedBox(height: 16),
+
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: JT.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'LIVE PREVIEW',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: JT.primary,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                _routeIssue == null || _routeIssue!.isEmpty
+                    ? 'Route ready'
+                    : 'Route updating',
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: _routeIssue == null || _routeIssue!.isEmpty
+                      ? const Color(0xFF0F766E)
+                      : const Color(0xFFB45309),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
 
@@ -1273,12 +1308,21 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           ),
           if (_routeIssue != null && _routeIssue!.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text(
-              _routeIssue!,
-              style: GoogleFonts.poppins(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFFB45309),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: Text(
+                _routeIssue!,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFFB45309),
+                ),
               ),
             ),
           ],

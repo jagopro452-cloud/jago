@@ -2971,10 +2971,10 @@ class _TripScreenState extends State<TripScreen>
   }
 
   Widget _pill(String label, String value, Color color) => Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
           color: color.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: color.withValues(alpha: 0.15))),
       child: Column(children: [
         Text(value,
