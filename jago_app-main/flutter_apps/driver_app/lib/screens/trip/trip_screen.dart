@@ -98,6 +98,7 @@ class _TripScreenState extends State<TripScreen>
   double _waitingCharge = 0;
   double _waitingChargePerMin = 0;
   bool _waitingActive = false;
+  bool _internalNavigationActive = true;
 
   // Live stats
   double _distanceToTargetM = 0;
@@ -439,7 +440,18 @@ class _TripScreenState extends State<TripScreen>
     _lastCameraSyncAtMs = now;
     _lastCameraViewKey = viewKey;
     if (target == null) {
-      controller.animateCamera(CameraUpdate.newLatLng(originLatLng));
+      controller.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: originLatLng,
+            zoom: _internalNavigationActive ? 17.2 : 15.8,
+            tilt: _internalNavigationActive ? 52 : 0,
+            bearing: _internalNavigationActive && !origin.heading.isNaN
+                ? origin.heading
+                : 0,
+          ),
+        ),
+      );
       return;
     }
     controller.animateCamera(
@@ -454,7 +466,7 @@ class _TripScreenState extends State<TripScreen>
             max(originLatLng.longitude, target.longitude),
           ),
         ),
-        88,
+        _internalNavigationActive ? 136 : 88,
       ),
     );
   }
@@ -2310,7 +2322,7 @@ class _TripScreenState extends State<TripScreen>
         builder: (_) => TripChatSheet(tripId: tripId, senderName: 'Driver'));
   }
 
-  Future<void> _openNavigation() async {
+  Future<void> _activateInAppNavigation({bool announce = true}) async {
     final toPickup = _isPickupNavigationStage || _isPickupArrivalStage;
     final tLat = toPickup ? _pickupLat() : _destinationLat();
     final tLng = toPickup ? _pickupLng() : _destinationLng();
@@ -2334,10 +2346,54 @@ class _TripScreenState extends State<TripScreen>
       return;
     }
 
-    // Keep our in-app map in sync, but do not block external navigation on route API availability.
+    if (mounted) {
+      setState(() => _internalNavigationActive = true);
+    }
     await _fetchRouteForCurrentStatus(force: true);
     _maybeSyncTripCamera(force: true);
+    if (!announce) return;
+    final nav = _navigationSnapshot;
+    if (_polylines.isNotEmpty) {
+      _showSnack(
+        '${toPickup ? 'Pickup' : 'Destination'} navigation active in app${nav.etaLabel != '--' ? ' • ETA ${nav.etaLabel}' : ''}.',
+      );
+      return;
+    }
+    _showSnack(
+      _routeIssue == null
+          ? 'Live navigation focus active in app. Route preview is still loading.'
+          : 'Map focus active in app. ${_routeIssue!}',
+      error: _routeIssue != null,
+    );
+  }
 
+  Future<void> _openNavigation() async {
+    await _activateInAppNavigation();
+  }
+
+  Future<void> _openExternalNavigation() async {
+    final toPickup = _isPickupNavigationStage || _isPickupArrivalStage;
+    final tLat = toPickup ? _pickupLat() : _destinationLat();
+    final tLng = toPickup ? _pickupLng() : _destinationLng();
+    final label = toPickup
+        ? _shortLocation(_tripString(_trip,
+            const ['pickupShortName', 'pickupAddress', 'pickup_address'],
+            fallback: 'Pickup'))
+        : _shortLocation(_tripString(_trip, const [
+            'destinationShortName',
+            'destinationAddress',
+            'destination_address',
+          ], fallback: 'Destination'));
+    if (tLat == 0 || tLng == 0) {
+      await _refreshTripFromServer(force: true);
+    }
+    final targetLat = toPickup ? _pickupLat() : _destinationLat();
+    final targetLng = toPickup ? _pickupLng() : _destinationLng();
+    if (targetLat == 0 || targetLng == 0) {
+      _showSnack('Navigation target unavailable. Refreshing trip details failed.', error: true);
+      return;
+    }
+    await _activateInAppNavigation(announce: false);
     final candidates = <Uri>[
       Uri.parse('google.navigation:q=$targetLat,$targetLng&mode=d'),
       Uri.parse(
@@ -2679,8 +2735,19 @@ class _TripScreenState extends State<TripScreen>
                   style: GoogleFonts.poppins(
                       color: Colors.white70,
                       fontSize: 11,
-                      fontWeight: FontWeight.w500),
+                  fontWeight: FontWeight.w500),
                 ),
+                if (_internalNavigationActive) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'In-app navigation live • Camera and route stay synced on this map',
+                    style: GoogleFonts.poppins(
+                      color: Colors.white.withValues(alpha: 0.92),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -3146,8 +3213,18 @@ class _TripScreenState extends State<TripScreen>
               _startInAppCall(n);
             }),
           _quickBtn(Icons.chat_rounded, 'Chat', JT.primary, _openTripChat),
-          _quickBtn(Icons.navigation_rounded, 'Navigate', JT.primary,
-              _openNavigation),
+          _quickBtn(
+            Icons.navigation_rounded,
+            _internalNavigationActive ? 'Recenter' : 'Navigate',
+            JT.primary,
+            _openNavigation,
+          ),
+          _quickBtn(
+            Icons.map_outlined,
+            'Open Maps',
+            JT.secondary,
+            _openExternalNavigation,
+          ),
           if (_isPickupNavigationStage || _isPickupArrivalStage)
             _quickBtn(
                 Icons.cancel_outlined, 'Cancel', JT.warning, _showCancelDialog),
