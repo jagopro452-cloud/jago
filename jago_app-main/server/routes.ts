@@ -8841,8 +8841,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const tripRow = tripR.rows[0] as any;
       const currentCanonical = getCanonicalRideState(tripRow);
       if (tripRow.current_status === "arrived") {
-        const payload = await emitTripRealtimeUpdate(tripId, { pickupOtp: tripRow.pickup_otp || null });
-        return res.json({ success: true, pickupOtp: tripRow.pickup_otp || null, trip: payload, canonicalState: payload?.canonicalState || currentCanonical });
+        let payload: any = null;
+        try {
+          payload = await emitTripRealtimeUpdate(tripId, { pickupOtp: tripRow.pickup_otp || null });
+        } catch (emitErr: any) {
+          noteRideRouteFailure({
+            tripId,
+            driverId: driver.id,
+            customerId: tripRow.customer_id,
+            code: "arrived_realtime_emit_failed",
+            message: emitErr?.message || "Arrival realtime emit failed after trip was already marked arrived",
+            canonicalState: currentCanonical,
+            details: {
+              phase: "already_arrived_response",
+            },
+          });
+        }
+        return res.json({
+          success: true,
+          pickupOtp: tripRow.pickup_otp || null,
+          trip:
+            payload ||
+            {
+              id: tripId,
+              currentStatus: "arrived",
+              current_status: "arrived",
+              canonicalState: "arrived",
+              pickupOtp: tripRow.pickup_otp || null,
+              customerId: tripRow.customer_id,
+            },
+          canonicalState: payload?.canonicalState || currentCanonical,
+        });
       }
       if (!canTransitionRideState(tripRow.current_status, "arrived")) {
         noteRideRouteFailure({
@@ -9043,17 +9072,53 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ).catch(dbCatch("db"));
       }
 
-      const payload = await emitTripRealtimeUpdate(tripId, { pickupOtp: otp || null, otp: otp || null });
-      res.json({ success: true, pickupOtp: otp, trip: payload, canonicalState: payload?.canonicalState || "otp_pending" });
+      let payload: any = null;
+      try {
+        payload = await emitTripRealtimeUpdate(tripId, {
+          pickupOtp: otp || null,
+          otp: otp || null,
+        });
+      } catch (emitErr: any) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          customerId: tripRow.customer_id,
+          code: "arrived_realtime_emit_failed",
+          message: emitErr?.message || "Arrival realtime emit failed after arrival was persisted",
+          canonicalState: "arrived",
+          details: {
+            phase: "post_arrived_emit",
+            pickup_otp: otp || null,
+          },
+        });
+      }
+      res.json({
+        success: true,
+        pickupOtp: otp,
+        trip:
+          payload ||
+          {
+            id: tripId,
+            currentStatus: "arrived",
+            current_status: "arrived",
+            canonicalState: "arrived",
+            pickupOtp: otp || null,
+            customerId: tripRow.customer_id,
+          },
+        canonicalState: payload?.canonicalState || "arrived",
+      });
     } catch (e: any) {
       noteRideRouteFailure({
         tripId: req.body?.tripId,
         driverId: (req as any)?.currentUser?.id,
         code: "arrived_server_error",
-        message: safeErrMsg(e),
+        message: e?.message || safeErrMsg(e),
         severity: "critical",
       });
-      res.status(500).json({ message: safeErrMsg(e) });
+      res.status(500).json({
+        message: safeErrMsg(e),
+        code: "ARRIVED_SERVER_ERROR",
+      });
     }
   });
 
