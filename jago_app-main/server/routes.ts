@@ -9043,20 +9043,56 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
       const otp = tripRow?.pickup_otp;
-      await appendTripStatus(tripId, 'driver_arriving', 'driver', 'Driver reached pickup');
-      await logRideLifecycleEvent(tripId, 'driver_arriving', driver.id, 'driver', {
-        geofenceMeters: Math.round(distanceMeters),
-      });
+      try {
+        await appendTripStatus(tripId, 'driver_arriving', 'driver', 'Driver reached pickup');
+      } catch (statusErr: any) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          customerId: tripRow.customer_id,
+          code: "arrived_status_timeline_failed",
+          message: statusErr?.message || "Arrival status timeline update failed after persistence",
+          canonicalState: "arrived",
+          details: { phase: "post_arrived_status_append" },
+        });
+      }
+      try {
+        await logRideLifecycleEvent(tripId, 'driver_arriving', driver.id, 'driver', {
+          geofenceMeters: Math.round(distanceMeters),
+        });
+      } catch (lifecycleErr: any) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          customerId: tripRow.customer_id,
+          code: "arrived_lifecycle_log_failed",
+          message: lifecycleErr?.message || "Arrival lifecycle log failed after persistence",
+          canonicalState: "arrived",
+          details: { phase: "post_arrived_lifecycle_log" },
+        });
+      }
 
       // ?? Notify customer � driver arrived, show OTP
-      const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${tripRow.customer_id}::uuid`);
-      const custFcmToken = (custDevRes.rows[0] as any)?.fcm_token || null;
-      notifyCustomerDriverArrived({
-        fcmToken: custFcmToken,
-        driverName: driver.fullName || "Driver",
-        otp: otp || "",
-        tripId,
-      }).catch(dbCatch("db"));
+      try {
+        const custDevRes = await rawDb.execute(rawSql`SELECT fcm_token FROM user_devices WHERE user_id=${tripRow.customer_id}::uuid`);
+        const custFcmToken = (custDevRes.rows[0] as any)?.fcm_token || null;
+        notifyCustomerDriverArrived({
+          fcmToken: custFcmToken,
+          driverName: driver.fullName || "Driver",
+          otp: otp || "",
+          tripId,
+        }).catch(dbCatch("db"));
+      } catch (notifyPrepErr: any) {
+        noteRideRouteFailure({
+          tripId,
+          driverId: driver.id,
+          customerId: tripRow.customer_id,
+          code: "arrived_customer_notify_prepare_failed",
+          message: notifyPrepErr?.message || "Arrival customer notification preparation failed",
+          canonicalState: "arrived",
+          details: { phase: "post_arrived_notify_prep" },
+        });
+      }
 
       // ?? If booked for someone else � send OTP as SMS to passenger phone
       if (tripRow?.is_for_someone_else && tripRow?.passenger_phone) {

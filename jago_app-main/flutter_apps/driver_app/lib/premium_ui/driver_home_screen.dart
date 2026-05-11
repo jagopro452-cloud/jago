@@ -180,7 +180,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      _isOnline ? Icons.Check_circle_rounded : Icons.power_settings_new_rounded,
+                      _isOnline ? Icons.check_circle_rounded : Icons.power_settings_new_rounded,
                       color: _isOnline ? JagoTheme.success : JagoTheme.success,
                       size: 48,
                     ),

@@ -154,7 +154,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
     if (firebaseSent) {
       // Notify server for rate-limiting (fire-and-forget — don't block user)
-      AuthService.sendOtp(phone, 'driver').catchError((_) {});
+      unawaited(AuthService.sendOtp(phone, 'driver').catchError((_) => <String, dynamic>{}));
       setState(() { _otpSent = true; _loading = false; });
       _startTimer();
       _snack('OTP sent to +91$phone');

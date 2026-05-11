@@ -1395,6 +1395,18 @@ class _TripScreenState extends State<TripScreen>
             _showOtpBottomSheet();
             return;
           }
+          if (res.statusCode >= 500) {
+            await _refreshTripFromServer(force: true);
+            if (!mounted) return;
+            if (_isPickupArrivalStage) {
+              setState(() => _loading = false);
+              _resetRouteSnapshot();
+              _initMapMarkers();
+              _showSnack('Trip reached arrived state. Enter customer OTP.');
+              _showOtpBottomSheet();
+              return;
+            }
+          }
           _showSnack(message, error: true);
           setState(() => _loading = false);
         }
