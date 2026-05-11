@@ -4635,12 +4635,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.put("/api/otp-settings", requireAdminAuth, async (req, res) => {
     try {
       const { primaryProvider, smsEnabled, firebaseEnabled, fallbackEnabled, otpExpirySeconds, maxAttempts } = req.body;
-      const provider = ['sms', 'firebase'].includes(primaryProvider) ? primaryProvider : 'sms';
+      const provider = 'firebase';
+      const normalizedFirebaseEnabled = firebaseEnabled !== false;
+      const normalizedSmsEnabled = false;
+      const normalizedFallbackEnabled = false;
       const expiry = Math.min(Math.max(60, parseInt(otpExpirySeconds) || 120), 600);
       const attempts = Math.min(Math.max(1, parseInt(maxAttempts) || 3), 10);
       await rawDb.execute(rawSql`
         INSERT INTO otp_settings (primary_provider, sms_enabled, firebase_enabled, fallback_enabled, otp_expiry_seconds, max_attempts, updated_at)
-        VALUES (${provider}, ${!!smsEnabled}, ${!!firebaseEnabled}, ${!!fallbackEnabled}, ${expiry}, ${attempts}, NOW())
+        VALUES (${provider}, ${normalizedSmsEnabled}, ${normalizedFirebaseEnabled}, ${normalizedFallbackEnabled}, ${expiry}, ${attempts}, NOW())
         ON CONFLICT (id) DO UPDATE SET
           primary_provider = EXCLUDED.primary_provider,
           sms_enabled = EXCLUDED.sms_enabled,
@@ -4650,7 +4653,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           max_attempts = EXCLUDED.max_attempts,
           updated_at = NOW()
       `);
-      res.json({ success: true, primaryProvider: provider, smsEnabled: !!smsEnabled, firebaseEnabled: !!firebaseEnabled, fallbackEnabled: !!fallbackEnabled, otpExpirySeconds: expiry, maxAttempts: attempts });
+      res.json({
+        success: true,
+        primaryProvider: provider,
+        smsEnabled: normalizedSmsEnabled,
+        firebaseEnabled: normalizedFirebaseEnabled,
+        fallbackEnabled: normalizedFallbackEnabled,
+        otpExpirySeconds: expiry,
+        maxAttempts: attempts,
+      });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
