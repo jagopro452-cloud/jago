@@ -3387,7 +3387,9 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
           final d = jsonDecode(r.body) as Map<String, dynamic>;
           lat = (d['lat'] as num?)?.toDouble() ?? 0.0;
           lng = (d['lng'] as num?)?.toDouble() ?? 0.0;
-          name = d['address']?.toString() ?? name;
+          name = d['formattedAddress']?.toString() ??
+              d['address']?.toString() ??
+              name;
         }
       } catch (_) {}
     }

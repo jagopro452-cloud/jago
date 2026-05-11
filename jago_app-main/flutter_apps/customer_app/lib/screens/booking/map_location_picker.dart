@@ -409,7 +409,9 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final newLat = (data['lat'] as num?)?.toDouble() ?? 0.0;
         final newLng = (data['lng'] as num?)?.toDouble() ?? 0.0;
-        final address = data['address']?.toString() ?? pred.description;
+        final address = data['formattedAddress']?.toString() ??
+            data['address']?.toString() ??
+            pred.description;
         if (newLat != 0.0 && newLng != 0.0 && mounted) {
           setState(() {
             _lat = newLat;

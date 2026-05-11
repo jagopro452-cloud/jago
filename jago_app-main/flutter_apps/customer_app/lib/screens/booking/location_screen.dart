@@ -43,6 +43,16 @@ class LocationScreen extends StatefulWidget {
 
 class _LocationScreenState extends State<LocationScreen>
     with TickerProviderStateMixin {
+  static const List<Map<String, dynamic>> _fallbackPlaces = [
+    {'name': 'Benz Circle', 'address': 'Benz Circle, Vijayawada, Andhra Pradesh', 'lat': 16.5062, 'lng': 80.6480},
+    {'name': 'Vijayawada Railway Station', 'address': 'Vijayawada Junction, Vijayawada, Andhra Pradesh', 'lat': 16.5175, 'lng': 80.6400},
+    {'name': 'PNBS Bus Stand', 'address': 'Pandit Nehru Bus Station, Vijayawada, Andhra Pradesh', 'lat': 16.5179, 'lng': 80.6238},
+    {'name': 'Kanaka Durga Temple', 'address': 'Kanaka Durga Temple, Vijayawada, Andhra Pradesh', 'lat': 16.5176, 'lng': 80.6121},
+    {'name': 'Patamata', 'address': 'Patamata, Vijayawada, Andhra Pradesh', 'lat': 16.4883, 'lng': 80.6681},
+    {'name': 'Labbipet', 'address': 'Labbipet, Vijayawada, Andhra Pradesh', 'lat': 16.5034, 'lng': 80.6488},
+    {'name': 'Moghalrajpuram', 'address': 'Moghalrajpuram, Vijayawada, Andhra Pradesh', 'lat': 16.5057, 'lng': 80.6465},
+    {'name': 'Currency Nagar', 'address': 'Currency Nagar, Vijayawada, Andhra Pradesh', 'lat': 16.4928, 'lng': 80.6689},
+  ];
   // ── Controllers ──────────────────────────────────────────────────────────
   final _dropCtrl = TextEditingController();
   final _stopCtrl = TextEditingController();
@@ -307,6 +317,42 @@ class _LocationScreenState extends State<LocationScreen>
     setState(() => _sessionToken = 'sess-$rnd-${_pickupLat.toInt()}');
   }
 
+  List<Map<String, dynamic>> _localFallbackMatches(String query) {
+    final normalized = query.trim().toLowerCase();
+    if (normalized.length < 2) return const [];
+    final tokens = normalized
+        .split(RegExp(r'\s+'))
+        .where((token) => token.isNotEmpty)
+        .toList();
+
+    final matches = _fallbackPlaces
+        .map((place) {
+          final haystack = '${place['name']} ${place['address']}'.toLowerCase();
+          var score = 0;
+          if (haystack.startsWith(normalized)) score += 40;
+          if (haystack.contains(normalized)) score += 24;
+          for (final token in tokens) {
+            if (haystack.contains(token)) score += 8;
+          }
+          return {'score': score, 'place': place};
+        })
+        .where((entry) => (entry['score'] as int) > 0)
+        .toList()
+      ..sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
+
+    return matches.take(8).map((entry) {
+      final place = entry['place'] as Map<String, dynamic>;
+      return {
+        'name': '${place['name']}, ${place['address']}',
+        'mainText': place['name'],
+        'secondaryText': place['address'],
+        'placeId': 'curated:${place['name'].toString().toLowerCase().replaceAll(' ', '-')}',
+        'lat': place['lat'],
+        'lng': place['lng'],
+      };
+    }).toList();
+  }
+
   // ── Search ────────────────────────────────────────────────────────────────
   void _onDropChanged(String q) {
     setState(() {
@@ -385,14 +431,16 @@ class _LocationScreenState extends State<LocationScreen>
             .where((r) => (r['name'] as String).isNotEmpty)
             .toList();
         setState(() {
-          _searchResults = parsed;
+          _searchResults = parsed.isNotEmpty ? parsed : _localFallbackMatches(query);
         });
         print('[PLACES] Found ${_searchResults.length} results');
+      } else if (mounted) {
+        setState(() => _searchResults = _localFallbackMatches(query));
       }
     } catch (e) {
       print('[PLACES] Error: $e');
       if (mounted) {
-        setState(() => _searchResults = []);
+        setState(() => _searchResults = _localFallbackMatches(query));
       }
     }
     if (mounted) setState(() => _searching = false);

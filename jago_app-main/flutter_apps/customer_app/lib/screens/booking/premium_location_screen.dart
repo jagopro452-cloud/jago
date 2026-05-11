@@ -239,7 +239,8 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
         final double lat = (data['lat'] as num?)?.toDouble() ?? 0.0;
         final double lng = (data['lng'] as num?)?.toDouble() ?? 0.0;
         if (lat != 0.0 || lng != 0.0) {
-          String addr = data['address']?.toString() ??
+          String addr = data['formattedAddress']?.toString() ??
+              data['address']?.toString() ??
               p['fullDescription']?.toString() ??
               p['description']?.toString() ??
               "Selected Location";
