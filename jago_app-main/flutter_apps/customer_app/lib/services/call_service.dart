@@ -1,16 +1,17 @@
 import 'dart:async';
-import 'package:just_audio/just_audio.dart';
+
+import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 import 'socket_service.dart';
 
-/// Audio-only call service (socket relay-based, no WebRTC peer connection).
-/// Maintains EXACT same public API as WebRTC version for UI compatibility.
+/// Real in-app audio call service backed by WebRTC + socket signaling.
 class CallService {
   static final CallService _instance = CallService._internal();
   factory CallService() => _instance;
   CallService._internal();
 
   final SocketService _socket = SocketService();
-  final AudioPlayer _audioPlayer = AudioPlayer();
 
   String? activeCallTripId;
   String? activeCallTargetId;
@@ -20,7 +21,12 @@ class CallService {
   bool _isMuted = false;
   bool _isSpeakerphone = false;
 
-  // EXACT same streams as WebRTC version
+  RTCPeerConnection? _peerConnection;
+  MediaStream? _localStream;
+  MediaStream? _remoteStream;
+  Map<String, dynamic>? _pendingOffer;
+  final List<RTCIceCandidate> _pendingRemoteCandidates = [];
+
   final _remoteStreamController = StreamController<dynamic>.broadcast();
   final _callStateController = StreamController<CallState>.broadcast();
 
@@ -32,18 +38,28 @@ class CallService {
 
   final List<StreamSubscription> _subs = [];
 
-  /// Initialize call service and attach socket listeners.
+  static const Map<String, dynamic> _rtcConfig = {
+    'iceServers': [
+      {
+        'urls': [
+          'stun:stun.l.google.com:19302',
+          'stun:stun1.l.google.com:19302',
+        ],
+      },
+    ],
+    'sdpSemantics': 'unified-plan',
+  };
+
   void init() {
     if (_subs.isNotEmpty) return;
     _subs.add(_socket.onCallIncoming.listen(_handleIncoming));
     _subs.add(_socket.onCallOffer.listen(_handleOffer));
     _subs.add(_socket.onCallAnswer.listen(_handleAnswer));
     _subs.add(_socket.onCallIce.listen(_handleIce));
-    _subs.add(_socket.onCallEnded.listen((_) => hangUp()));
+    _subs.add(_socket.onCallEnded.listen((_) => _handleRemoteEnded()));
     _subs.add(_socket.onCallRejected.listen((_) => _onCallRejected()));
   }
 
-  /// Start an outgoing call to the target user.
   Future<void> startCall({
     required String targetUserId,
     required String tripId,
@@ -55,34 +71,44 @@ class CallService {
     activeCallTripId = tripId;
     _setState(CallState.outgoing);
 
-    // Signal via socket that call is starting
+    await _ensurePeerConnection();
+    final pc = _peerConnection;
+    if (pc == null) {
+      _setState(CallState.idle);
+      throw Exception('Could not prepare audio calling.');
+    }
+
     _socket.initiateCall(
       targetUserId: targetUserId,
       tripId: tripId,
       callerName: callerName,
     );
 
-    // For audio-only/relay, we also send a dummy offer to trigger state on other end
+    final offer = await pc.createOffer({
+      'offerToReceiveAudio': 1,
+      'offerToReceiveVideo': 0,
+    });
+    await pc.setLocalDescription(offer);
     _socket.sendCallOffer(
       targetUserId: targetUserId,
-      sdp: {'type': 'offer', 'audio': true},
+      sdp: {
+        'type': offer.type,
+        'sdp': offer.sdp,
+        'tripId': tripId,
+      },
     );
-
-    _callStartTime = DateTime.now();
   }
 
-  /// Accept an incoming call.
   Future<void> acceptCall({
     required String callerId,
     required String tripId,
   }) async {
-    // If state is idle but we have a callerId, force it to incoming to allow answering
     if (_state == CallState.idle && callerId.isNotEmpty) {
       activeCallTargetId = callerId;
       activeCallTripId = tripId;
       _setState(CallState.incoming);
     }
-    
+
     if (_state != CallState.incoming) return;
     _isCaller = false;
     activeCallTargetId = callerId;
@@ -90,19 +116,43 @@ class CallService {
     await acceptIncomingCall();
   }
 
-  /// Accept the pending incoming call offer.
   Future<void> acceptIncomingCall() async {
-    if (activeCallTargetId != null) {
-      _socket.sendCallAnswer(
-        targetUserId: activeCallTargetId!,
-        sdp: {'type': 'answer', 'audio': true},
-      );
+    if (_pendingOffer == null) return;
+
+    await _ensurePeerConnection();
+    final pc = _peerConnection;
+    if (pc == null || activeCallTargetId == null) {
+      throw Exception('Could not prepare incoming call audio.');
     }
+
+    final offer = Map<String, dynamic>.from(_pendingOffer!['sdp'] as Map);
+    await pc.setRemoteDescription(
+      RTCSessionDescription(
+        offer['sdp']?.toString(),
+        offer['type']?.toString(),
+      ),
+    );
+    await _flushPendingIceCandidates();
+
+    final answer = await pc.createAnswer({
+      'offerToReceiveAudio': 1,
+      'offerToReceiveVideo': 0,
+    });
+    await pc.setLocalDescription(answer);
+    _socket.sendCallAnswer(
+      targetUserId: activeCallTargetId!,
+      sdp: {
+        'type': answer.type,
+        'sdp': answer.sdp,
+        'tripId': activeCallTripId,
+      },
+    );
+
+    _pendingOffer = null;
     _callStartTime = DateTime.now();
     _setState(CallState.connected);
   }
 
-  /// Reject an incoming call.
   void rejectIncomingCall() {
     if (activeCallTargetId != null) {
       _socket.rejectCall(
@@ -114,7 +164,6 @@ class CallService {
     _setState(CallState.idle);
   }
 
-  /// Hang up the current call.
   Future<void> hangUp() async {
     if (activeCallTargetId != null) {
       int? dur;
@@ -131,21 +180,21 @@ class CallService {
     _setState(CallState.idle);
   }
 
-  /// Mute or unmute the local microphone.
   void setMuted(bool muted) {
     _isMuted = muted;
-    // In a real implementation, would mute actual audio input
+    for (final track in _localStream?.getAudioTracks() ?? const <MediaStreamTrack>[]) {
+      track.enabled = !muted;
+    }
   }
 
-  /// Switch between speaker and earpiece.
   Future<void> setSpeakerphone(bool enabled) async {
     _isSpeakerphone = enabled;
-    // In a real implementation, would switch audio output
+    try {
+      await Helper.setSpeakerphoneOn(enabled);
+    } catch (_) {}
   }
 
-  // ── Private handlers ───────────────────────────────────────────────────────
-
-  void _handleIncoming(Map<String, dynamic> data) {
+  Future<void> _handleIncoming(Map<String, dynamic> data) async {
     if (_state == CallState.connected || _state == CallState.outgoing) return;
     activeCallTargetId = (data['callerId'] ?? data['senderId'] ?? data['userId'])?.toString();
     activeCallTripId = data['tripId']?.toString();
@@ -155,21 +204,57 @@ class CallService {
   Future<void> _handleOffer(Map<String, dynamic> data) async {
     if (_state == CallState.connected || _state == CallState.outgoing) return;
     activeCallTargetId = data['callerId']?.toString();
-    activeCallTripId = data['tripId']?.toString();
-    // Show incoming call UI
+    activeCallTripId = data['tripId']?.toString() ??
+        (data['sdp'] is Map ? (data['sdp']['tripId']?.toString()) : null);
+    _pendingOffer = Map<String, dynamic>.from(data);
     _setState(CallState.incoming);
   }
 
   Future<void> _handleAnswer(Map<String, dynamic> data) async {
-    // Remote peer accepted the call
-    if (_state == CallState.outgoing) {
-      _callStartTime = DateTime.now();
-      _setState(CallState.connected);
-    }
+    if (_state != CallState.outgoing) return;
+    final pc = _peerConnection;
+    if (pc == null) return;
+
+    final answer = Map<String, dynamic>.from(data['sdp'] as Map);
+    await pc.setRemoteDescription(
+      RTCSessionDescription(
+        answer['sdp']?.toString(),
+        answer['type']?.toString(),
+      ),
+    );
+    await _flushPendingIceCandidates();
+    _callStartTime = DateTime.now();
+    _setState(CallState.connected);
   }
 
   Future<void> _handleIce(Map<String, dynamic> data) async {
-    // For socket relay, ICE candidates not needed
+    final rawCandidate = data['candidate'];
+    if (rawCandidate is! Map) return;
+    final candidate = RTCIceCandidate(
+      rawCandidate['candidate']?.toString(),
+      rawCandidate['sdpMid']?.toString(),
+      rawCandidate['sdpMLineIndex'] is int
+          ? rawCandidate['sdpMLineIndex'] as int
+          : int.tryParse(rawCandidate['sdpMLineIndex']?.toString() ?? ''),
+    );
+
+    if (_peerConnection == null) {
+      _pendingRemoteCandidates.add(candidate);
+      return;
+    }
+
+    final remoteDescription = await _peerConnection!.getRemoteDescription();
+    if (remoteDescription == null) {
+      _pendingRemoteCandidates.add(candidate);
+      return;
+    }
+
+    await _peerConnection!.addCandidate(candidate);
+  }
+
+  void _handleRemoteEnded() {
+    _cleanup();
+    _setState(CallState.idle);
   }
 
   void _onCallRejected() {
@@ -180,13 +265,106 @@ class CallService {
     });
   }
 
+  Future<void> _ensurePeerConnection() async {
+    if (_peerConnection != null) return;
+    await _ensureMicrophonePermission();
+
+    _localStream ??= await navigator.mediaDevices.getUserMedia({
+      'audio': {
+        'echoCancellation': true,
+        'noiseSuppression': true,
+        'autoGainControl': true,
+      },
+      'video': false,
+    });
+
+    final pc = await createPeerConnection(_rtcConfig);
+    _peerConnection = pc;
+
+    for (final track in _localStream!.getTracks()) {
+      await pc.addTrack(track, _localStream!);
+    }
+
+    pc.onTrack = (event) {
+      if (event.streams.isNotEmpty) {
+        _remoteStream = event.streams.first;
+        _remoteStreamController.add(_remoteStream);
+      }
+    };
+
+    pc.onIceCandidate = (candidate) {
+      if (candidate.candidate == null || activeCallTargetId == null) return;
+      _socket.sendIceCandidate(
+        targetUserId: activeCallTargetId!,
+        candidate: {
+          'candidate': candidate.candidate,
+          'sdpMid': candidate.sdpMid,
+          'sdpMLineIndex': candidate.sdpMLineIndex,
+        },
+      );
+    };
+
+    pc.onConnectionState = (state) {
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        if (_state != CallState.connected) {
+          _callStartTime ??= DateTime.now();
+          _setState(CallState.connected);
+        }
+      }
+
+      if (state == RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+          state == RTCPeerConnectionState.RTCPeerConnectionStateFailed ||
+          state == RTCPeerConnectionState.RTCPeerConnectionStateClosed) {
+        if (_state != CallState.idle && _state != CallState.rejected) {
+          _cleanup();
+          _setState(CallState.idle);
+        }
+      }
+    };
+
+    if (_isMuted) {
+      setMuted(true);
+    }
+    if (_isSpeakerphone) {
+      await setSpeakerphone(true);
+    }
+  }
+
+  Future<void> _flushPendingIceCandidates() async {
+    if (_peerConnection == null) return;
+    final remoteDescription = await _peerConnection!.getRemoteDescription();
+    if (remoteDescription == null) return;
+
+    while (_pendingRemoteCandidates.isNotEmpty) {
+      final candidate = _pendingRemoteCandidates.removeAt(0);
+      await _peerConnection!.addCandidate(candidate);
+    }
+  }
+
+  Future<void> _ensureMicrophonePermission() async {
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      throw Exception('Microphone permission is required for calls.');
+    }
+  }
+
   void _setState(CallState s) {
     _state = s;
     _callStateController.add(s);
   }
 
   void _cleanup() {
-    _audioPlayer.stop();
+    for (final track in _localStream?.getTracks() ?? const <MediaStreamTrack>[]) {
+      track.stop();
+    }
+    _localStream?.dispose();
+    _localStream = null;
+    _remoteStream?.dispose();
+    _remoteStream = null;
+    _peerConnection?.close();
+    _peerConnection = null;
+    _pendingOffer = null;
+    _pendingRemoteCandidates.clear();
     activeCallTargetId = null;
     activeCallTripId = null;
     _callStartTime = null;
@@ -196,14 +374,14 @@ class CallService {
   }
 
   void dispose() {
-    for (final s in _subs) { s.cancel(); }
+    for (final s in _subs) {
+      s.cancel();
+    }
     _subs.clear();
     _cleanup();
-    _audioPlayer.dispose();
     _remoteStreamController.close();
     _callStateController.close();
   }
 }
 
-/// Call state enumeration (EXACT same as WebRTC version).
 enum CallState { idle, outgoing, incoming, connected, rejected }

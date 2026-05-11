@@ -877,24 +877,8 @@ class _TripScreenState extends State<TripScreen>
         }
         _applyRealtimeTripPayload(serverTrip);
         return;
-        // Sync status if server differs from local (handles race conditions)
-        if (serverStatus.isNotEmpty && serverStatus != _status) {
-          final previousStatus = _status;
-          setState(() {
-            _mergeTripState(serverTrip, fallbackStatus: serverStatus);
-          });
-          // Route + nav triggers based on new server-authoritative status
-          _initMapMarkers();
-          _fetchRouteForCurrentStatus();
-          if (serverStatus == 'on_the_way' &&
-              previousStatus != 'in_progress' &&
-              previousStatus != 'on_the_way') {
-            _startTripTimer();
-          }
-          _log('[TRIP] Poll sync: $previousStatus → $serverStatus');
-        }
       }
-    } catch (_) {} // network error — keep polling
+    } catch (_) {} // network error - keep polling
   }
 
   // ── Timers ────────────────────────────────────────────────────────────────
@@ -1323,8 +1307,8 @@ class _TripScreenState extends State<TripScreen>
         accuracy: LocationAccuracy.high,
         distanceFilter: 5,
         intervalDuration: Duration(seconds: 3),
-        foregroundNotificationConfig: ForegroundNotificationConfig(
-          notificationText: 'JAGO Pro Pilot is sharing your live trip location',
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationText: 'JAGO pilot is sharing your live trip location',
           notificationTitle: 'Trip tracking active',
           enableWakeLock: true,
           setOngoing: true,
@@ -1474,24 +1458,11 @@ class _TripScreenState extends State<TripScreen>
           _resetRouteSnapshot();
           await _refreshTripFromServer(force: true);
           _initMapMarkers();
-          _log('[TRIP] ✅ Arrived at pickup — tripId=$tripId');
-          _showSnack('Arrived! Ask customer for OTP 📍');
-          _showOtpBottomSheet();
+          _log('[TRIP] Arrived at pickup');
+          _showSnack('Arrived! Ask customer for OTP.');
           // Pre-fetch route to destination while driver waits for OTP
           // (polylines will be ready the moment trip starts)
           await _fetchRouteForCurrentStatus(force: true);
-          // Actually we want destination route pre-loaded, fetch it explicitly
-          final t = _trip;
-          if (false && t != null) {
-            final dLat = double.tryParse(t['destinationLat']?.toString() ?? t['destination_lat']?.toString() ?? '') ?? 0.0;
-            final dLng = double.tryParse(t['destinationLng']?.toString() ?? t['destination_lng']?.toString() ?? '') ?? 0.0;
-            final origin = _lastTripPosition;
-            final fromLat = origin?.latitude ?? _center.latitude;
-            final fromLng = origin?.longitude ?? _center.longitude;
-            if (dLat != 0 && dLng != 0) {
-              await _fetchRoute(fromLat, fromLng, dLat, dLng);
-            }
-          }
         } else {
           final message = _responseMessage(res, fallback: 'Could not mark arrival');
           if (res.statusCode == 409 &&
@@ -1659,12 +1630,12 @@ class _TripScreenState extends State<TripScreen>
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                    Text('Enter Customer OTP',
+                    Text('Enter customer OTP',
                         style: GoogleFonts.poppins(
                             color: JT.textPrimary,
                             fontWeight: FontWeight.w400,
                             fontSize: 18)),
-                    Text('Ask customer for OTP shown in JAGO Pro app',
+                    Text('Ask customer for OTP shown in JAGO app',
                         style: GoogleFonts.poppins(
                             color: JT.textSecondary, fontSize: 12)),
                   ])),
@@ -3488,3 +3459,4 @@ class _TripScreenState extends State<TripScreen>
     }
   }
 }
+

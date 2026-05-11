@@ -27,6 +27,43 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
   bool _isRatingSubmitted = false;
   int _currentIndex = 0; // For bottom nav mock consistency
 
+  String _valueString(List<String> keys, {String fallback = ''}) {
+    for (final key in keys) {
+      final value = widget.trip[key];
+      if (value == null) continue;
+      final text = value.toString().trim();
+      if (text.isNotEmpty) return text;
+    }
+    return fallback;
+  }
+
+  bool get _isPaymentPending {
+    final status = _valueString(
+      const ['currentStatus', 'current_status', 'status'],
+    ).toLowerCase();
+    return status == 'payment_pending' || widget.walletPendingAmount > 0;
+  }
+
+  IconData _vehicleIconForTrip() {
+    final vehicleType = _valueString(
+      const ['vehicleName', 'vehicle_name', 'vehicleCategory', 'serviceType', 'service_type'],
+    ).toLowerCase();
+    if (vehicleType.contains('auto') || vehicleType.contains('rickshaw')) {
+      return Icons.electric_rickshaw_rounded;
+    }
+    if (vehicleType.contains('parcel') ||
+        vehicleType.contains('truck') ||
+        vehicleType.contains('cargo') ||
+        vehicleType.contains('van') ||
+        vehicleType.contains('pickup')) {
+      return Icons.local_shipping_rounded;
+    }
+    if (vehicleType.contains('bike') || vehicleType.contains('moto')) {
+      return Icons.two_wheeler_rounded;
+    }
+    return Icons.directions_car_filled_rounded;
+  }
+
   @override
   Widget build(BuildContext context) {
     final trip = widget.trip;
@@ -53,6 +90,22 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
     final distance = trip['estimatedDistance'] ?? trip['estimated_distance'] ?? 
                      trip['distanceKm'] ?? trip['distance_km'] ?? '';
     final pendingAmount = widget.walletPendingAmount;
+    final paymentMode = _valueString(
+      const ['paymentMethod', 'paymentMode', 'payment_method', 'payment_mode'],
+      fallback: 'Cash',
+    );
+    final vehicleNumber = _valueString(
+      const ['driverVehicleNumber', 'driver_vehicle_number'],
+      fallback: '--',
+    ).toUpperCase();
+    final vehicleType = _valueString(
+      const ['vehicleName', 'vehicle_name', 'vehicleCategory', 'serviceType', 'service_type'],
+      fallback: 'Ride',
+    );
+    final rideStatusTitle = _isPaymentPending ? 'Ride Closed' : 'Trip Completed';
+    final rideStatusSubtitle = _isPaymentPending
+        ? 'Your ride has ended. Final payment settlement is still pending.'
+        : 'Your journey has ended safely.';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F3FF),
@@ -97,7 +150,11 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
                 children: [
                   const SizedBox(height: 10),
                   // Trip Completed Banner
-                  _buildStatusBanner(),
+                  _buildStatusBanner(
+                    title: rideStatusTitle,
+                    subtitle: rideStatusSubtitle,
+                    isPaymentPending: _isPaymentPending,
+                  ),
                   const SizedBox(height: 20),
                   
                   // Main Design Card
@@ -177,19 +234,36 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
                                 color: const Color(0xFFF1F5F9),
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: const Icon(Icons.electric_bike_rounded, size: 20, color: Color(0xFF64748B)),
+                              child: Icon(
+                                _vehicleIconForTrip(),
+                                size: 20,
+                                color: const Color(0xFF64748B),
+                              ),
                             ),
                             const SizedBox(height: 20),
 
                             // Route Details
                             _buildRouteDetails(from, to),
+                            const SizedBox(height: 16),
+                            _buildTripMetaRow(
+                              vehicleType: vehicleType,
+                              vehicleNumber: vehicleNumber,
+                              paymentMode: paymentMode,
+                            ),
                             const SizedBox(height: 24),
 
                             // Final Fare
-                            _buildFareDisplay(actualFare, distance),
+                            _buildFareDisplay(
+                              actualFare,
+                              distance,
+                              paymentMode: paymentMode,
+                            ),
                             if (pendingAmount > 0) ...[
                               const SizedBox(height: 12),
-                              _buildPendingPayment(pendingAmount),
+                              _buildPendingPayment(
+                                pendingAmount,
+                                paymentMode: paymentMode,
+                              ),
                             ],
                             const SizedBox(height: 32),
 
@@ -263,20 +337,29 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
     );
   }
 
-  Widget _buildStatusBanner() {
+  Widget _buildStatusBanner({
+    required String title,
+    required String subtitle,
+    required bool isPaymentPending,
+  }) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF5B4DFF), Color(0xFF8B5CF6)],
+        gradient: LinearGradient(
+          colors: isPaymentPending
+              ? const [Color(0xFFF59E0B), Color(0xFFEA580C)]
+              : const [Color(0xFF5B4DFF), Color(0xFF8B5CF6)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5B4DFF).withValues(alpha: 0.2),
+            color: (isPaymentPending
+                    ? const Color(0xFFF59E0B)
+                    : const Color(0xFF5B4DFF))
+                .withValues(alpha: 0.2),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -290,7 +373,13 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
               color: Colors.white.withValues(alpha: 0.2),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.stars_rounded, color: Colors.white, size: 24),
+            child: Icon(
+              isPaymentPending
+                  ? Icons.payments_rounded
+                  : Icons.stars_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -298,7 +387,7 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Trip Completed!',
+                  title,
                   style: GoogleFonts.poppins(
                     color: Colors.white,
                     fontWeight: FontWeight.w700,
@@ -306,7 +395,7 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
                   ),
                 ),
                 Text(
-                  'Your journey has ended safely.',
+                  subtitle,
                   style: GoogleFonts.poppins(
                     color: Colors.white.withValues(alpha: 0.8),
                     fontSize: 12,
@@ -481,7 +570,53 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
     );
   }
 
-  Widget _buildFareDisplay(dynamic actualFare, dynamic distance) {
+  Widget _buildTripMetaRow({
+    required String vehicleType,
+    required String vehicleNumber,
+    required String paymentMode,
+  }) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _metaChip(_vehicleIconForTrip(), vehicleType),
+        _metaChip(Icons.confirmation_number_rounded, vehicleNumber),
+        _metaChip(Icons.payments_rounded, paymentMode),
+      ],
+    );
+  }
+
+  Widget _metaChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFF),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: const Color(0xFF64748B)),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF475569),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFareDisplay(
+    dynamic actualFare,
+    dynamic distance, {
+    required String paymentMode,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
       decoration: BoxDecoration(
@@ -507,6 +642,27 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
                   fontSize: 24,
                   fontWeight: FontWeight.w800,
                   color: const Color(0xFF2D8CFF),
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 24, color: Color(0xFFE2E8F0)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Payment Mode',
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  color: const Color(0xFF94A3B8),
+                ),
+              ),
+              Text(
+                paymentMode,
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF64748B),
                 ),
               ),
             ],
@@ -539,7 +695,7 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
     );
   }
 
-  Widget _buildPendingPayment(double amount) {
+  Widget _buildPendingPayment(double amount, {required String paymentMode}) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(

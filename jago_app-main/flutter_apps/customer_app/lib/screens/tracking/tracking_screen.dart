@@ -136,104 +136,6 @@ class _TrackingScreenState extends State<TrackingScreen>
       try {
         _applyRealtimeTripPayload(data, shouldPollOnTransition: true);
         return;
-        final newStatus = _normalizeTrackingStatus(
-          data['canonicalState']?.toString() ??
-              data['currentStatus']?.toString() ??
-              data['status']?.toString() ??
-              '',
-          isParcel: widget.isParcel || _resolvedParcelMode,
-        );
-
-        // Status rank guard: ensure we only move forward in the lifecycle
-        const statusRank = {
-          'searching': 0,
-          'driver_assigned': 1,
-          'accepted': 2,
-          'arrived': 3,
-          'in_progress': 4,
-          'on_the_way': 4,
-          'completed': 5,
-          'cancelled': 5
-        };
-        final incomingRank = statusRank[newStatus] ?? 0;
-        final currentRank = statusRank[_status] ?? 0;
-
-        if (incomingRank < currentRank) {
-          debugPrint(
-              '[SOCKET] Ignoring stale status update: $newStatus (current: $_status)');
-          return;
-        }
-
-        if (newStatus != _status) {
-          debugPrint('[SOCKET] Trip status transition: $_status -> $newStatus');
-          setState(() {
-            _status = newStatus;
-
-            final Map<String, dynamic> update = {};
-
-            // Merge driver data if present in payload
-            if (data['driver'] is Map) {
-              final driverMap = Map<String, dynamic>.from(data['driver']);
-              update['driverId'] = driverMap['id']?.toString() ??
-                  driverMap['userId']?.toString();
-              update['driverName'] =
-                  driverMap['fullName'] ?? driverMap['full_name'] ?? '';
-              update['driverPhone'] = driverMap['phone'] ?? '';
-              update['driverRating'] =
-                  driverMap['rating'] ?? driverMap['avgRating'];
-              update['driverPhoto'] =
-                  driverMap['photo'] ?? driverMap['profilePhoto'] ?? '';
-              update['driverVehicleNumber'] = driverMap['vehicleNumber'] ??
-                  driverMap['vehicle_number'] ??
-                  '';
-              update['driverVehicleModel'] =
-                  driverMap['vehicleModel'] ?? driverMap['vehicle_model'] ?? '';
-              update['vehicleName'] = driverMap['vehicleCategory'] ??
-                  driverMap['vehicle_category'] ??
-                  '';
-              update['driverLat'] = driverMap['lat'];
-              update['driverLng'] = driverMap['lng'];
-
-              final double? dLat =
-                  double.tryParse(update['driverLat']?.toString() ?? '');
-              final double? dLng =
-                  double.tryParse(update['driverLng']?.toString() ?? '');
-              if (dLat != null && dLng != null && dLat != 0) {
-                _driverLatLng = LatLng(dLat, dLng);
-              }
-            }
-
-            // Merge OTP if present (verify-pickup-otp transition)
-            final String? incomingOtp =
-                data['otp']?.toString() ?? data['pickupOtp']?.toString();
-            if (incomingOtp != null && incomingOtp.isNotEmpty) {
-              update['pickupOtp'] = incomingOtp;
-            }
-
-            if (newStatus == 'completed') {
-              _walletPendingAmount = double.tryParse(
-                      data['walletPendingAmount']?.toString() ??
-                          data['pendingPaymentAmount']?.toString() ??
-                          '0') ??
-                  _walletPendingAmount;
-            }
-
-            _trip = (_trip != null) ? {..._trip!, ...update} : update;
-          });
-
-          // UI transitions & feedback
-          _handleStatusTransition(newStatus);
-          HapticFeedback.lightImpact();
-          // Immediately reconcile — don't wait for next poll tick.
-          _pollStatus();
-          Future.delayed(const Duration(milliseconds: 1500), _pollStatus);
-          Future.delayed(const Duration(milliseconds: 3000), _pollStatus);
-        }
-
-        if (newStatus == 'completed' || newStatus == 'cancelled') {
-          _pollTimer?.cancel();
-          _pollStatus();
-        }
       } catch (e, stack) {
         debugPrint('[SOCKET] Error in onTripStatus: $e\n$stack');
       }
@@ -979,15 +881,15 @@ class _TrackingScreenState extends State<TrackingScreen>
       _maybeSyncTrackingCamera(force: true);
     } else if (newStatus == 'in_progress' || newStatus == 'on_the_way') {
       _animateToDestination();
-      _showStatusBanner('Ride started • Have a safe journey!', JT.primary);
+      _showStatusBanner('Ride started. Have a safe journey!', JT.primary);
       _refreshRouteForStatus(force: true);
       _updateMapMarkers();
       _maybeSyncTrackingCamera(force: true);
     } else if (newStatus == 'payment_pending') {
       _showStatusBanner(
           _walletPendingAmount > 0
-              ? 'Ride ended â€¢ Pending payment confirmation'
-              : 'Ride ended â€¢ Final payment is being confirmed',
+              ? 'Ride ended. Pending payment confirmation'
+              : 'Ride ended. Final payment is being confirmed',
           const Color(0xFFF59E0B));
       setState(() => _polylines.clear());
       _updateMapMarkers();
@@ -1006,7 +908,7 @@ class _TrackingScreenState extends State<TrackingScreen>
         }
       });
     } else if (newStatus == 'completed') {
-      _showStatusBanner('Trip Completed • Thank you!', const Color(0xFF10B981));
+      _showStatusBanner('Trip completed. Thank you!', const Color(0xFF10B981));
       setState(() => _polylines.clear());
       _updateMapMarkers();
       
@@ -1887,100 +1789,6 @@ class _TrackingScreenState extends State<TrackingScreen>
             Map<String, dynamic>.from(data is Map ? data : {'trip': trip}),
           );
           return;
-          final rawStatus = (trip['currentStatus'] ??
-                      trip['current_status'] ??
-                      trip['status'])
-                  ?.toString() ??
-              _status;
-          final normalizedStatus =
-              _normalizeTrackingStatus(rawStatus, isParcel: isParcelMode);
-          final resolvedStatus =
-              normalizedStatus == 'payment_pending' ? 'completed' : normalizedStatus;
-
-          const statusRank = {
-            'searching': 0,
-            'driver_assigned': 1,
-            'accepted': 2,
-            'arrived': 3,
-            'in_progress': 4,
-            'on_the_way': 4,
-            'completed': 5,
-            'cancelled': 5,
-          };
-
-          final currentRank = statusRank[_status] ?? 0;
-          final incomingRank = statusRank[resolvedStatus] ?? 0;
-
-          if (incomingRank >= currentRank) {
-            setState(() {
-              // Preserve existing critical data if missing in poll
-              if (_trip != null) {
-                final List<String> criticalKeys = [
-                  'driverName',
-                  'driverPhone',
-                  'driverRating',
-                  'driverPhoto',
-                  'driverVehicleNumber',
-                  'driverVehicleModel',
-                  'vehicleName',
-                  'driverLat',
-                  'driverLng',
-                  'pickupOtp',
-                  'destinationAddress',
-                  'pickupAddress',
-                  'pickupShortName',
-                  'destinationShortName',
-                  'actualFare',
-                  'estimatedFare',
-                  'estimatedDistance',
-                  'type',
-                  'tripType',
-                  'vehicleCategory',
-                  'dropLocations',
-                  'drops',
-                ];
-                for (var key in criticalKeys) {
-                  if ((trip[key] == null || trip[key].toString().isEmpty) &&
-                      (_trip![key] != null &&
-                          _trip![key].toString().isNotEmpty)) {
-                    trip[key] = _trip![key];
-                  }
-                }
-              }
-
-              final bool statusChanged = _status != resolvedStatus;
-              trip['tripType'] = trip['tripType'] ??
-                  trip['trip_type'] ??
-                  (isParcelMode ? 'parcel' : 'ride');
-              _trip = trip;
-              _status = resolvedStatus;
-              if (isParcelMode) _resolvedParcelMode = true;
-
-              if (resolvedStatus == 'completed') {
-                _walletPendingAmount = double.tryParse(
-                      trip['walletPendingAmount']?.toString() ??
-                          trip['pendingPaymentAmount']?.toString() ??
-                          '0',
-                    ) ??
-                    _walletPendingAmount;
-              }
-
-              if (statusChanged) {
-                _handleStatusTransition(resolvedStatus);
-              }
-            });
-          }
-
-          final dLat = double.tryParse(trip['driverLat']?.toString() ?? '');
-          final dLng = double.tryParse(trip['driverLng']?.toString() ?? '');
-          if (dLat != null && dLng != null && dLat != 0) {
-            _driverLatLng = LatLng(dLat, dLng);
-            _updateMapMarkers();
-          }
-
-          if (_status == 'completed' || _status == 'cancelled') {
-            _pollTimer?.cancel();
-          }
         }
       } else if (!isParcelMode && res.statusCode == 404) {
         _resolvedParcelMode = true;
@@ -2736,11 +2544,11 @@ class _TrackingScreenState extends State<TrackingScreen>
                 ),
               ),
               const SizedBox(height: 4),
-              const Text('• Verified Pilot',
+              const Text('Verified pilot',
                   style: TextStyle(
                       fontSize: 10,
                       color: Colors.blue,
-                      fontWeight: FontWeight.w500)),
+                      fontWeight: FontWeight.w600)),
             ],
           ),
         ],
@@ -3453,12 +3261,21 @@ class _TrackingScreenState extends State<TrackingScreen>
           ),
           if (_routeIssue != null && _routeIssue!.trim().isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text(
-              _routeIssue!,
-              style: GoogleFonts.poppins(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFFB45309),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: Text(
+                _routeIssue!,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFFB45309),
+                ),
               ),
             ),
           ],
@@ -3849,3 +3666,4 @@ class _TrackingScreenState extends State<TrackingScreen>
     );
   }
 }
+

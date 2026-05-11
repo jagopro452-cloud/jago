@@ -19,11 +19,8 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin, CodeAutoFill {
   final _phoneCtrl = TextEditingController();
   final _otpCtrl = TextEditingController();
-  final _passwordCtrl = TextEditingController();
 
   bool _otpSent = false;
-  bool _showPassword = false;
-  bool _usePassword = false;
   bool _loading = false;
   int _seconds = 0;
   Timer? _timer;
@@ -75,7 +72,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     _timer?.cancel();
     _phoneCtrl.dispose();
     _otpCtrl.dispose();
-    _passwordCtrl.dispose();
     super.dispose();
   }
 
@@ -202,22 +198,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     }
   }
 
-  Future<void> _loginWithPassword() async {
-    final phone = _phoneCtrl.text.trim();
-    final pass = _passwordCtrl.text;
-    if (phone.length != 10) { _snack('Enter a valid 10-digit number', error: true); return; }
-    if (pass.length < 6) { _snack('Password must be at least 6 characters', error: true); return; }
-    setState(() => _loading = true);
-    final res = await AuthService.loginWithPassword(phone, pass);
-    if (!mounted) return;
-    setState(() => _loading = false);
-    if (res['success'] == true || res['token'] != null) {
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
-    } else {
-      _snack(res['message'] ?? 'Login failed', error: true);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -317,40 +297,28 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       )),
 
                       Text(
-                        _otpSent ? 'Enter OTP' : (_usePassword ? 'Welcome Back' : 'Sign In'),
+                        _otpSent ? 'Enter OTP' : 'Sign In',
                         style: GoogleFonts.poppins(fontSize: 26, fontWeight: FontWeight.w400, color: _dark),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         _otpSent
                           ? 'Sent to +91 ${_phoneCtrl.text}'
-                          : (_usePassword ? 'Login with your password' : 'Enter your mobile number'),
+                          : 'Enter your mobile number',
                         style: GoogleFonts.poppins(fontSize: 13, color: const Color(0xFF94A3B8)),
                       ),
                       const SizedBox(height: 28),
 
                       if (!_otpSent) ...[
                         _buildPhoneField(),
-                        const SizedBox(height: 14),
-                        if (_usePassword) ...[
-                          _buildPasswordField(),
-                          const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: GestureDetector(
-                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())),
-                              child: Text('Forgot Password?', style: GoogleFonts.poppins(color: _blue, fontWeight: FontWeight.w400, fontSize: 13)),
-                            ),
-                          ),
-                        ],
                         const SizedBox(height: 24),
-                        _buildButton(_usePassword ? 'Login' : 'Get OTP', _usePassword ? _loginWithPassword : _sendOtp),
-                        const SizedBox(height: 16),
+                        _buildButton('Get OTP', _sendOtp),
+                        const SizedBox(height: 12),
                         Center(
                           child: GestureDetector(
-                            onTap: () => setState(() { _usePassword = !_usePassword; }),
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())),
                             child: Text(
-                              _usePassword ? 'Use OTP instead' : 'Use Password instead',
+                              'Need to reset your password?',
                               style: GoogleFonts.poppins(color: _blue, fontWeight: FontWeight.w400, fontSize: 13),
                             ),
                           ),
@@ -447,33 +415,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           ),
         ),
       ]),
-    );
-  }
-
-  Widget _buildPasswordField() {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-      ),
-      child: TextField(
-        controller: _passwordCtrl,
-        obscureText: !_showPassword,
-        style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w400, color: _dark),
-        decoration: InputDecoration(
-          hintText: 'Password',
-          hintStyle: GoogleFonts.poppins(fontSize: 14, color: const Color(0xFFCBD5E1)),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-          prefixIcon: const Icon(Icons.lock_outline_rounded, color: Color(0xFFCBD5E1), size: 20),
-          suffixIcon: IconButton(
-            icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-              color: const Color(0xFFCBD5E1), size: 20),
-            onPressed: () => setState(() => _showPassword = !_showPassword),
-          ),
-        ),
-      ),
     );
   }
 

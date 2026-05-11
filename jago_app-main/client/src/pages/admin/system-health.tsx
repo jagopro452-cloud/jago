@@ -111,6 +111,18 @@ interface VehicleStatus {
   updatedBy?: string | null;
 }
 
+interface ZoneStatus {
+  id: string;
+  name: string;
+  isActive: boolean;
+  serviceType?: string | null;
+  surgeFactor?: number | string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  radiusKm?: number | string | null;
+  coordinates?: string | null;
+}
+
 const SERVICE_ICONS: Record<string, string> = {
   bike_ride:       "🏍️",
   auto_ride:       "🛺",
@@ -219,6 +231,15 @@ export default function SystemHealthPage() {
     refetchInterval: autoRefresh ? 5000 : false,
   });
 
+  const { data: zones = [] } = useQuery<ZoneStatus[]>({
+    queryKey: ["/api/zones"],
+    queryFn: () => fetch("/api/zones").then(r => {
+      if (!r.ok) throw new Error("Zone data unavailable");
+      return r.json();
+    }).then(d => Array.isArray(d) ? d : []),
+    refetchInterval: autoRefresh ? 30000 : false,
+  });
+
   const [toggling, setToggling] = useState<string | null>(null);
   const [vehicleToggling, setVehicleToggling] = useState<string | null>(null);
 
@@ -265,6 +286,15 @@ export default function SystemHealthPage() {
   const isOk = data?.status === "ok";
   const hasStaleTrips = (data?.trips.staleSearching ?? 0) > 0;
   const rideSummary = rideTelemetry?.summary;
+  const zoneCount = zones.length;
+  const activeZoneCount = zones.filter((zone) => zone.isActive).length;
+  const surgeZoneCount = zones.filter((zone) => Number(zone.surgeFactor || 1) > 1).length;
+  const boundaryReadyZones = zones.filter((zone) => {
+    const hasPolygon = typeof zone.coordinates === "string" && zone.coordinates.trim().length > 0;
+    const hasRadiusFallback = zone.latitude != null && zone.longitude != null;
+    return hasPolygon || hasRadiusFallback;
+  }).length;
+  const thresholds = rideTelemetry?.thresholds;
 
   return (
     <AdminLayout>
@@ -373,6 +403,60 @@ export default function SystemHealthPage() {
                 <KpiCard icon="📡" label="Stale Tracking" value={rideSummary?.staleTrackingRides ?? "—"} accent="#DC2626" />
                 <KpiCard icon="🩺" label="Weak Signal" value={rideSummary?.weakSignalRides ?? "—"} accent="#0EA5E9" />
                 <KpiCard icon="🚨" label="Critical Alerts" value={rideSummary?.criticalAlerts ?? "—"} accent="#B91C1C" />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 16 }}>
+                <div style={{ background: "#fff", borderRadius: 18, border: "1px solid #E5E7EB", boxShadow: "0 8px 24px rgba(15,23,42,0.06)", padding: 18 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <div>
+                      <div style={{ fontWeight: 800, color: "#0F172A" }}>Telemetry Thresholds</div>
+                      <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>Live runtime thresholds now driving stale and frozen ride alerts.</div>
+                    </div>
+                    <StatusPill ok={Boolean(thresholds)} label={thresholds ? "Runtime Live" : "Unavailable"} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+                    <div style={{ background: "#F8FAFC", borderRadius: 14, padding: "12px 14px" }}>
+                      <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700 }}>Delayed</div>
+                      <div style={{ fontWeight: 900, color: "#0F172A", fontSize: 18 }}>{thresholds ? `${Math.round(thresholds.delayedMs / 1000)}s` : "—"}</div>
+                    </div>
+                    <div style={{ background: "#F8FAFC", borderRadius: 14, padding: "12px 14px" }}>
+                      <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700 }}>Stale</div>
+                      <div style={{ fontWeight: 900, color: "#0F172A", fontSize: 18 }}>{thresholds ? `${Math.round(thresholds.staleMs / 1000)}s` : "—"}</div>
+                    </div>
+                    <div style={{ background: "#F8FAFC", borderRadius: 14, padding: "12px 14px" }}>
+                      <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700 }}>Frozen</div>
+                      <div style={{ fontWeight: 900, color: "#0F172A", fontSize: 18 }}>{thresholds ? `${Math.round(thresholds.frozenMs / 1000)}s` : "—"}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ background: "#fff", borderRadius: 18, border: "1px solid #E5E7EB", boxShadow: "0 8px 24px rgba(15,23,42,0.06)", padding: 18 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <div>
+                      <div style={{ fontWeight: 800, color: "#0F172A" }}>Zone Setup Health</div>
+                      <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>Active service zones, surge coverage, and boundary readiness.</div>
+                    </div>
+                    <StatusPill ok={zoneCount > 0 && boundaryReadyZones === zoneCount} label={zoneCount === 0 ? "No Zones" : boundaryReadyZones === zoneCount ? "Ready" : "Needs Review"} />
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                    <div style={{ background: "#F8FAFC", borderRadius: 14, padding: "12px 14px" }}>
+                      <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700 }}>Total Zones</div>
+                      <div style={{ fontWeight: 900, color: "#0F172A", fontSize: 18 }}>{zoneCount}</div>
+                    </div>
+                    <div style={{ background: "#F8FAFC", borderRadius: 14, padding: "12px 14px" }}>
+                      <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700 }}>Active Zones</div>
+                      <div style={{ fontWeight: 900, color: "#0F172A", fontSize: 18 }}>{activeZoneCount}</div>
+                    </div>
+                    <div style={{ background: "#F8FAFC", borderRadius: 14, padding: "12px 14px" }}>
+                      <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700 }}>Surge Zones</div>
+                      <div style={{ fontWeight: 900, color: "#0F172A", fontSize: 18 }}>{surgeZoneCount}</div>
+                    </div>
+                    <div style={{ background: "#F8FAFC", borderRadius: 14, padding: "12px 14px" }}>
+                      <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700 }}>Boundary Ready</div>
+                      <div style={{ fontWeight: 900, color: "#0F172A", fontSize: 18 }}>{boundaryReadyZones}/{zoneCount || 0}</div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.7fr) minmax(300px, 1fr)", gap: 16 }}>
