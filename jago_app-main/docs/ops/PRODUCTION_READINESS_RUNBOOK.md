@@ -8,7 +8,7 @@ Customer app:
 cd flutter_apps/customer_app
 flutter clean
 flutter pub get
-flutter build apk --release
+flutter build apk --release --dart-define=API_BASE_URL=https://your-production-api.example.com
 ```
 
 Driver app:
@@ -17,7 +17,13 @@ Driver app:
 cd flutter_apps/driver_app
 flutter clean
 flutter pub get
-flutter build apk --release
+flutter build apk --release --dart-define=API_BASE_URL=https://your-production-api.example.com
+```
+
+Staging APKs must never rely on the release fallback URL. Build them with an explicit staging target:
+
+```bash
+flutter build apk --release --dart-define=APP_ENV=staging --dart-define=API_BASE_URL=https://jago-staging-ljuq3.ondigitalocean.app
 ```
 
 If Play Store release is required, build AAB instead:

@@ -2322,17 +2322,14 @@ class _TripScreenState extends State<TripScreen>
       return;
     }
 
+    // Keep our in-app map in sync, but do not block external navigation on route API availability.
     await _fetchRouteForCurrentStatus(force: true);
     _maybeSyncTripCamera(force: true);
-    if (_polylines.isEmpty) {
-      _showSnack(_routeIssue ?? 'Live route is still loading. Please wait a moment and tap Navigate again.', error: true);
-      return;
-    }
 
     final candidates = <Uri>[
       Uri.parse('google.navigation:q=$targetLat,$targetLng&mode=d'),
       Uri.parse(
-          'https://www.google.com/maps/dir/?api=1&destination=$targetLat,$targetLng&travelmode=driving'),
+          'https://www.google.com/maps/dir/?api=1&destination=$targetLat,$targetLng&destination_place_id=&travelmode=driving'),
       Uri.parse('geo:$targetLat,$targetLng?q=$targetLat,$targetLng(${Uri.encodeComponent(label)})'),
     ];
 
@@ -2342,7 +2339,12 @@ class _TripScreenState extends State<TripScreen>
         return;
       }
     }
-    _showSnack('Cannot open navigation', error: true);
+    _showSnack(
+      _routeIssue == null
+          ? 'No navigation app found to open this route.'
+          : 'Navigation app not available. ${_routeIssue!}',
+      error: true,
+    );
   }
 
   Future<void> _triggerSos() async {
