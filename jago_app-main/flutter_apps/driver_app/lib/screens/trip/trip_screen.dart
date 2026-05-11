@@ -118,6 +118,15 @@ class _TripScreenState extends State<TripScreen>
   int _lastSpokenVoiceStep = -1;
   String _lastVoiceAnnouncement = '';
 
+  void _log(String message) {
+    assert(() {
+      // Keep deep trip diagnostics in debug only so release builds stay quiet.
+      // ignore: avoid_print
+      print(message);
+      return true;
+    }());
+  }
+
   // Live stats
   double _distanceToTargetM = 0;
   int _etaSec = 0;
@@ -779,7 +788,7 @@ class _TripScreenState extends State<TripScreen>
       _validateActiveTrip();
       _refreshTripFromServer();
     });
-    print(
+    _log(
         '[TRIP] Screen init — tripId=${_trip?['tripId'] ?? _trip?['id']} status=$_status');
   }
 
@@ -882,7 +891,7 @@ class _TripScreenState extends State<TripScreen>
               previousStatus != 'on_the_way') {
             _startTripTimer();
           }
-          print('[TRIP] Poll sync: $previousStatus → $serverStatus');
+          _log('[TRIP] Poll sync: $previousStatus → $serverStatus');
         }
       }
     } catch (_) {} // network error — keep polling
@@ -1196,10 +1205,10 @@ class _TripScreenState extends State<TripScreen>
       if (mounted) {
         setState(() => _routeIssue = 'Navigation target unavailable for current trip stage.');
       }
-      print('[ROUTE] Skipping fetch — no valid destination coords (status=$_status)');
+      _log('[ROUTE] Skipping fetch — no valid destination coords (status=$_status)');
       return;
     }
-    print('[ROUTE] Fetching route from ($myLat,$myLng) → ($destLat,$destLng) [status=$_status]');
+    _log('[ROUTE] Fetching route from ($myLat,$myLng) → ($destLat,$destLng) [status=$_status]');
     final originLatLng = LatLng(myLat, myLng);
     if (!_shouldRefreshRouteSnapshot(originLatLng, force: force)) {
       _maybeSyncTripCamera();
@@ -1465,7 +1474,7 @@ class _TripScreenState extends State<TripScreen>
           _resetRouteSnapshot();
           await _refreshTripFromServer(force: true);
           _initMapMarkers();
-          print('[TRIP] ✅ Arrived at pickup — tripId=$tripId');
+          _log('[TRIP] ✅ Arrived at pickup — tripId=$tripId');
           _showSnack('Arrived! Ask customer for OTP 📍');
           _showOtpBottomSheet();
           // Pre-fetch route to destination while driver waits for OTP
@@ -1569,7 +1578,7 @@ class _TripScreenState extends State<TripScreen>
         _locationTimer?.cancel();
         _posStream?.cancel();
         _stopTripTimer();
-        print(
+        _log(
             '[TRIP] ✅ Ride completed — tripId=$tripId fare=$rideFare earnings=$driverEarnings');
         if (!mounted) return;
         _showCompletionSheet(
@@ -1590,7 +1599,7 @@ class _TripScreenState extends State<TripScreen>
         setState(() => _loading = false);
       }
     } catch (e) {
-      print('[TRIP] ❌ complete-trip network error: $e');
+      _log('[TRIP] ❌ complete-trip network error: $e');
       if (!mounted) return;
       _showSnack('Network error. Please tap "Complete" again.', error: true);
       setState(() => _loading = false);
@@ -1755,7 +1764,7 @@ class _TripScreenState extends State<TripScreen>
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final tripPayload =
             data['trip'] is Map ? Map<String, dynamic>.from(data['trip'] as Map) : null;
-        print('[TRIP] ✅ OTP verified — trip started — tripId=$tripId');
+        _log('[TRIP] ✅ OTP verified — trip started — tripId=$tripId');
         if (!mounted) return;
         setState(() {
           _mergeTripState(tripPayload, fallbackStatus: 'heading_to_destination');

@@ -34,6 +34,16 @@ class SocketService {
   final _callEndedController = StreamController<Map<String, dynamic>>.broadcast();
   final _callRejectedController = StreamController<Map<String, dynamic>>.broadcast();
 
+  void _log(String message) {
+    assert(() {
+      // Keep detailed socket diagnostics in debug builds only.
+      // Release builds should stay quiet and lightweight.
+      // ignore: avoid_print
+      print(message);
+      return true;
+    }());
+  }
+
   Stream<Map<String, dynamic>> get onDriverAssigned => _driverAssignedController.stream;
   Stream<Map<String, dynamic>> get onDriverLocation => _driverLocationController.stream;
   Stream<Map<String, dynamic>> get onTripStatus => _tripStatusController.stream;
@@ -124,11 +134,11 @@ class SocketService {
     _socket!.on('error', (err) {
       _isConnected = false;
       _connectedController.add(false);
-      print('[SOCKET] Error: $err');
+      _log('[SOCKET] Error: $err');
     });
 
     _socket!.on('auth:error', (data) {
-      print('[SOCKET] Auth error: $data');
+      _log('[SOCKET] Auth error: $data');
       // If we get an auth error, we might need to refresh the token or re-login.
       // For now, let's just push a disconnected state.
       _isConnected = false;
@@ -191,7 +201,7 @@ class SocketService {
         _rememberTripPayload(payload);
         _tripStatusController.add(payload);
       } catch (e) {
-        print('[SOCKET] Error processing trip:status_update: $e');
+        _log('[SOCKET] Error processing trip:status_update: $e');
       }
     });
 
@@ -206,7 +216,7 @@ class SocketService {
         _tripRecoveredController.add(payload);
         _tripStatusController.add(payload);
       } catch (e) {
-        print('[SOCKET] Error processing trip:recovered: $e');
+        _log('[SOCKET] Error processing trip:recovered: $e');
       }
     });
 
@@ -226,7 +236,7 @@ class SocketService {
           if (payload['userPayable'] != null) 'userPayable': payload['userPayable'],
         });
       } catch (e) {
-        print('[SOCKET] Error processing trip:completed: $e');
+        _log('[SOCKET] Error processing trip:completed: $e');
       }
     });
 
@@ -273,7 +283,7 @@ class SocketService {
       try {
         _nearbyDriversController.add(Map<String, dynamic>.from(data));
       } catch (e) {
-        print('[SOCKET] Error processing nearby:drivers_snapshot: $e');
+        _log('[SOCKET] Error processing nearby:drivers_snapshot: $e');
       }
     });
 

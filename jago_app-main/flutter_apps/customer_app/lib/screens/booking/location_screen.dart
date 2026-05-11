@@ -82,6 +82,7 @@ class _LocationScreenState extends State<LocationScreen>
   String _activeQuery = '';
   Timer? _debounce;
   String _sessionToken = ''; // Google Places Session Token for cost optimization
+  int _searchRequestSeq = 0;
 
   // ── Animation ─────────────────────────────────────────────────────────────
   late AnimationController _slideCtrl;
@@ -429,6 +430,7 @@ class _LocationScreenState extends State<LocationScreen>
 
   Future<void> _search(String query) async {
     if (!mounted || query.trim().length < 2) return;
+    final requestSeq = ++_searchRequestSeq;
     setState(() => _searching = true);
     try {
       final headers = await AuthService.getHeaders();
@@ -440,14 +442,13 @@ class _LocationScreenState extends State<LocationScreen>
       qp.write('&sessionToken=$_sessionToken');
       
       if (lat != 0.0 && lng != 0.0) qp.write('&lat=$lat&lng=$lng');
-      
-      print('[PLACES] Searching: $query (session: $_sessionToken)');
+
       final r = await http.get(
         Uri.parse('${ApiConfig.placesAutocomplete}$qp'),
         headers: headers,
       ).timeout(const Duration(seconds: 6));
       
-      if (!mounted) return;
+      if (!mounted || requestSeq != _searchRequestSeq) return;
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body) as Map<String, dynamic>;
         final preds = (data['predictions'] as List<dynamic>?) ?? [];
@@ -475,17 +476,17 @@ class _LocationScreenState extends State<LocationScreen>
               ? _rankSearchResults(parsed, query)
               : _localFallbackMatches(query);
         });
-        print('[PLACES] Found ${_searchResults.length} results');
       } else if (mounted) {
         setState(() => _searchResults = _localFallbackMatches(query));
       }
-    } catch (e) {
-      print('[PLACES] Error: $e');
-      if (mounted) {
+    } catch (_) {
+      if (mounted && requestSeq == _searchRequestSeq) {
         setState(() => _searchResults = _localFallbackMatches(query));
       }
     }
-    if (mounted) setState(() => _searching = false);
+    if (mounted && requestSeq == _searchRequestSeq) {
+      setState(() => _searching = false);
+    }
   }
 
   // ── Selection Handlers ────────────────────────────────────────────────────
