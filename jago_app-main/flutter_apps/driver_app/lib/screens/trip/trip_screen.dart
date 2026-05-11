@@ -115,6 +115,8 @@ class _TripScreenState extends State<TripScreen>
   String _normalizedStatus(String? raw) {
     final status = (raw ?? '').trim().toLowerCase();
     switch (status) {
+      case 'payment_pending':
+        return 'payment_pending';
       case 'waiting_for_otp':
         return 'otp_pending';
       case 'trip_started':
@@ -126,6 +128,22 @@ class _TripScreenState extends State<TripScreen>
       default:
         return status;
     }
+  }
+
+  String _lifecycleStatusFromTrip(Map<String, dynamic>? trip, {String fallback = 'accepted'}) {
+    final explicit = (trip?['currentStatus'] ??
+            trip?['current_status'] ??
+            trip?['status'])
+        ?.toString()
+        .trim();
+    if (explicit != null && explicit.isNotEmpty) {
+      return explicit;
+    }
+    final canonical = trip?['canonicalState']?.toString().trim();
+    if (canonical != null && canonical.isNotEmpty) {
+      return canonical;
+    }
+    return fallback;
   }
 
   String _canonicalizeRouteState(String? raw) {
@@ -144,6 +162,8 @@ class _TripScreenState extends State<TripScreen>
       case 'on_the_way':
       case 'heading_to_destination':
         return status == 'otp_verified' ? 'heading_to_destination' : status;
+      case 'payment_pending':
+        return 'completed';
       case 'completed':
       case 'cancelled':
         return status;
@@ -153,14 +173,12 @@ class _TripScreenState extends State<TripScreen>
   }
 
   String _resolvedTripStatus(Map<String, dynamic>? trip, {String fallback = 'accepted'}) {
-    return _canonicalizeRouteState(
-      (trip?['canonicalState'] ??
-              trip?['currentStatus'] ??
-              trip?['current_status'] ??
-              trip?['status'])
-          ?.toString() ??
-          fallback,
-    );
+    final lifecycleStatus =
+        _normalizedStatus(_lifecycleStatusFromTrip(trip, fallback: fallback));
+    if (lifecycleStatus == 'payment_pending') {
+      return lifecycleStatus;
+    }
+    return _canonicalizeRouteState(lifecycleStatus);
   }
 
   double _tripDouble(Map<String, dynamic>? trip, List<String> keys) {
@@ -309,8 +327,11 @@ class _TripScreenState extends State<TripScreen>
       merged,
       fallback: fallbackStatus ?? _status,
     );
-    merged['currentStatus'] = status;
-    merged['current_status'] = status;
+    if ((merged['currentStatus']?.toString().trim().isEmpty ?? true) &&
+        (merged['current_status']?.toString().trim().isEmpty ?? true)) {
+      merged['currentStatus'] = status;
+      merged['current_status'] = status;
+    }
     _trip = merged;
     _status = status;
   }
@@ -465,6 +486,7 @@ class _TripScreenState extends State<TripScreen>
       case 'in_progress':
       case 'on_the_way':
         return 3;
+      case 'payment_pending':
       case 'completed':
       case 'cancelled':
         return 4;
@@ -532,6 +554,7 @@ class _TripScreenState extends State<TripScreen>
 
     if (_trip != null &&
         _status != 'completed' &&
+        _status != 'payment_pending' &&
         _status != 'cancelled') {
       ActiveRidePersistenceService.persistActiveRide(
         Map<String, dynamic>.from(_trip!),
@@ -553,7 +576,9 @@ class _TripScreenState extends State<TripScreen>
         previousRouteState != 'on_the_way') {
       _startTripTimer();
     }
-    if (_status == 'completed' || _status == 'cancelled') {
+    if (_status == 'completed' ||
+        _status == 'payment_pending' ||
+        _status == 'cancelled') {
       _waitingLifecycleTimer?.cancel();
       _stopStatePoll();
       ActiveRidePersistenceService.clearActiveRide();
@@ -732,7 +757,9 @@ class _TripScreenState extends State<TripScreen>
           return;
         }
         final serverStatus = _resolvedTripStatus(serverTrip, fallback: _status);
-        if (serverStatus == 'completed' || serverStatus == 'cancelled') {
+        if (serverStatus == 'completed' ||
+            serverStatus == 'payment_pending' ||
+            serverStatus == 'cancelled') {
           _stopStatePoll();
           ActiveRidePersistenceService.clearActiveRide();
           if (mounted) {
@@ -868,7 +895,10 @@ class _TripScreenState extends State<TripScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    if (_trip != null && _status != 'completed' && _status != 'cancelled') {
+    if (_trip != null &&
+        _status != 'completed' &&
+        _status != 'payment_pending' &&
+        _status != 'cancelled') {
       ActiveRidePersistenceService.persistActiveRide(
         Map<String, dynamic>.from(_trip!),
         lastLat: _lastTripPosition?.latitude ?? _center.latitude,
@@ -1395,12 +1425,31 @@ class _TripScreenState extends State<TripScreen>
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final pricing = data['pricing'] as Map<String, dynamic>? ?? {};
+        final completionStatus =
+            data['completionStatus']?.toString() ?? 'completed';
+        final walletPendingAmount =
+            double.tryParse(data['walletPendingAmount']?.toString() ?? '0') ??
+                0.0;
+        final requiresCashPayment = data['requiresCashPayment'] == true;
         final rideFare = pricing['rideFare'] ??
             data['trip']?['actualFare'] ??
             data['trip']?['actual_fare'] ??
             estFare;
         final driverEarnings = pricing['driverWalletCredit'] ?? rideFare;
         final commission = pricing['platformDeduction'] ?? 0;
+        setState(() {
+          _mergeTripState(
+            {
+              if (data['trip'] is Map) ...Map<String, dynamic>.from(data['trip']),
+              'currentStatus': completionStatus,
+              'current_status': completionStatus,
+              'status': completionStatus,
+              'walletPendingAmount': walletPendingAmount,
+              'requiresCashPayment': requiresCashPayment,
+            },
+            fallbackStatus: completionStatus,
+          );
+        });
         _socket.setActiveTrip(null); // clear trip room tracking
         _locationTimer?.cancel();
         _posStream?.cancel();
@@ -1412,6 +1461,9 @@ class _TripScreenState extends State<TripScreen>
           rideFare.toString(),
           driverEarnings: driverEarnings.toString(),
           commission: commission.toString(),
+          walletPendingAmount: walletPendingAmount,
+          requiresCashPayment: requiresCashPayment,
+          completionStatus: completionStatus,
         );
       } else {
         String errMsg = 'Error completing trip';
@@ -1739,7 +1791,11 @@ class _TripScreenState extends State<TripScreen>
   // ── Completion sheet ──────────────────────────────────────────────────────
 
   void _showCompletionSheet(String fare,
-      {String driverEarnings = '0', String commission = '0'}) {
+      {String driverEarnings = '0',
+      String commission = '0',
+      double walletPendingAmount = 0,
+      bool requiresCashPayment = false,
+      String completionStatus = 'completed'}) {
     int selectedRating = 0;
     bool ratingSubmitted = false;
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
@@ -1749,6 +1805,13 @@ class _TripScreenState extends State<TripScreen>
     final commissionAmt = double.tryParse(commission) ?? 0.0;
     final fullFare = double.tryParse(fare) ?? 0.0;
     final elapsed = _formatElapsed(_tripElapsedSec);
+    final hasPendingSettlement = completionStatus == 'payment_pending' ||
+        requiresCashPayment ||
+        walletPendingAmount > 0;
+    final title = hasPendingSettlement ? 'Ride Closed' : 'Trip Complete!';
+    final subtitle = hasPendingSettlement
+        ? 'Collect the pending amount to fully settle this ride.'
+        : 'Great job! Ride completed successfully.';
 
     showModalBottomSheet(
       context: context,
@@ -1783,13 +1846,13 @@ class _TripScreenState extends State<TripScreen>
                 child: const Icon(Icons.check_rounded,
                     color: JT.success, size: 44)),
             const SizedBox(height: 16),
-            Text('Trip Complete!',
+            Text(title,
                 style: GoogleFonts.poppins(
                     color: JT.textPrimary,
                     fontSize: 22,
                     fontWeight: FontWeight.w500)),
             const SizedBox(height: 4),
-            Text('Great job! Ride completed successfully.',
+            Text(subtitle,
                 style:
                     GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13)),
             const SizedBox(height: 20),
@@ -1834,7 +1897,41 @@ class _TripScreenState extends State<TripScreen>
             ),
             const SizedBox(height: 14),
             // Payment instruction
-            if (isCash)
+            if (hasPendingSettlement)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                    color: const Color(0xFFFFFBEB),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.35))),
+                child: Row(children: [
+                  Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                          color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12)),
+                      child: const Icon(Icons.payments_rounded,
+                          color: Color(0xFFF59E0B), size: 24)),
+                  const SizedBox(width: 14),
+                  Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                        Text('Collect ₹${walletPendingAmount.toStringAsFixed(0)} to settle the ride',
+                            style: GoogleFonts.poppins(
+                                color: const Color(0xFFB45309),
+                                fontWeight: FontWeight.w400,
+                                fontSize: 15)),
+                        Text(
+                            isCash
+                                ? 'Cash collection is still pending for this trip'
+                                : 'Wallet/online deduction left a pending balance to collect',
+                            style: GoogleFonts.poppins(
+                                color: JT.textSecondary, fontSize: 11)),
+                      ])),
+                ]),
+              )
+            else if (isCash)
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(

@@ -381,9 +381,11 @@ class _TrackingScreenState extends State<TrackingScreen>
       case 'in_progress':
       case 'on_the_way':
         return 4;
+      case 'payment_pending':
+        return 5;
       case 'completed':
       case 'cancelled':
-        return 5;
+        return 6;
       default:
         return 0;
     }
@@ -400,6 +402,22 @@ class _TrackingScreenState extends State<TrackingScreen>
       return Map<String, dynamic>.from(payload);
     }
     return null;
+  }
+
+  String _lifecycleStatusFromTripMap(Map<String, dynamic>? tripMap, {String? fallback}) {
+    final explicit = (tripMap?['currentStatus'] ??
+            tripMap?['current_status'] ??
+            tripMap?['status'])
+        ?.toString()
+        .trim();
+    if (explicit != null && explicit.isNotEmpty) {
+      return explicit;
+    }
+    final canonical = tripMap?['canonicalState']?.toString().trim();
+    if (canonical != null && canonical.isNotEmpty) {
+      return canonical;
+    }
+    return fallback ?? _status;
   }
 
   void _applyRealtimeTripPayload(
@@ -427,16 +445,10 @@ class _TrackingScreenState extends State<TrackingScreen>
     }
 
     final isParcelMode = widget.isParcel || _resolvedParcelMode;
-    final rawStatus = (tripMap['canonicalState'] ??
-                tripMap['currentStatus'] ??
-                tripMap['current_status'] ??
-                tripMap['status'])
-            ?.toString() ??
-        _status;
+    final rawStatus = _lifecycleStatusFromTripMap(tripMap);
     final normalizedStatus =
         _normalizeTrackingStatus(rawStatus, isParcel: isParcelMode);
-    final resolvedStatus =
-        normalizedStatus == 'payment_pending' ? 'completed' : normalizedStatus;
+    final resolvedStatus = normalizedStatus;
     if (_statusRank(resolvedStatus) < _statusRank(_status)) {
       return;
     }
@@ -475,7 +487,7 @@ class _TrackingScreenState extends State<TrackingScreen>
       _trip = merged;
       _status = resolvedStatus;
       if (isParcelMode) _resolvedParcelMode = true;
-      if (resolvedStatus == 'completed') {
+      if (resolvedStatus == 'completed' || resolvedStatus == 'payment_pending') {
         _walletPendingAmount = double.tryParse(
               merged['walletPendingAmount']?.toString() ??
                   merged['pendingPaymentAmount']?.toString() ??
@@ -520,7 +532,9 @@ class _TrackingScreenState extends State<TrackingScreen>
       }
     }
 
-    if (resolvedStatus == 'completed' || resolvedStatus == 'cancelled') {
+    if (resolvedStatus == 'completed' ||
+        resolvedStatus == 'payment_pending' ||
+        resolvedStatus == 'cancelled') {
       _pollTimer?.cancel();
       _waitingLifecycleTimer?.cancel();
       if (shouldPollOnTransition) {
@@ -969,6 +983,28 @@ class _TrackingScreenState extends State<TrackingScreen>
       _refreshRouteForStatus(force: true);
       _updateMapMarkers();
       _maybeSyncTrackingCamera(force: true);
+    } else if (newStatus == 'payment_pending') {
+      _showStatusBanner(
+          _walletPendingAmount > 0
+              ? 'Ride ended â€¢ Pending payment confirmation'
+              : 'Ride ended â€¢ Final payment is being confirmed',
+          const Color(0xFFF59E0B));
+      setState(() => _polylines.clear());
+      _updateMapMarkers();
+
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => TripCompletionScreen(
+                trip: _trip ?? {'id': widget.tripId},
+                walletPendingAmount: _walletPendingAmount,
+              ),
+            ),
+          );
+        }
+      });
     } else if (newStatus == 'completed') {
       _showStatusBanner('Trip Completed • Thank you!', const Color(0xFF10B981));
       setState(() => _polylines.clear());
@@ -1033,6 +1069,7 @@ class _TrackingScreenState extends State<TrackingScreen>
       _status == 'arrived';
   bool get _isDestinationPhase =>
       _status == 'in_progress' || _status == 'on_the_way';
+  bool get _isPaymentPendingPhase => _status == 'payment_pending';
 
   String _trackingHeadline() {
     if (_status == 'searching') return 'Finding the best Pilot for you...';
@@ -1046,6 +1083,9 @@ class _TrackingScreenState extends State<TrackingScreen>
     }
     if (_isDestinationPhase) {
       return 'Trip is live to your destination';
+    }
+    if (_isPaymentPendingPhase) {
+      return 'Ride completed - payment confirmation pending';
     }
     if (_status == 'completed') return 'Your ride is ended';
     if (_status == 'cancelled') return 'Trip Cancelled';
@@ -1066,6 +1106,11 @@ class _TrackingScreenState extends State<TrackingScreen>
       return _polylines.isNotEmpty
           ? 'Destination route and ETA are active'
           : 'Preparing destination route';
+    }
+    if (_isPaymentPendingPhase) {
+      return _walletPendingAmount > 0
+          ? 'Pending settlement is being completed for this trip'
+          : 'Final payment verification is still in progress';
     }
     return 'Live tracking active';
   }
@@ -1866,6 +1911,8 @@ class _TrackingScreenState extends State<TrackingScreen>
       case 'otp_verified':
       case 'heading_to_destination':
         rawStatus = 'on_the_way';
+        break;
+      case 'payment_pending':
         break;
       case 'cancelled_by_user':
       case 'cancelled_by_driver':

@@ -9328,6 +9328,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // Driver earnings transaction handled by settleRevenue()
+      const completedTrip = camelize(r.rows[0]) as any;
+      const completionStatus = walletPendingAmount > 0 ? 'payment_pending' : 'completed';
+      if (completionStatus !== completedTrip.currentStatus) {
+        completedTrip.currentStatus = completionStatus;
+        completedTrip.current_status = completionStatus;
+        completedTrip.canonicalState = 'completed';
+      }
+
+      // Persist payment-pending ride closure so apps/admin do not fake a fully settled completion.
+      await rawDb.execute(rawSql`
+        UPDATE trip_requests
+        SET current_status=${completionStatus},
+            completed_at=COALESCE(completed_at, NOW()),
+            updated_at=NOW()
+        WHERE id=${tripId}::uuid
+      `).catch(dbCatch("db"));
 
       // -- Increment customer's completed_rides_count ----------------------
       if (tripCustomerId) {
@@ -9343,7 +9359,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       updateDriverStats(driver.id).catch(dbCatch("db"));
       clearTripWaypoints(tripId);
 
-      const completedTrip = camelize(r.rows[0]) as any;
       await appendTripStatus(tripId, 'trip_completed', 'driver', 'Trip completed by driver');
       await logRideLifecycleEvent(tripId, 'trip_completed', driver.id, 'driver', { fare, actualDistance });
 
@@ -9351,8 +9366,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (io && completedTrip.customerId) {
         const socketPayload = {
           tripId,
-          status: "completed",
-          currentStatus: "completed",
+          status: completionStatus,
+          currentStatus: completionStatus,
           canonicalState: "completed",
           fare: rideFullFare,
           actualFare: userPayable,
@@ -9374,8 +9389,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         io.to(`trip:${tripId}`).emit("trip:status_update", socketPayload);
 
         // Also emit to specific completed event if needed
-        io.to(`user:${completedTrip.customerId}`).emit("trip:completed", socketPayload);
-        io.to(`trip:${tripId}`).emit("trip:completed", socketPayload);
+        if (completionStatus === 'payment_pending') {
+          io.to(`user:${completedTrip.customerId}`).emit("trip:payment_pending", socketPayload);
+          io.to(`trip:${tripId}`).emit("trip:payment_pending", socketPayload);
+        } else {
+          io.to(`user:${completedTrip.customerId}`).emit("trip:completed", socketPayload);
+          io.to(`trip:${tripId}`).emit("trip:completed", socketPayload);
+        }
       }
 
       // ?? FCM: notify customer
@@ -9386,6 +9406,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json({
         success: true,
         trip: completedTrip,
+        completionStatus,
+        walletPendingAmount,
+        requiresCashPayment: walletPendingAmount > 0,
         pricing: {
           rideFare: rideFullFare,
           userDiscount,
