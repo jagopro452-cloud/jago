@@ -353,6 +353,46 @@ class _LocationScreenState extends State<LocationScreen>
     }).toList();
   }
 
+  double _distanceMeters(double aLat, double aLng, double bLat, double bLng) {
+    return Geolocator.distanceBetween(aLat, aLng, bLat, bLng);
+  }
+
+  List<Map<String, dynamic>> _rankSearchResults(
+      List<Map<String, dynamic>> items, String query) {
+    final normalized = query.trim().toLowerCase();
+    final ranked = [...items];
+    ranked.sort((a, b) {
+      int score(Map<String, dynamic> item) {
+        var value = 0;
+        final haystack =
+            '${item['mainText'] ?? ''} ${item['secondaryText'] ?? ''} ${item['name'] ?? ''}'
+                .toString()
+                .toLowerCase();
+        final mainText = (item['mainText'] ?? '').toString().toLowerCase();
+        if (mainText.startsWith(normalized)) value += 80;
+        if (haystack.startsWith(normalized)) value += 50;
+        if (haystack.contains(normalized)) value += 24;
+
+        final lat = (item['lat'] as num?)?.toDouble() ?? 0.0;
+        final lng = (item['lng'] as num?)?.toDouble() ?? 0.0;
+        if (_pickupLat != 0.0 && _pickupLng != 0.0 && lat != 0.0 && lng != 0.0) {
+          final meters = _distanceMeters(_pickupLat, _pickupLng, lat, lng);
+          value += meters < 1000
+              ? 40
+              : meters < 3000
+                  ? 24
+                  : meters < 8000
+                      ? 8
+                      : 0;
+        }
+        return value;
+      }
+
+      return score(b).compareTo(score(a));
+    });
+    return ranked;
+  }
+
   // ── Search ────────────────────────────────────────────────────────────────
   void _onDropChanged(String q) {
     setState(() {
@@ -431,7 +471,9 @@ class _LocationScreenState extends State<LocationScreen>
             .where((r) => (r['name'] as String).isNotEmpty)
             .toList();
         setState(() {
-          _searchResults = parsed.isNotEmpty ? parsed : _localFallbackMatches(query);
+          _searchResults = parsed.isNotEmpty
+              ? _rankSearchResults(parsed, query)
+              : _localFallbackMatches(query);
         });
         print('[PLACES] Found ${_searchResults.length} results');
       } else if (mounted) {
@@ -567,8 +609,8 @@ class _LocationScreenState extends State<LocationScreen>
       MaterialPageRoute(
         builder: (_) => MapLocationPicker(
           title: 'Select Drop Location',
-          initialLat: _pickupLat != 0 ? _pickupLat : null,
-          initialLng: _pickupLng != 0 ? _pickupLng : null,
+          initialLat: _dropLat != 0 ? _dropLat : (_pickupLat != 0 ? _pickupLat : null),
+          initialLng: _dropLng != 0 ? _dropLng : (_pickupLng != 0 ? _pickupLng : null),
           serviceType: widget.serviceType,
           vehicleCategoryId: widget.vehicleCategoryId,
           vehicleCategoryName: widget.vehicleCategoryName,

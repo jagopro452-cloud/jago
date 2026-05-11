@@ -1263,7 +1263,16 @@ class _TrackingScreenState extends State<TrackingScreen>
     _lastCameraSyncAtMs = now;
     _lastCameraViewKey = viewKey;
     if (target == null) {
-      controller.animateCamera(CameraUpdate.newLatLng(driver));
+      controller.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: driver,
+            zoom: 16.8,
+            tilt: 38,
+            bearing: _driverHeading,
+          ),
+        ),
+      );
       return;
     }
     final bounds = LatLngBounds(
@@ -1397,6 +1406,98 @@ class _TrackingScreenState extends State<TrackingScreen>
     final mins = (seconds ~/ 60).toString().padLeft(2, '0');
     final secs = (seconds % 60).toString().padLeft(2, '0');
     return '$mins:$secs';
+  }
+
+  String _tripValueString(List<String> keys, {String fallback = ''}) {
+    final trip = _trip;
+    if (trip == null) return fallback;
+    for (final key in keys) {
+      final value = trip[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    return fallback;
+  }
+
+  String _formatDistanceCompact(double meters) {
+    if (meters <= 0) return '--';
+    if (meters < 1000) return '${meters.round()} m';
+    return '${(meters / 1000).toStringAsFixed(meters >= 10000 ? 0 : 1)} km';
+  }
+
+  String _phaseChipLabel() {
+    switch (_status) {
+      case 'searching':
+        return 'Matching';
+      case 'driver_assigned':
+      case 'accepted':
+        return _isArriving ? 'Near Pickup' : 'Heading to Pickup';
+      case 'arrived':
+        return _waitingActive ? 'Waiting at Pickup' : 'Arrived';
+      case 'in_progress':
+      case 'on_the_way':
+        return 'Heading to Destination';
+      case 'payment_pending':
+        return 'Payment Pending';
+      case 'completed':
+        return 'Completed';
+      case 'cancelled':
+        return 'Cancelled';
+      default:
+        return 'Live';
+    }
+  }
+
+  String _liveEtaLabel() {
+    if (_waitingActive) return 'Waiting ${_formatDurationShort(_waitingElapsedSeconds)}';
+    if (_routeEtaSec > 0) return '${_formatDurationShort(_routeEtaSec)} to go';
+    final mins = int.tryParse(_trip?['etaMinutes']?.toString() ?? '');
+    if (mins != null && mins > 0) return '$mins mins away';
+    return 'Refreshing ETA';
+  }
+
+  String _progressHeadline() {
+    if (_status == 'searching') return 'Looking for the best pilot nearby';
+    if (_isPickupPhase) {
+      return _isArriving
+          ? 'Pilot is almost at your pickup point'
+          : 'Pilot is on the way to pickup';
+    }
+    if (_isArrivedPhase) {
+      return _waitingActive
+          ? 'Pilot is waiting at pickup for your OTP'
+          : 'Pilot has reached pickup. Share the OTP to start.';
+    }
+    if (_isDestinationPhase) {
+      return 'Reaching drop location in ${_liveEtaLabel().toLowerCase()}';
+    }
+    if (_isPaymentPendingPhase) {
+      return 'Trip ended. Final payment confirmation is in progress';
+    }
+    if (_status == 'completed') return 'Trip completed successfully';
+    return 'Live ride tracking is active';
+  }
+
+  double _phaseProgressValue() {
+    switch (_status) {
+      case 'searching':
+        return 0.15;
+      case 'driver_assigned':
+      case 'accepted':
+        return _isArriving ? 0.38 : 0.24;
+      case 'arrived':
+        return _waitingActive ? 0.52 : 0.46;
+      case 'in_progress':
+      case 'on_the_way':
+        return 0.76;
+      case 'payment_pending':
+        return 0.92;
+      case 'completed':
+        return 1;
+      case 'cancelled':
+        return 0;
+      default:
+        return 0.2;
+    }
   }
 
   @override
@@ -2145,6 +2246,17 @@ class _TrackingScreenState extends State<TrackingScreen>
                       zoomControlsEnabled: false,
                       mapToolbarEnabled: false,
                     ),
+
+                    if (_status != 'completed' &&
+                        _status != 'cancelled' &&
+                        _status != 'searching')
+                      Positioned(
+                        top: 8,
+                        left: 16,
+                        right: 16,
+                        child: _buildMapLiveHud(statusInfo),
+                      ),
+
                     Positioned(
                       bottom: 0,
                       left: 0,
@@ -2198,6 +2310,8 @@ class _TrackingScreenState extends State<TrackingScreen>
                                       const SizedBox(height: 16),
                                       if (driverName != null) ...[
                                         _buildCommunicationRow(driverName),
+                                        const SizedBox(height: 16),
+                                        _buildRideMetaPanel(),
                                         const SizedBox(height: 16),
                                       ],
                                     ] else if (_status == 'searching') ...[
@@ -2310,6 +2424,16 @@ class _TrackingScreenState extends State<TrackingScreen>
     return '+916303000000';
   }
 
+  Future<void> _contactSupport() async {
+    final supportPhone = await _getSupportPhone();
+    final uri = Uri.parse('tel:$supportPhone');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else if (mounted) {
+      _showStatusBanner('Support line unavailable right now', JT.primaryDark);
+    }
+  }
+
   // ── Premium UI Components ──────────────────────────────────────────────────
 
   Widget _buildPremiumHeader(Map<String, dynamic> statusInfo, String? otp) {
@@ -2349,7 +2473,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                       _status != 'cancelled' &&
                       _status != 'searching')
                     Text(
-                      'Live tracking active • SECURE PIN',
+                      _trackingSubhead(),
                       style: GoogleFonts.poppins(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
@@ -2467,6 +2591,31 @@ class _TrackingScreenState extends State<TrackingScreen>
                       ),
                     ],
                   ),
+                ),
+              ),
+            ],
+          ),
+        ] else if (_status != 'searching' &&
+            _status != 'completed' &&
+            _status != 'cancelled') ...[
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _metricCard(
+                  label: _waitingActive ? 'WAITING' : 'ETA',
+                  value: waitMetric,
+                  icon: Icons.timer_rounded,
+                  color: _waitingActive ? const Color(0xFFF59E0B) : JT.primary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _metricCard(
+                  label: 'DISTANCE',
+                  value: _formatDistanceCompact(_routeDistanceM),
+                  icon: Icons.route_rounded,
+                  color: const Color(0xFF0F766E),
                 ),
               ),
             ],
@@ -2661,6 +2810,21 @@ class _TrackingScreenState extends State<TrackingScreen>
                 color: Color(0xFFDC2626), size: 22),
           ),
         ),
+        const SizedBox(width: 12),
+        GestureDetector(
+          onTap: _contactSupport,
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: JT.border, width: 1.2),
+            ),
+            child: const Icon(Icons.support_agent_rounded,
+                color: Color(0xFF475569), size: 22),
+          ),
+        ),
       ],
     );
   }
@@ -2846,6 +3010,99 @@ class _TrackingScreenState extends State<TrackingScreen>
             style: TextStyle(
                 fontSize: 12, fontWeight: FontWeight.w500, color: color)),
       ]),
+    );
+  }
+
+  Widget _metricCard({
+    required String label,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 15, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF0F172A),
+              height: 1.15,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: JT.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 18, color: JT.primary),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF0F172A),
+                  height: 1.25,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -3043,6 +3300,291 @@ class _TrackingScreenState extends State<TrackingScreen>
     _showStatusBanner('Your pilot is arrived', const Color(0xFF10B981));
   }
 
+  Widget _buildMapLiveHud(Map<String, dynamic> statusInfo) {
+    final liveColor = statusInfo['color'] as Color;
+    final targetTitle = _isDestinationPhase
+        ? _tripValueString(
+            const ['destinationShortName', 'destinationAddress', 'destination_address'],
+            fallback: 'Destination',
+          )
+        : _tripValueString(
+            const ['pickupShortName', 'pickupAddress', 'pickup_address'],
+            fallback: 'Pickup',
+          );
+    final targetSubtitle = _isDestinationPhase
+        ? _tripValueString(
+            const ['destinationAddress', 'destination_address'],
+            fallback: 'Destination route is active',
+          )
+        : _tripValueString(
+            const ['pickupAddress', 'pickup_address'],
+            fallback: 'Pickup route is active',
+          );
+    final liveDistance = _routeDistanceM > 0
+        ? _formatDistanceCompact(_routeDistanceM)
+        : _formatDistanceCompact(
+            _driverLatLng != null && _routeTargetForStatus() != null
+                ? _distanceMeters(_driverLatLng!, _routeTargetForStatus()!)
+                : 0,
+          );
+
+    return Container(
+      margin: EdgeInsets.only(top: _bannerMessage != null ? 84 : 18),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.10),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: liveColor.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildLiveDot(color: liveColor),
+                    const SizedBox(width: 8),
+                    Text(
+                      _phaseChipLabel(),
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: liveColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              Text(
+                _progressHeadline(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF475569),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            _isDestinationPhase
+                ? 'Reaching drop location in ${_liveEtaLabel().toLowerCase()}'
+                : _isArrivedPhase
+                    ? _progressHeadline()
+                    : _trackingHeadline(),
+            style: GoogleFonts.poppins(
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF0F172A),
+              height: 1.2,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            targetSubtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _metricCard(
+                  label: 'ETA',
+                  value: _liveEtaLabel(),
+                  icon: Icons.timer_rounded,
+                  color: JT.primary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _metricCard(
+                  label: 'Distance',
+                  value: liveDistance,
+                  icon: Icons.route_rounded,
+                  color: const Color(0xFF0F766E),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _metricCard(
+                  label: 'Target',
+                  value: targetTitle,
+                  icon: _isDestinationPhase
+                      ? Icons.flag_rounded
+                      : Icons.place_rounded,
+                  color: const Color(0xFF7C3AED),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: _phaseProgressValue(),
+              minHeight: 6,
+              backgroundColor: const Color(0xFFE2E8F0),
+              valueColor: AlwaysStoppedAnimation<Color>(liveColor),
+            ),
+          ),
+          if (_routeIssue != null && _routeIssue!.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              _routeIssue!,
+              style: GoogleFonts.poppins(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFFB45309),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRideMetaPanel() {
+    final pickup = _tripValueString(
+      const ['pickupAddress', 'pickup_address'],
+      fallback: 'Pickup address updating',
+    );
+    final destination = _tripValueString(
+      const ['destinationAddress', 'destination_address'],
+      fallback: 'Destination address updating',
+    );
+    final paymentMode = _tripValueString(
+      const ['paymentMethod', 'paymentMode', 'payment_mode'],
+      fallback: 'Cash',
+    );
+    final vehicleType = _tripValueString(
+      const ['vehicleName', 'vehicle_name', 'vehicleCategory'],
+      fallback: widget.isParcel || _resolvedParcelMode ? 'Parcel' : 'Ride',
+    );
+    final vehicleNumber = _tripValueString(
+      const ['driverVehicleNumber', 'driver_vehicle_number'],
+      fallback: '--',
+    );
+    final language = _tripValueString(
+      const ['driverLanguage', 'driver_language', 'language'],
+      fallback: 'Telugu',
+    );
+    final fare = _tripValueString(
+      const ['actualFare', 'actual_fare', 'estimatedFare', 'estimated_fare'],
+      fallback: '--',
+    );
+    final distance = _routeDistanceM > 0
+        ? _formatDistanceCompact(_routeDistanceM)
+        : _tripValueString(
+            const ['estimatedDistance', 'estimated_distance'],
+            fallback: '--',
+          );
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Live Ride Details',
+                style: GoogleFonts.poppins(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: JT.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: JT.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  _phaseChipLabel(),
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: JT.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _infoRow(Icons.near_me_rounded, 'Pickup', pickup),
+          const SizedBox(height: 10),
+          _infoRow(Icons.flag_rounded, 'Destination', destination),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(child: _pill('ETA', _liveEtaLabel(), JT.primary)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _pill('Distance', distance, const Color(0xFF0F766E)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _pill(
+                  'Fare',
+                  fare == '--' ? fare : 'Rs $fare',
+                  const Color(0xFF7C3AED),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _chip(Icons.directions_car_filled_rounded, vehicleType, const Color(0xFF475569)),
+              _chip(Icons.confirmation_number_rounded, vehicleNumber.toUpperCase(), const Color(0xFF475569)),
+              _chip(Icons.payments_rounded, paymentMode, const Color(0xFF0F766E)),
+              _chip(Icons.record_voice_over_rounded, language, const Color(0xFF7C3AED)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildInProgressPanel(Map<String, dynamic> trip) {
     final dest = trip['destinationShortName'] ??
         trip['destinationAddress'] ??
@@ -3199,12 +3741,11 @@ class _TrackingScreenState extends State<TrackingScreen>
     );
   }
 
-  Widget _buildLiveDot() {
+  Widget _buildLiveDot({Color color = Colors.red}) {
     return Container(
       width: 8,
       height: 8,
-      decoration:
-          const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 

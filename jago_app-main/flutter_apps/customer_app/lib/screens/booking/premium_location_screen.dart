@@ -173,6 +173,45 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
     }).toList();
   }
 
+  double _distanceMeters(double aLat, double aLng, double bLat, double bLng) {
+    return Geolocator.distanceBetween(aLat, aLng, bLat, bLng);
+  }
+
+  List<dynamic> _rankSearchResults(List<dynamic> items, String query) {
+    final normalized = query.trim().toLowerCase();
+    final ranked = [...items];
+    ranked.sort((a, b) {
+      int score(dynamic raw) {
+        final item = Map<String, dynamic>.from(raw as Map);
+        var value = 0;
+        final mainText = (item['mainText'] ?? '').toString().toLowerCase();
+        final haystack =
+            '${item['mainText'] ?? ''} ${item['secondaryText'] ?? ''} ${item['fullDescription'] ?? item['description'] ?? ''}'
+                .toString()
+                .toLowerCase();
+        if (mainText.startsWith(normalized)) value += 80;
+        if (haystack.startsWith(normalized)) value += 50;
+        if (haystack.contains(normalized)) value += 24;
+        final lat = (item['lat'] as num?)?.toDouble() ?? 0.0;
+        final lng = (item['lng'] as num?)?.toDouble() ?? 0.0;
+        if (_pickupLat != 0 && _pickupLng != 0 && lat != 0 && lng != 0) {
+          final meters = _distanceMeters(_pickupLat, _pickupLng, lat, lng);
+          value += meters < 1000
+              ? 40
+              : meters < 3000
+                  ? 24
+                  : meters < 8000
+                      ? 8
+                      : 0;
+        }
+        return value;
+      }
+
+      return score(b).compareTo(score(a));
+    });
+    return ranked;
+  }
+
   void _onSearch(String query) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () async {
@@ -195,7 +234,9 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
           final data = json.decode(res.body) as Map<String, dynamic>;
           final predictions = (data['predictions'] as List<dynamic>?) ?? const [];
           if (mounted) {
-            setState(() => _searchResults = predictions.isNotEmpty ? predictions : _localFallbackMatches(q));
+            setState(() => _searchResults = predictions.isNotEmpty
+                ? _rankSearchResults(predictions, q)
+                : _localFallbackMatches(q));
           }
         }
       } catch (_) {
@@ -337,7 +378,14 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
       _buildDividerWithSwap(),
       const SizedBox(height: 12),
       _buildLocationInput(title: "Destination", hint: "Where are we going?", controller: _dropCtrl, focusNode: _dropFocus, icon: Icons.location_on_rounded, iconColor: const Color(0xFFF43F5E), isPickup: false, onChanged: _onSearch, trailing: GestureDetector(onTap: () {
-        Navigator.push(context, MaterialPageRoute(builder: (context) => const MapLocationPicker())).then((res) {
+        Navigator.push(context, MaterialPageRoute(builder: (context) => MapLocationPicker(
+          title: 'Select Drop Location',
+          initialLat: _dropLat != 0 ? _dropLat : (_pickupLat != 0 ? _pickupLat : null),
+          initialLng: _dropLng != 0 ? _dropLng : (_pickupLng != 0 ? _pickupLng : null),
+          serviceType: widget.serviceType,
+          vehicleCategoryId: widget.vehicleCategoryId,
+          vehicleCategoryName: widget.vehicleCategoryName,
+        ))).then((res) {
           if (res != null) { setState(() { _drop = res.address; _dropLat = res.lat; _dropLng = res.lng; _dropCtrl.text = _drop; }); }
         });
       }, child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFF43F5E).withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: Text("Map", style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFFF43F5E)))))),
