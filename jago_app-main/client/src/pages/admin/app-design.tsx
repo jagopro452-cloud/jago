@@ -749,7 +749,7 @@ export default function AppDesignPage() {
     { c: <C3_Home/>,   title: "Home",             sub: "Map + vehicle selector" },
     { c: <C4_Tracking/>, title: "Live Tracking",  sub: "Pilot ETA · OTP · Call" },
     { c: <C5_Rating/>, title: "Trip Rating",      sub: "5-star · Fare summary" },
-    { c: <C6_Wallet/>, title: "JAGO Pro Wallet",      sub: "Balance · Transactions" },
+    { c: <C6_Wallet/>, title: "JAGO Wallet",      sub: "Balance · Transactions" },
   ];
   const driverScreens = [
     { c: <D1_Splash/>,   title: "Splash Screen",  sub: "Dark navy · Glow rings" },
@@ -773,7 +773,7 @@ export default function AppDesignPage() {
             </div>
             <div>
               <div style={{ fontWeight: 900, fontSize: 22, color: "#0F172A", letterSpacing: -0.5 }}>
-                {isDriver ? "JAGO Pro Pilot" : "JAGO Pro"}&nbsp;
+                {isDriver ? "JAGO Pilot" : "JAGO"}&nbsp;
                 <span style={{ background: grad, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>App Screens</span>
               </div>
               <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 3 }}>
@@ -877,8 +877,8 @@ export default function AppDesignPage() {
         <div style={{ background: "white", borderRadius: 22, padding: "20px 22px", boxShadow: "0 2px 10px rgba(0,0,0,0.05)", border: "1px solid #F1F5F9" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: 1, marginBottom: 14 }}>🔗 API Endpoints</div>
           {[
-            { env: "Production", url: "https://jagopro.org",         c: "#7C3AED", bg: "#F5F3FF", status: "✓ Live" },
-            { env: "Staging",    url: "https://staging.jagopro.org", c: "#2F7BFF", bg: "#EFF6FF", status: "Standby" },
+            { env: "Production", url: "https://jago.in",         c: "#7C3AED", bg: "#F5F3FF", status: "✓ Live" },
+            { env: "Staging",    url: "https://jago-staging-ljuq3.ondigitalocean.app", c: "#2F7BFF", bg: "#EFF6FF", status: "Standby" },
             { env: "Local Dev",  url: "http://localhost:5000",        c: "#16A34A", bg: "#F0FDF4", status: "Dev" },
           ].map((e, i) => (
             <div key={i} style={{ background: "#F8FAFC", borderRadius: 13, padding: "11px 14px", marginBottom: 8, border: "1px solid #F1F5F9" }}>

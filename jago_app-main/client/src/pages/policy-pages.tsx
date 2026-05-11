@@ -3,9 +3,9 @@ import { useTheme } from "@/components/theme-provider";
 import { Logo } from "@/components/Logo";
 
 const COMPANY = "MindWhile IT Solutions Pvt Ltd";
-const BRAND   = "JAGO Pro";
-const EMAIL   = "info@jagopro.org";
-const WEBSITE = "jagopro.org";
+const BRAND   = "JAGO";
+const EMAIL   = "info@jago.in";
+const WEBSITE = "jago.in";
 const ADDRESS = "Hyderabad, Telangana, India";
 const YEAR    = new Date().getFullYear();
 

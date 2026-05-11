@@ -38,7 +38,7 @@ const LANDING_KEYS = [
   { key: "hero_subtitle", label: "Hero Subtitle", type: "textarea", placeholder: "Safe, affordable, and reliable rides..." },
   { key: "app_store_link", label: "App Store Link", type: "text", placeholder: "https://apps.apple.com/..." },
   { key: "play_store_link", label: "Play Store Link", type: "text", placeholder: "https://play.google.com/..." },
-  { key: "company_email", label: "Company Email", type: "text", placeholder: "support@jagopro.org" },
+  { key: "company_email", label: "Company Email", type: "text", placeholder: "support@jago.in" },
   { key: "company_phone", label: "Company Phone", type: "text", placeholder: "+91-9100000000" },
   { key: "company_address", label: "Company Address", type: "textarea", placeholder: "Hyderabad, Telangana" },
 ];
