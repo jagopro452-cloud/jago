@@ -9,6 +9,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
@@ -46,6 +47,18 @@ List<LatLng> _decodePolyline(String encoded) {
     pts.add(LatLng(lat / 1e5, lng / 1e5));
   }
   return pts;
+}
+
+class _RouteVoiceStep {
+  final String instruction;
+  final double startMeters;
+  final double endMeters;
+
+  const _RouteVoiceStep({
+    required this.instruction,
+    required this.startMeters,
+    required this.endMeters,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -99,6 +112,11 @@ class _TripScreenState extends State<TripScreen>
   double _waitingChargePerMin = 0;
   bool _waitingActive = false;
   bool _internalNavigationActive = true;
+  final FlutterTts _tts = FlutterTts();
+  bool _voiceGuidanceReady = false;
+  List<_RouteVoiceStep> _routeVoiceSteps = const [];
+  int _lastSpokenVoiceStep = -1;
+  String _lastVoiceAnnouncement = '';
 
   // Live stats
   double _distanceToTargetM = 0;
@@ -274,6 +292,71 @@ class _TripScreenState extends State<TripScreen>
     _lastCameraViewKey = '';
     _lastRouteRefreshAtMs = 0;
     _lastCameraSyncAtMs = 0;
+    _routeVoiceSteps = const [];
+    _lastSpokenVoiceStep = -1;
+    _lastVoiceAnnouncement = '';
+  }
+
+  Future<void> _initVoiceGuidance() async {
+    try {
+      await _tts.setLanguage('en-IN');
+      await _tts.setSpeechRate(0.42);
+      await _tts.setPitch(1.0);
+      await _tts.setVolume(1.0);
+      _voiceGuidanceReady = true;
+    } catch (_) {
+      _voiceGuidanceReady = false;
+    }
+  }
+
+  List<_RouteVoiceStep> _voiceStepsFromResponse(dynamic rawSteps) {
+    if (rawSteps is! List || rawSteps.isEmpty) return const [];
+    var runningMeters = 0.0;
+    final steps = <_RouteVoiceStep>[];
+    for (final raw in rawSteps) {
+      if (raw is! Map) continue;
+      final instruction = raw['instruction']?.toString().trim() ?? '';
+      if (instruction.isEmpty) continue;
+      final distanceKm = double.tryParse(raw['distanceKm']?.toString() ?? '') ?? 0;
+      final distanceMeters = distanceKm > 0 ? distanceKm * 1000 : 0;
+      final startMeters = runningMeters;
+      runningMeters += distanceMeters;
+      steps.add(_RouteVoiceStep(
+        instruction: instruction,
+        startMeters: startMeters,
+        endMeters: runningMeters,
+      ));
+    }
+    return steps;
+  }
+
+  Future<void> _maybeSpeakRouteGuidance({bool force = false}) async {
+    if (!_internalNavigationActive || !_voiceGuidanceReady || _routeVoiceSteps.isEmpty) {
+      return;
+    }
+    final totalMeters = _routeVoiceSteps.isNotEmpty
+        ? _routeVoiceSteps.last.endMeters
+        : _distanceToTargetM;
+    if (totalMeters <= 0 || _distanceToTargetM <= 0) return;
+    final traveledMeters = max(0.0, totalMeters - _distanceToTargetM);
+    var nextIndex = _routeVoiceSteps.indexWhere(
+      (step) => traveledMeters <= step.endMeters,
+    );
+    if (nextIndex < 0) {
+      nextIndex = _routeVoiceSteps.length - 1;
+    }
+    if (!force && nextIndex <= _lastSpokenVoiceStep) return;
+    final nextStep = _routeVoiceSteps[nextIndex];
+    final message = nextIndex == 0
+        ? 'Navigation started. ${nextStep.instruction}'
+        : 'Next, ${nextStep.instruction}';
+    if (!force && message == _lastVoiceAnnouncement) return;
+    try {
+      await _tts.stop();
+      await _tts.speak(message);
+      _lastSpokenVoiceStep = nextIndex;
+      _lastVoiceAnnouncement = message;
+    } catch (_) {}
   }
 
   String _responseMessage(http.Response response, {String fallback = 'Request failed'}) {
@@ -660,6 +743,7 @@ class _TripScreenState extends State<TripScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _initVoiceGuidance();
     _pulseCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
@@ -932,6 +1016,7 @@ class _TripScreenState extends State<TripScreen>
     _socketConnSub?.cancel();
     _waitingLifecycleTimer?.cancel();
     _pulseCtrl.dispose();
+    _tts.stop();
     super.dispose();
   }
 
@@ -1146,6 +1231,7 @@ class _TripScreenState extends State<TripScreen>
         final distKm = (data['totalDistanceKm'] as num?)?.toDouble() ?? 0.0;
         final durMin =
             (data['totalDurationMinutes'] as num?)?.toDouble() ?? 0.0;
+        final voiceSteps = _voiceStepsFromResponse(data['steps']);
         if (overviewPolyline != null && mounted) {
           final pts = _decodePolyline(overviewPolyline);
           setState(() {
@@ -1160,10 +1246,14 @@ class _TripScreenState extends State<TripScreen>
             _distanceToTargetM = distKm * 1000;
             _etaSec = (durMin * 60).round();
             _routeIssue = null;
+            _routeVoiceSteps = voiceSteps;
+            _lastSpokenVoiceStep = -1;
+            _lastVoiceAnnouncement = '';
           });
           _lastRouteOriginLatLng = LatLng(fromLat, fromLng);
           _lastRouteKey = _routeKeyForTarget(LatLng(toLat, toLng));
           _maybeSyncTripCamera(force: true);
+          _maybeSpeakRouteGuidance(force: true);
         } else if (mounted) {
           setState(() => _routeIssue = 'Navigation route is not available yet. Pull to refresh trip details.');
         }
@@ -1283,6 +1373,7 @@ class _TripScreenState extends State<TripScreen>
         _distanceToTargetM = dm;
         _etaSec = etaS;
       });
+    _maybeSpeakRouteGuidance();
     if (toPickup) {
       final near = dm <= 100;
       if (mounted && near != _nearPickup) {

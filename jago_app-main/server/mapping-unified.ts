@@ -61,6 +61,11 @@ export interface MultiWaypointRoute {
     durationMinutes: number;
     polyline: string;
   }>;
+  steps: Array<{
+    instruction: string;
+    distanceKm: number;
+    durationMinutes: number;
+  }>;
   totalDistanceKm: number;
   totalDurationMinutes: number;
   overviewPolyline: string;
@@ -709,6 +714,7 @@ export async function getMultiWaypointRoute(
         durationMinutes: route.durationMinutes,
         polyline: route.polyline,
       }],
+      steps: route.steps || [],
       totalDistanceKm: route.distanceKm,
       totalDurationMinutes: route.durationMinutes,
       overviewPolyline: route.polyline,
@@ -751,12 +757,22 @@ export async function getMultiWaypointRoute(
       durationMinutes: Math.round((leg.duration?.value || 0) / 60),
       polyline: leg.steps?.map((s: any) => s.polyline?.points || "").join("") || "",
     }));
+    const steps = (route.legs || [])
+      .flatMap((leg: any) => leg.steps || [])
+      .slice(0, 40)
+      .map((step: any) => ({
+        instruction: (step.html_instructions || "").replace(/<[^>]*>/g, ""),
+        distanceKm: Math.round((step.distance?.value || 0) / 1000 * 100) / 100,
+        durationMinutes: Math.round((step.duration?.value || 0) / 60),
+      }))
+      .filter((step: any) => step.instruction);
 
     const totalDist = legs.reduce((sum: number, l: any) => sum + l.distanceKm, 0);
     const totalDur = legs.reduce((sum: number, l: any) => sum + l.durationMinutes, 0);
 
     return {
       legs,
+      steps,
       totalDistanceKm: Math.round(totalDist * 100) / 100,
       totalDurationMinutes: totalDur,
       overviewPolyline: route.overview_polyline?.points || "",
@@ -803,6 +819,7 @@ function haversineMultiRoute(
 
   return {
     legs,
+    steps: [],
     totalDistanceKm: Math.round(totalDist * 100) / 100,
     totalDurationMinutes: totalDur,
     overviewPolyline: "",

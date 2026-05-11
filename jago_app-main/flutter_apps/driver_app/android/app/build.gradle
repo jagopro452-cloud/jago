@@ -12,6 +12,9 @@ def keystorePropertiesFile = rootProject.file('key.properties')
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
+def hasReleaseSigning = keystorePropertiesFile.exists() &&
+        keystoreProperties['storeFile'] &&
+        file(keystoreProperties['storeFile']).exists()
 
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file('local.properties')
@@ -91,7 +94,10 @@ android {
 
     buildTypes {
         release {
-            signingConfig keystorePropertiesFile.exists() ? signingConfigs.release : signingConfigs.debug
+            if (!hasReleaseSigning) {
+                throw new GradleException("Missing Android release signing config. Add android/key.properties and the JAGO release keystore before building release APKs. Firebase OTP will not work on debug-signed release builds.")
+            }
+            signingConfig signingConfigs.release
             // Staging validation builds prioritize deterministic packaging over size optimization.
             minifyEnabled false
             shrinkResources false
