@@ -33,6 +33,7 @@ import '../../services/trip_service.dart';
 import '../auth/login_screen.dart';
 import '../b2b/b2b_login_screen.dart';
 import '../outstation_pool/outstation_pool_screen.dart';
+import '../car_sharing/car_sharing_screen.dart';
 import 'modern_components.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -2184,7 +2185,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (rideCats.isNotEmpty)
             Expanded(
                 child: _buildServiceCard(
-              imageUrl: ApiConfig.staticAsset('/static/vehicles/auto.png'),
+              imageUrl: '${ApiConfig.baseUrl}/static/vehicles/auto.png',
               fallbackIcon: Icons.electric_rickshaw_rounded,
               title: 'Ride',
               subtitle: 'Bike · Auto · Car',
@@ -2209,7 +2210,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (parcelCats.isNotEmpty)
             Expanded(
                 child: _buildServiceCard(
-              imageUrl: ApiConfig.staticAsset('/static/vehicles/parcel_bike.png'),
+              imageUrl: '${ApiConfig.baseUrl}/static/vehicles/parcel_bike.png',
               fallbackIcon: Icons.local_shipping_rounded,
               title: 'Parcel',
               subtitle: 'Bike · Truck · Van',
@@ -2376,7 +2377,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     pickupLat: _pickupLat,
                     pickupLng: _pickupLng,
                   )));
-    } else if (serviceKey.contains('pool') ||
+    } else if (serviceKey.contains('outstation_pool')) {
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const OutstationPoolScreen()));
+    } else if (serviceKey.contains('city_pool') ||
+        serviceKey.contains('carpool') ||
+        serviceKey.contains('car_sharing')) {
+      Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const CarSharingScreen()));
+    } else if (serviceKey.contains('intercity_pool') ||
         serviceKey.contains('intercity')) {
       Navigator.push(context,
           MaterialPageRoute(builder: (_) => const IntercityBookingScreen()));
@@ -3120,7 +3129,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 MaterialPageRoute(builder: (_) => const ReferralScreen()));
           }),
           _drawerItem(
-              Icons.directions_car_outlined, 'Intercity Pool', textColor, () {
+              Icons.groups_rounded, 'City Pool', textColor, () {
+            Navigator.pop(context);
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const CarSharingScreen()));
+          }),
+          _drawerItem(
+              Icons.route_rounded, 'Outstation Pool', textColor, () {
             Navigator.pop(context);
             Navigator.push(
                 context,
@@ -3180,18 +3197,6 @@ class _PlaceSearchSheet extends StatefulWidget {
 }
 
 class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
-  static const List<Map<String, dynamic>> _curatedFallbackPlaces = [
-    {'name': 'Benz Circle', 'lat': 16.5062, 'lng': 80.6480},
-    {'name': 'Vijayawada Railway Station', 'lat': 16.5175, 'lng': 80.6400},
-    {'name': 'Pandit Nehru Bus Station', 'lat': 16.5179, 'lng': 80.6238},
-    {'name': 'Kanaka Durga Temple', 'lat': 16.5176, 'lng': 80.6121},
-    {'name': 'Gannavaram Airport', 'lat': 16.5304, 'lng': 80.7968},
-    {'name': 'Governorpet', 'lat': 16.5135, 'lng': 80.6346},
-    {'name': 'Patamata', 'lat': 16.4883, 'lng': 80.6681},
-    {'name': 'Labbipet', 'lat': 16.5034, 'lng': 80.6488},
-    {'name': 'Moghalrajpuram', 'lat': 16.5057, 'lng': 80.6465},
-    {'name': 'M G Road', 'lat': 16.5069, 'lng': 80.6489},
-  ];
   final TextEditingController _ctrl = TextEditingController();
   List<Map<String, dynamic>> _results = [];
   List<Map<String, dynamic>> _nearby = [];
@@ -3200,24 +3205,6 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
   Timer? _debounce;
 
   static const Color _primary = JT.primary;
-
-  String _normalizeSearch(String value) =>
-      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-
-  List<Map<String, dynamic>> _fallbackMatches(String query) {
-    final normalizedQuery = _normalizeSearch(query);
-    if (normalizedQuery.isEmpty) return [];
-    return _curatedFallbackPlaces.where((place) {
-      final normalizedName = _normalizeSearch((place['name'] ?? '').toString());
-      return normalizedName.contains(normalizedQuery) ||
-          normalizedQuery.contains(normalizedName);
-    }).map((place) => <String, dynamic>{
-      'name': place['name'],
-      'placeId': 'local:${place['name']}',
-      'lat': (place['lat'] as num).toDouble(),
-      'lng': (place['lng'] as num).toDouble(),
-    }).toList();
-  }
 
   @override
   void initState() {
@@ -3345,25 +3332,45 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
                     'placeId': p['placeId']?.toString() ?? '',
                     'lat': (p['lat'] as num?)?.toDouble() ?? 0.0,
                     'lng': (p['lng'] as num?)?.toDouble() ?? 0.0,
-              })
+                  })
               .where((r) => (r['name'] as String).isNotEmpty)
               .toList();
-          final fallback = _fallbackMatches(query);
-          final existing = _results.map((item) => (item['name'] ?? '').toString().toLowerCase()).toSet();
-          for (final item in fallback) {
-            final key = (item['name'] ?? '').toString().toLowerCase();
-            if (!existing.contains(key)) _results.add(item);
-          }
         });
+      } else {
+        final fallback = await _searchPlacesFallback(query);
+        if (!mounted) return;
+        setState(() => _results = fallback);
       }
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          _results = _fallbackMatches(query);
-        });
-      }
+      final fallback = await _searchPlacesFallback(query);
+      if (!mounted) return;
+      setState(() => _results = fallback);
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<List<Map<String, dynamic>>> _searchPlacesFallback(String query) async {
+    try {
+      final r = await http.get(
+        Uri.parse(
+          'https://nominatim.openstreetmap.org/search?format=json&q=${Uri.encodeComponent(query)}&limit=8&addressdetails=1&countrycodes=in',
+        ),
+        headers: const {'User-Agent': 'JAGOPro/1.0'},
+      ).timeout(const Duration(seconds: 6));
+      if (r.statusCode != 200) return const [];
+      final data = jsonDecode(r.body) as List<dynamic>;
+      return data.map((item) {
+        final row = Map<String, dynamic>.from(item as Map);
+        return <String, dynamic>{
+          'name': row['display_name']?.toString() ?? '',
+          'placeId': 'nom:${row['place_id']}',
+          'lat': double.tryParse((row['lat'] ?? '').toString()) ?? 0.0,
+          'lng': double.tryParse((row['lon'] ?? '').toString()) ?? 0.0,
+        };
+      }).where((row) => (row['name'] as String).isNotEmpty).toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<void> _resolveAndSelect(Map<String, dynamic> p) async {
@@ -3387,9 +3394,7 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
           final d = jsonDecode(r.body) as Map<String, dynamic>;
           lat = (d['lat'] as num?)?.toDouble() ?? 0.0;
           lng = (d['lng'] as num?)?.toDouble() ?? 0.0;
-          name = d['formattedAddress']?.toString() ??
-              d['address']?.toString() ??
-              name;
+          name = d['address']?.toString() ?? name;
         }
       } catch (_) {}
     }
@@ -3623,6 +3628,26 @@ class _AllServicesSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     // Build services list from active vehicle categories (filtered by admin)
     List<Map<String, dynamic>> services = [];
+    String inferServiceType(Map<String, dynamic> svc) {
+      final rawType = (svc['type'] ?? svc['category'] ?? svc['serviceCategory'])
+              ?.toString()
+              .toLowerCase() ??
+          '';
+      final key = svc['key']?.toString().toLowerCase() ?? '';
+      final name = svc['name']?.toString().toLowerCase() ?? '';
+
+      if (rawType.contains('parcel') || rawType.contains('cargo')) {
+        return rawType.contains('cargo') ? 'cargo' : 'parcel';
+      }
+      if (rawType.contains('pool') ||
+          key.contains('pool') ||
+          key.contains('share') ||
+          name.contains('pool') ||
+          name.contains('share')) {
+        return 'pool';
+      }
+      return 'ride';
+    }
 
     if (vehicleCategories.isNotEmpty) {
       services = vehicleCategories
@@ -3649,7 +3674,7 @@ class _AllServicesSheet extends StatelessWidget {
           services.add({
             'id': null,
             'name': svc['name']?.toString() ?? key,
-            'type': svc['category']?.toString() ?? 'ride',
+            'type': inferServiceType(svc),
             'emoji': svc['icon']?.toString() ?? '🚗',
             'key': key,
           });

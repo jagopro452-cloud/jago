@@ -12,9 +12,15 @@ import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
 import { io } from "./socket";
 import { notifyDriverNewRide } from "./fcm";
-import { findBestDrivers, type DriverMatchScore } from "./ai";
+import { type DriverMatchScore } from "./ai";
 import { findParcelCapableDrivers } from "./parcel-advanced";
-import { driverCanHandleDispatchService, isDispatchServiceAvailableAtLocation } from "./utils/service-dispatch";
+import {
+  buildDispatchRequirementsFromTripInput,
+  findEligibleDriversForDispatch,
+  isDriverEligibleForDispatch,
+  resolveDispatchRequirementsFromTrip,
+  type DispatchRequirements,
+} from "./dispatch-eligibility";
 
 // ── Service-specific dispatch configuration ──────────────────────────────────
 
@@ -34,12 +40,6 @@ const DISPATCH_CONFIGS: Record<string, DispatchConfig> = {
   b2b_parcel: { radiusStepsKm: [5, 10, 15],        driverTimeoutMs: 60000, maxTotalTimeMs: 300000, driversPerStep: 8 },
   carpool:    { radiusStepsKm: [5, 8, 12, 20],     driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
   outstation: { radiusStepsKm: [5, 10, 15, 25],    driverTimeoutMs: 60000, maxTotalTimeMs: 420000, driversPerStep: 10 },
-  mini_car:   { radiusStepsKm: [5, 8, 12, 15, 20], driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
-  sedan:      { radiusStepsKm: [5, 8, 12, 15, 20], driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
-  suv:        { radiusStepsKm: [5, 8, 12, 15, 20], driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
-  premium:    { radiusStepsKm: [5, 8, 12, 18, 25], driverTimeoutMs: 60000, maxTotalTimeMs: 420000, driversPerStep: 10 },
-  city_pool:  { radiusStepsKm: [5, 8, 12, 20],     driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
-  intercity:  { radiusStepsKm: [5, 10, 15, 25],    driverTimeoutMs: 60000, maxTotalTimeMs: 420000, driversPerStep: 10 },
 };
 
 function getConfig(serviceType: string): DispatchConfig {
@@ -57,6 +57,7 @@ interface DispatchSession {
   parcelVehicleCategory?: string; // e.g. "bike_parcel", "tata_ace" — for parcel vehicle-type filtering
   serviceType: string;
   config: DispatchConfig;
+  requirements: DispatchRequirements;
 
   // Trip metadata for socket payloads
   tripMeta: TripMeta;
@@ -89,7 +90,6 @@ export interface TripMeta {
   estimatedDistance: number;
   paymentMethod: string;
   tripType: string;
-  requestedSeats?: number;
 }
 
 // ── Dispatch Engine (singleton) ──────────────────────────────────────────────
@@ -108,26 +108,14 @@ export function resolveServiceType(
   const vc = (vehicleCategoryName || "").toLowerCase();
 
   if (tt === "parcel" || tt === "delivery") return "parcel";
-  if (tt === "parcel_bike") return "parcel_bike";
-  if (tt === "parcel_auto" || tt === "cargo_auto") return "parcel_auto";
-  if (tt === "tempo" || tt === "mini_truck") return tt;
   if (tt === "cargo" || tt === "b2b") return "b2b_parcel";
-  if (tt === "carpool" || tt === "pool" || tt === "city_pool") return "city_pool";
-  if (tt === "intercity" || tt === "intercity_pool") return "intercity";
-  if (tt === "outstation" || tt === "outstation_pool") return "outstation";
-  if (tt === "mini" || tt === "mini_car") return "mini_car";
-  if (tt === "sedan") return "sedan";
-  if (tt === "suv") return "suv";
-  if (tt === "premium") return "premium";
+  if (tt === "carpool" || tt === "pool") return "carpool";
+  if (tt === "intercity" || tt === "outstation") return "outstation";
 
   // Determine from vehicle category name fallback
   if (vc.includes("bike") || vc.includes("two")) return "bike";
   if (vc.includes("auto") || vc.includes("rickshaw")) return "auto";
-  if (vc.includes("premium")) return "premium";
-  if (vc.includes("sedan")) return "sedan";
-  if (vc.includes("suv")) return "suv";
-  if (vc.includes("mini")) return "mini_car";
-  if (vc.includes("cab") || vc.includes("car")) return "cab";
+  if (vc.includes("cab") || vc.includes("car") || vc.includes("sedan") || vc.includes("suv") || vc.includes("mini")) return "cab";
 
   return "auto"; // default
 }
@@ -144,12 +132,21 @@ export async function startDispatch(
   vehicleCategoryId: string | undefined,
   serviceType: string,
   tripMeta: TripMeta,
-  parcelVehicleCategory?: string
+  parcelVehicleCategory?: string,
+  seedRejectedDriverIds: string[] = []
 ): Promise<void> {
   // Cancel any existing dispatch for this trip (defensive)
   cancelDispatch(tripId);
 
   const config = getConfig(serviceType);
+  const requirements = await resolveDispatchRequirementsFromTrip(tripId)
+    || await buildDispatchRequirementsFromTripInput({
+      tripId,
+      tripType: tripMeta.tripType,
+      vehicleCategoryId: vehicleCategoryId || null,
+      parcelVehicleCategory: parcelVehicleCategory || null,
+      seatsBooked: 1,
+    });
 
   const session: DispatchSession = {
     tripId,
@@ -160,6 +157,7 @@ export async function startDispatch(
     parcelVehicleCategory,
     serviceType,
     config,
+    requirements,
     tripMeta,
     radiusIndex: 0,
     driverQueue: [],
@@ -167,7 +165,7 @@ export async function startDispatch(
     currentOfferedDriverId: null,
     offerTimer: null,
     notifiedDriverIds: new Set(),
-    rejectedDriverIds: new Set(),
+    rejectedDriverIds: new Set(seedRejectedDriverIds.filter(Boolean)),
     status: "searching",
     createdAt: Date.now(),
     totalTimer: null,
@@ -334,19 +332,6 @@ export function getActiveDispatchCount(): number {
 async function searchAndDispatchNextRadius(session: DispatchSession): Promise<void> {
   if (session.status !== "searching" && session.status !== "offered") return;
 
-  const serviceAvailable = await isDispatchServiceAvailableAtLocation(
-    session.serviceType,
-    session.pickupLat,
-    session.pickupLng,
-  ).catch(() => true);
-  if (!serviceAvailable) {
-    await expireDispatch(
-      session,
-      `Service ${session.serviceType} is not active for this pickup zone right now.`,
-    );
-    return;
-  }
-
   const config = session.config;
   if (session.radiusIndex >= config.radiusStepsKm.length) {
     // All radius steps exhausted
@@ -370,7 +355,7 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
   try {
     // Use parcel-specific driver search for parcel/b2b_parcel service types
     let drivers: DriverMatchScore[];
-    if ((session.serviceType === "parcel" || session.serviceType === "b2b_parcel") && session.parcelVehicleCategory) {
+    if (false && (session.serviceType === "parcel" || session.serviceType === "b2b_parcel") && session.parcelVehicleCategory) {
       const parcelDrivers = await findParcelCapableDrivers(
         session.pickupLat,
         session.pickupLng,
@@ -405,11 +390,8 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
         session.pickupLat,
         session.pickupLng,
         radiusKm,
-        session.vehicleCategoryId,
-        session.serviceType,
+        session.requirements,
         uniqueExcludeIds,
-        session.parcelVehicleCategory,
-        session.tripMeta.requestedSeats,
         config.driversPerStep
       );
     }
@@ -482,15 +464,7 @@ async function dispatchNextDriver(session: DispatchSession): Promise<void> {
     }
 
     // Verify driver is still available (online, no active trip)
-    const isAvailable = await checkDriverAvailability(
-      driver.driverId,
-      session.serviceType,
-      session.pickupLat,
-      session.pickupLng,
-      session.vehicleCategoryId,
-      session.parcelVehicleCategory,
-      session.tripMeta.requestedSeats,
-    );
+    const isAvailable = await checkDriverAvailability(driver.driverId, session.requirements);
     if (!isAvailable) continue;
 
     // Send request to this single driver
@@ -691,16 +665,13 @@ async function expireDispatch(session: DispatchSession, message: string): Promis
 /**
  * Check if a specific driver is still available to receive a trip offer.
  */
-async function checkDriverAvailability(
-  driverId: string,
-  serviceType: string,
-  pickupLat: number,
-  pickupLng: number,
-  requestedVehicleCategoryId?: string,
-  parcelVehicleCategory?: string,
-  requestedSeats?: number,
-): Promise<boolean> {
+async function checkDriverAvailability(driverId: string, requirements: DispatchRequirements): Promise<boolean> {
   try {
+    const strictEligibility = await isDriverEligibleForDispatch(driverId, requirements);
+    if (!strictEligibility.eligible) {
+      console.log(`[DISPATCH] âš  Driver ${driverId} unavailable â€” ${strictEligibility.reason || "not_eligible"}`);
+      return false;
+    }
     const r = await rawDb.execute(rawSql`
       SELECT u.is_online, u.is_locked, u.current_trip_id, u.is_active, u.verification_status,
              dl.is_online as dl_online
@@ -719,7 +690,7 @@ async function checkDriverAvailability(
       d.is_locked !== true &&
       (d.is_online === true || d.dl_online === true) &&
       d.current_trip_id === null &&
-      d.verification_status === 'approved'
+      ['approved', 'verified'].includes(d.verification_status)
     );
     if (!available) {
       const reasons: string[] = [];
@@ -727,24 +698,10 @@ async function checkDriverAvailability(
       if (d.is_locked)                   reasons.push("locked");
       if (!d.is_online && !d.dl_online)  reasons.push("offline (both is_online flags false)");
       if (d.current_trip_id !== null)    reasons.push(`on trip ${d.current_trip_id}`);
-      if (d.verification_status !== 'approved') reasons.push(`verification=${d.verification_status}`);
+      if (!['approved','verified'].includes(d.verification_status)) reasons.push(`verification=${d.verification_status}`);
       console.log(`[DISPATCH] ⚠ Driver ${driverId} unavailable — ${reasons.join(", ")}`);
     }
-    if (!available) return false;
-    const serviceEligible = await driverCanHandleDispatchService({
-      driverId,
-      serviceType,
-      pickupLat,
-      pickupLng,
-      requestedVehicleCategoryId,
-      parcelVehicleCategory,
-      requestedSeats,
-    }).catch(() => false);
-    if (!serviceEligible) {
-      console.log(`[DISPATCH] Driver ${driverId} rejected for ${serviceType} â€” service eligibility mismatch`);
-      return false;
-    }
-    return true;
+    return available;
   } catch {
     return false;
   }
@@ -758,14 +715,49 @@ async function findDriversInRadius(
   pickupLat: number,
   pickupLng: number,
   radiusKm: number,
-  vehicleCategoryId: string | undefined,
-  serviceType: string,
+  requirements: DispatchRequirements,
   excludeDriverIds: string[],
-  parcelVehicleCategory: string | undefined,
-  requestedSeats: number | undefined,
   limit: number
 ): Promise<DriverMatchScore[]> {
-  console.log(`[DISPATCH] findDriversInRadius called: Lat=${pickupLat}, Lng=${pickupLng}, Radius=${radiusKm}km, Category=${vehicleCategoryId || 'any'}`);
+  console.log(`[DISPATCH] findDriversInRadius called: Lat=${pickupLat}, Lng=${pickupLng}, Radius=${radiusKm}km, Category=${requirements.vehicleCategoryId || 'any'}`);
+  const strictDrivers = await findEligibleDriversForDispatch({
+    pickupLat,
+    pickupLng,
+    radiusKm,
+    excludeDriverIds,
+    limit,
+    requirements,
+  });
+  if (strictDrivers.length) {
+    const scoredStrict: DriverMatchScore[] = strictDrivers.map((row: any) => {
+      const distKm = Number(row.distanceKm) || 99;
+      const rating = Number(row.rating) || 3.0;
+      const avgResp = Number(row.avgResponseTimeSec) || 60;
+      const behaviorScore = Number(row.behaviorScore) || 50;
+      const score =
+        Math.max(0, 1 - distKm / 25) * 0.35 +
+        (behaviorScore / 100) * 0.25 +
+        ((rating - 1) / 4) * 0.20 +
+        Math.max(0, 1 - avgResp / 300) * 0.10 +
+        0.8 * 0.10;
+
+      return {
+        driverId: row.driverId,
+        fullName: row.fullName || "Pilot",
+        phone: row.phone || "",
+        lat: Number(row.lat),
+        lng: Number(row.lng),
+        distanceKm: Math.round(distKm * 100) / 100,
+        rating: Math.round(rating * 10) / 10,
+        totalTrips: Number(row.totalTrips) || 0,
+        avgResponseTimeSec: Math.round(avgResp),
+        score: Math.round(score * 1000) / 1000,
+        fcmToken: row.fcmToken || undefined,
+      };
+    });
+    scoredStrict.sort((a, b) => b.score - a.score);
+    return scoredStrict;
+  }
 
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const safeIds = excludeDriverIds.filter((id) => uuidRe.test(id));
@@ -775,13 +767,13 @@ async function findDriversInRadius(
 
   // LEFT JOIN driver_details so pilots without a details row are still found
   // vehicle_category filter: match OR driver has no category set (new/incomplete profile)
-  const vcFilter = vehicleCategoryId
-    ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
+  const vcFilter = requirements.vehicleCategoryId
+    ? rawSql`AND dd.vehicle_category_id = ${requirements.vehicleCategoryId}::uuid`
     : rawSql``;
 
   const drivers = await rawDb.execute(rawSql`
     SELECT
-      u.id, u.full_name, u.phone, COALESCE(dd.avg_rating, 5.0) as rating,
+      u.id, u.full_name, u.phone, u.rating,
       dl.lat, dl.lng,
       COALESCE(ds.total_trips, 0) as total_trips,
       COALESCE(ds.avg_response_time_sec, 60) as avg_response_time_sec,
@@ -807,7 +799,7 @@ async function findDriversInRadius(
       )
       AND dl.lat != 0 AND dl.lng != 0
       AND u.current_trip_id IS NULL
-      AND u.verification_status = 'approved'
+      AND u.verification_status IN ('approved', 'verified')
       ${vcFilter}
       ${excludeClause}
       AND SQRT(
@@ -815,7 +807,7 @@ async function findDriversInRadius(
         POW((dl.lng - ${Number(pickupLng)}) * 111.32 * COS(RADIANS(${Number(pickupLat)})), 2)
       ) <= ${radiusKm}
     ORDER BY distance_km ASC
-    LIMIT ${Math.max(limit * 4, limit)}
+    LIMIT ${limit}
   `);
 
   // Debug: log total online drivers vs filtered results
@@ -823,7 +815,7 @@ async function findDriversInRadius(
     SELECT COUNT(*) as total FROM driver_locations WHERE is_online=true
   `).catch(() => ({ rows: [{ total: '?' }] }));
   const onlineCount = (totalOnlineCheck.rows[0] as any)?.total ?? 0;
-  console.log(`[DISPATCH] Radius ${radiusKm}km search — found ${drivers.rows.length} eligible drivers (${onlineCount} total is_online=true in system) vehicleCategoryId=${vehicleCategoryId ?? "any"}`);
+  console.log(`[DISPATCH] Radius ${radiusKm}km search — found ${drivers.rows.length} eligible drivers (${onlineCount} total is_online=true in system) vehicleCategoryId=${requirements.vehicleCategoryId ?? "any"}`);
 
   // Debug: if no drivers found but some are online, log exclusion reasons for nearby drivers
   if (!drivers.rows.length && Number(onlineCount) > 0) {
@@ -850,13 +842,13 @@ async function findDriversInRadius(
         if (r.is_locked)                          reasons.push("is_locked=true");
         if (!r.dl_online)                         reasons.push("dl.is_online=false");
         if (r.current_trip_id)                    reasons.push(`on trip ${r.current_trip_id}`);
-        if (r.verification_status !== 'approved') reasons.push(`verification=${r.verification_status} (need approved)`);
+        if (!['approved', 'verified'].includes(r.verification_status)) reasons.push(`verification=${r.verification_status} (need approved/verified)`);
         if (r.lat == 0 && r.lng == 0)            reasons.push("lat/lng=0,0 (no GPS fix)");
         const staleMins = r.updated_at ? Math.round((Date.now() - new Date(r.updated_at).getTime()) / 60000) : 999;
         const isStale = staleMins > 30 && !(r.is_online && staleMins <= 240);
         if (isStale)                               reasons.push(`stale location (${staleMins}min ago, is_online=${r.is_online})`);
-        if (vehicleCategoryId && r.vehicle_category_id !== vehicleCategoryId)
-          reasons.push(`vehicle_category mismatch (has=${r.vehicle_category_id}, need=${vehicleCategoryId})`);
+        if (requirements.vehicleCategoryId && r.vehicle_category_id !== requirements.vehicleCategoryId)
+          reasons.push(`vehicle_category mismatch (has=${r.vehicle_category_id}, need=${requirements.vehicleCategoryId})`);
         const distKm = Number(r.distance_km).toFixed(1);
         if (Number(distKm) > radiusKm)            reasons.push(`outside radius (${distKm}km > ${radiusKm}km)`);
         console.log(`[DISPATCH] ⚠ Nearby driver ${r.id} (${r.full_name || "?"}, ${distKm}km away) EXCLUDED — ${reasons.length ? reasons.join(", ") : "in exclude list or already notified"}`);
@@ -908,25 +900,8 @@ async function findDriversInRadius(
   });
 
   // Sort by score descending — nearest + highest rated first
-  const serviceChecks = await Promise.all(
-    scored.map(async (candidate) => {
-      const eligible = await driverCanHandleDispatchService({
-        driverId: candidate.driverId,
-        serviceType,
-        pickupLat,
-        pickupLng,
-        requestedVehicleCategoryId: vehicleCategoryId,
-        parcelVehicleCategory,
-        requestedSeats,
-      }).catch(() => false);
-      return eligible ? candidate : null;
-    }),
-  );
-
-  return serviceChecks
-    .filter((candidate): candidate is DriverMatchScore => candidate !== null)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
+  scored.sort((a, b) => b.score - a.score);
+  return scored;
 }
 
 /**
@@ -1068,6 +1043,60 @@ export function startDispatchCleanup(): void {
   console.log("[DISPATCH] Stale session cleanup started (60s interval)");
 }
 
+export async function restartDispatchForTrip(
+  tripId: string,
+  seedRejectedDriverIds: string[] = []
+): Promise<void> {
+  const tripR = await rawDb.execute(rawSql`
+    SELECT
+      t.id,
+      t.customer_id,
+      t.pickup_lat,
+      t.pickup_lng,
+      t.pickup_address,
+      t.destination_address,
+      t.pickup_short_name,
+      t.destination_short_name,
+      t.estimated_fare,
+      t.estimated_distance,
+      t.payment_method,
+      t.trip_type,
+      t.vehicle_category_id,
+      t.ref_id,
+      u.full_name as customer_name
+    FROM trip_requests t
+    JOIN users u ON u.id = t.customer_id
+    WHERE t.id = ${tripId}::uuid
+    LIMIT 1
+  `).catch(() => ({ rows: [] as any[] }));
+  if (!tripR.rows.length) return;
 
+  const trip = tripR.rows[0] as any;
+  const requirements = await resolveDispatchRequirementsFromTrip(tripId);
+  const serviceType = requirements?.dispatchServiceType || resolveServiceType(trip.trip_type, "");
 
-
+  await startDispatch(
+    tripId,
+    trip.customer_id,
+    Number(trip.pickup_lat) || 0,
+    Number(trip.pickup_lng) || 0,
+    trip.vehicle_category_id || undefined,
+    serviceType,
+    {
+      refId: trip.ref_id || "",
+      customerName: trip.customer_name || "Customer",
+      pickupAddress: trip.pickup_address || "",
+      destinationAddress: trip.destination_address || "",
+      pickupShortName: trip.pickup_short_name || undefined,
+      destinationShortName: trip.destination_short_name || undefined,
+      pickupLat: Number(trip.pickup_lat) || 0,
+      pickupLng: Number(trip.pickup_lng) || 0,
+      estimatedFare: Number(trip.estimated_fare) || 0,
+      estimatedDistance: Number(trip.estimated_distance) || 0,
+      paymentMethod: trip.payment_method || "cash",
+      tripType: trip.trip_type || "normal",
+    },
+    requirements?.parcelVehicleCategory || undefined,
+    seedRejectedDriverIds
+  );
+}

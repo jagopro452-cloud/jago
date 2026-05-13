@@ -105,6 +105,7 @@ const _kWeightOptions = [
 
 class _ParcelBookingScreenState extends State<ParcelBookingScreen>
     with SingleTickerProviderStateMixin {
+
   // Controllers
   final _dropAddressCtrl    = TextEditingController();
   final _pickupAddressCtrl  = TextEditingController();
@@ -139,8 +140,6 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
   double _destLat = 0, _destLng = 0;
   List<Map<String, dynamic>> _suggestions = [];
   Timer? _debounce;
-  int _pickupSearchToken = 0;
-  int _dropSearchToken = 0;
 
 
   // Fare estimate
@@ -246,14 +245,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
   double get _weightKg => (_kWeightOptions[_weightIdx]['value'] as num).toDouble();
 
   bool get _step0Valid => true;
-  bool get _step1Valid =>
-      _pickupAddressCtrl.text.trim().isNotEmpty &&
-      _pickupAddressCtrl.text.trim().toLowerCase() != 'getting location...' &&
-      _pickupLat != 0 &&
-      _pickupLng != 0 &&
-      _dropAddressCtrl.text.trim().isNotEmpty &&
-      _destLat != 0 &&
-      _destLng != 0;
+  bool get _step1Valid => _dropAddressCtrl.text.trim().isNotEmpty && _destLat != 0;
   bool get _step2Valid => _itemType != null && _safetyAgreed;
   bool get _step3Valid => _receiverNameCtrl.text.trim().isNotEmpty &&
       _receiverPhoneCtrl.text.trim().length == 10;
@@ -291,30 +283,17 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
   void _onPickupSearch(String q) {
     _debounce?.cancel();
-    if (_pickupAddressCtrl.text.trim() != _pickupAddr.trim()) {
-      setState(() {
-        _pickupLat = 0;
-        _pickupLng = 0;
-      });
-    }
     if (q.length < 3) { setState(() => _pickupSuggestions = []); return; }
     _debounce = Timer(const Duration(milliseconds: 400), () => _searchAddress(q, isPickup: true));
   }
 
   void _onDropSearch(String q) {
     _debounce?.cancel();
-    if (_dropAddressCtrl.text.trim().isNotEmpty) {
-      setState(() {
-        _destLat = 0;
-        _destLng = 0;
-      });
-    }
     if (q.length < 3) { setState(() => _suggestions = []); return; }
     _debounce = Timer(const Duration(milliseconds: 400), () => _searchAddress(q, isPickup: false));
   }
 
   Future<void> _searchAddress(String q, {required bool isPickup}) async {
-    final token = isPickup ? ++_pickupSearchToken : ++_dropSearchToken;
     try {
       final headers = await AuthService.getHeaders();
       final r = await http.get(
@@ -324,8 +303,6 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       if (r.statusCode == 200) {
         final body = jsonDecode(r.body);
         final list = (body['predictions'] ?? body['results'] ?? body) as List;
-        final latestToken = isPickup ? _pickupSearchToken : _dropSearchToken;
-        if (token != latestToken) return;
         if (mounted) setState(() {
           final results = list.map<Map<String, dynamic>>((p) => {
             'description': p['fullDescription'] ?? p['description'] ?? p['formatted_address'] ?? p['name'] ?? '',
@@ -342,19 +319,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
           }
         });
       }
-    } catch (_) {
-      final latestToken = isPickup ? _pickupSearchToken : _dropSearchToken;
-      if (token != latestToken) return;
-      if (mounted) {
-        setState(() {
-          if (isPickup) {
-            _pickupSuggestions = [];
-          } else {
-            _suggestions = [];
-          }
-        });
-      }
-    }
+    } catch (_) {}
   }
 
   void _selectSuggestion(Map<String, dynamic> s, {required bool isPickup}) async {
@@ -381,7 +346,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       try {
         final headers = await AuthService.getHeaders();
         final r = await http.get(
-          Uri.parse('${ApiConfig.baseUrl}/api/app/places/details?placeId=${Uri.encodeComponent((s['place_id'] ?? '').toString())}'),
+          Uri.parse('${ApiConfig.baseUrl}/api/app/places/details?place_id=${s['place_id']}'),
           headers: headers,
         ).timeout(const Duration(seconds: 5));
         if (r.statusCode == 200) {
@@ -405,10 +370,6 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
   // ── Fare estimate ─────────────────────────────────────────────────────────────
 
   Future<void> _fetchEstimate() async {
-    if (!_step1Valid) {
-      _showSnack('Confirm pickup and delivery locations first.', error: true);
-      return;
-    }
     setState(() { _estimating = true; _estimate = null; });
     try {
       // Rough haversine distance
@@ -422,14 +383,9 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
           'vehicleCategory': _vehicle.key,
           'totalDistanceKm': dist,
           'weightKg': _weightKg,
-          'pickupAddress': _pickupAddr,
           'pickupLat': _pickupLat,
           'pickupLng': _pickupLng,
-          'dropLocations': [{
-            'address': _dropAddressCtrl.text.trim(),
-            'lat': _destLat,
-            'lng': _destLng,
-          }],
+          'dropLocations': [{'address': _dropAddressCtrl.text}],
         }),
       ).timeout(const Duration(seconds: 30));
       if (r.statusCode == 200 && mounted) {
@@ -439,12 +395,8 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
         _showSnack(e['message'] ?? 'Weight exceeds vehicle limit', error: true);
         setState(() { _step = 0; });
         _pageCtrl.animateToPage(0, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-      } else if (mounted) {
-        _showSnack('Could not refresh fare estimate right now.', error: true);
       }
-    } catch (_) {
-      _showSnack('Could not refresh fare estimate right now.', error: true);
-    }
+    } catch (_) {}
     if (mounted) setState(() => _estimating = false);
   }
 
@@ -463,12 +415,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
   // ── Book ─────────────────────────────────────────────────────────────────────
 
   Future<void> _book() async {
-    if (!_step1Valid || !_step2Valid || !_step3Valid || _booking) {
-      if (!_step1Valid) {
-        _showSnack('Confirm pickup and delivery locations first.', error: true);
-      }
-      return;
-    }
+    if (!_step3Valid || _booking) return;
     setState(() => _booking = true);
     try {
       final dist = _haversine(_pickupLat, _pickupLng, _destLat, _destLng);
@@ -484,7 +431,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
           'pickupContactName': '',
           'pickupContactPhone': '',
           'dropLocations': [{
-            'address': _dropAddressCtrl.text.trim(),
+            'address': _dropAddressCtrl.text,
             'lat': _destLat,
             'lng': _destLng,
             'receiverName': _receiverNameCtrl.text.trim(),
@@ -505,10 +452,19 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
         final data = jsonDecode(r.body);
         final orderId = data['orderId']?.toString() ?? data['id']?.toString() ?? '';
         Navigator.pushReplacement(context, MaterialPageRoute(
-          builder: (_) => TrackingScreen(tripId: orderId, isParcel: true),
+          builder: (_) => TrackingScreen(tripId: orderId),
         ));
       } else {
         final e = jsonDecode(r.body);
+        final orderId = e['orderId']?.toString() ?? '';
+        if (orderId.isNotEmpty) {
+          _showSnack(e['message'] ?? 'Opening your active parcel order.', error: true);
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => TrackingScreen(tripId: orderId)),
+          );
+          return;
+        }
         _showSnack(e['message'] ?? 'Booking failed. Try again.', error: true);
       }
     } catch (e) {
@@ -564,18 +520,13 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
   void _onEnterPickupManually() {
     setState(() {
       _isEditingPickup = true;
-      _pickupLat = 0;
-      _pickupLng = 0;
-      _pickupSuggestions = [];
     });
     _pickupFocusNode.requestFocus();
   }
 
   void _onEnterDropManually() {
     setState(() {
-      _destLat = 0;
-      _destLng = 0;
-      _suggestions = [];
+      _destLat = 0; // Clear lat/lng to show input field again if it was set
     });
     _dropFocusNode.requestFocus();
   }
@@ -596,7 +547,6 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
         _pickupLng = result.lng;
         _pickupAddressCtrl.text = result.address;
         _isEditingPickup = false;
-        _pickupSuggestions = [];
       });
       _fetchDynamicVehicles();
     }
@@ -854,7 +804,32 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Center(
-                        child: _buildParcelVehicleArtwork(v, size: 56),
+                        child: v.key == 'bike_parcel'
+                          ? Image.network(
+                              'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_49_26_AM_gjbrxs',
+                              width: 56,
+                              height: 56,
+                              fit: BoxFit.contain,
+                            )
+                          : v.key == 'tata_ace'
+                            ? Image.network(
+                                'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_51_59_AM_jzd119',
+                                width: 56,
+                                height: 56,
+                                fit: BoxFit.contain,
+                              )
+                            : v.key == 'pickup_truck'
+                              ? Image.network(
+                                  'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_54_02_AM_hicx7s',
+                                  width: 56,
+                                  height: 56,
+                                  fit: BoxFit.contain,
+                                )
+                              : Icon(
+                                  _iconForKey(v.key),
+                                  color: v.accentColor,
+                                  size: 32,
+                                ),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -1287,7 +1262,10 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                   color: Colors.white, shape: BoxShape.circle),
               child: Padding(
                 padding: const EdgeInsets.all(8.0),
-                child: _buildParcelVehicleArtwork(_vehicle, size: 36),
+                child: Image.network(
+                  'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_49_26_AM_gjbrxs',
+                  width: 36, height: 36, fit: BoxFit.contain,
+                ),
               )),
             const SizedBox(width: 16),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1568,38 +1546,6 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: logisticsOrange, width: 1.5)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      ),
-    );
-  }
-
-  Widget _buildParcelVehicleArtwork(_ParcelVehicle vehicle, {double size = 56}) {
-    final imageUrl = switch (vehicle.key) {
-      'bike_parcel' =>
-        'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_49_26_AM_gjbrxs',
-      'tata_ace' =>
-        'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_51_59_AM_jzd119',
-      'pickup_truck' =>
-        'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_54_02_AM_hicx7s',
-      _ => null,
-    };
-
-    if (imageUrl == null) {
-      return Icon(
-        _iconForKey(vehicle.key),
-        color: vehicle.accentColor,
-        size: size * 0.58,
-      );
-    }
-
-    return Image.network(
-      imageUrl,
-      width: size,
-      height: size,
-      fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => Icon(
-        _iconForKey(vehicle.key),
-        color: vehicle.accentColor,
-        size: size * 0.58,
       ),
     );
   }

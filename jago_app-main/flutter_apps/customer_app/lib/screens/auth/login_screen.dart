@@ -6,7 +6,6 @@ import 'package:sms_autofill/sms_autofill.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/firebase_otp_service.dart';
-import '../home/home_screen.dart';
 import '../main_screen.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
@@ -20,9 +19,12 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin, CodeAutoFill {
   final _phoneCtrl = TextEditingController();
   final _otpCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
   final _phoneFocus = FocusNode();
 
   bool _otpSent = false;
+  bool _showPassword = false;
+  bool _usePassword = false;
   bool _loading = false;
   int _seconds = 0;
   Timer? _timer;
@@ -71,6 +73,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     _timer?.cancel();
     _phoneCtrl.dispose();
     _otpCtrl.dispose();
+    _passwordCtrl.dispose();
     _phoneFocus.dispose();
     super.dispose();
   }
@@ -153,6 +156,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     if (!mounted) return;
 
     if (firebaseSent) {
+      AuthService.sendOtp(phone, 'customer').catchError((_) => <String, dynamic>{});
       setState(() { _otpSent = true; _loading = false; });
       _startTimer();
       _snack('OTP sent to +91$phone');
@@ -160,10 +164,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       return;
     }
 
-    if (!mounted) return;
     setState(() => _loading = false);
-    final message = firebaseError ?? 'Firebase OTP could not be started. Please try again.';
-    _snack(message, error: true);
+    _snack(firebaseError ?? 'Firebase OTP could not be started. Please try again.', error: true);
   }
 
   Future<void> _verifyOtp() async {
@@ -196,6 +198,22 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       setState(() => _loading = false);
       _otpCtrl.clear();
       _showErrorDialog('Verification Failed', e.toString().replaceAll('Exception: ', ''));
+    }
+  }
+
+  Future<void> _loginWithPassword() async {
+    final phone = _phoneCtrl.text.trim();
+    final pass = _passwordCtrl.text;
+    if (phone.length != 10) { _snack('Enter a valid 10-digit number', error: true); return; }
+    if (pass.length < 6) { _snack('Password must be at least 6 characters', error: true); return; }
+    setState(() => _loading = true);
+    final res = await AuthService.loginWithPassword(phone, pass);
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (res['success'] == true || res['token'] != null) {
+      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainScreen()), (_) => false);
+    } else {
+      _snack(res['message'] ?? 'Login failed', error: true);
     }
   }
 
@@ -296,7 +314,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
                       // Title
                       Text(
-                        _otpSent ? 'Enter OTP' : 'Sign In',
+                        _otpSent ? 'Enter OTP' : (_usePassword ? 'Welcome Back' : 'Sign In'),
                         style: GoogleFonts.poppins(
                           fontSize: 26, fontWeight: FontWeight.w400, color: JT.textPrimary,
                         ),
@@ -305,7 +323,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       Text(
                         _otpSent
                           ? 'Sent to +91 ${_phoneCtrl.text}'
-                          : 'Enter your mobile number',
+                          : (_usePassword ? 'Login with your password' : 'Enter your mobile number'),
                         style: GoogleFonts.poppins(
                           fontSize: 13, color: JT.textSecondary,
                         ),
@@ -314,14 +332,29 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
                       if (!_otpSent) ...[
                         _buildPhoneField(),
+                        const SizedBox(height: 14),
+                        if (_usePassword) ...[
+                          _buildPasswordField(),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: GestureDetector(
+                              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())),
+                              child: Text('Forgot Password?', style: GoogleFonts.poppins(
+                                color: JT.primary, fontWeight: FontWeight.w400, fontSize: 13,
+                              )),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 24),
-                        _buildButton('Get OTP', _sendOtp),
-                        const SizedBox(height: 12),
+                        _buildButton(_usePassword ? 'Login' : 'Get OTP',
+                          _usePassword ? _loginWithPassword : _sendOtp),
+                        const SizedBox(height: 16),
                         Center(
                           child: GestureDetector(
-                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ForgotPasswordScreen())),
+                            onTap: () => setState(() { _usePassword = !_usePassword; }),
                             child: Text(
-                              'Need to reset your password?',
+                              _usePassword ? 'Use OTP instead' : 'Use Password instead',
                               style: GoogleFonts.poppins(color: JT.primary, fontWeight: FontWeight.w400, fontSize: 13),
                             ),
                           ),
@@ -425,6 +458,33 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           ),
         ),
       ]),
+    );
+  }
+
+  Widget _buildPasswordField() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFD8E6F8), width: 1.2),
+      ),
+      child: TextField(
+        controller: _passwordCtrl,
+        obscureText: !_showPassword,
+        style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w400, color: JT.textPrimary),
+        decoration: InputDecoration(
+          hintText: 'Password',
+          hintStyle: GoogleFonts.poppins(fontSize: 14, color: JT.iconInactive),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+          prefixIcon: const Icon(Icons.lock_outline_rounded, color: JT.iconInactive, size: 20),
+          suffixIcon: IconButton(
+            icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+              color: JT.iconInactive, size: 20),
+            onPressed: () => setState(() => _showPassword = !_showPassword),
+          ),
+        ),
+      ),
     );
   }
 

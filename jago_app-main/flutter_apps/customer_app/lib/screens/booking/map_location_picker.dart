@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -9,7 +8,6 @@ import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
-import '../../services/socket_service.dart';
 
 /// Result returned by [MapLocationPicker] when user confirms a location.
 class PickedLocation {
@@ -44,18 +42,12 @@ class MapLocationPicker extends StatefulWidget {
   /// Optional initial position. If null, uses device GPS.
   final double? initialLat;
   final double? initialLng;
-  final String serviceType;
-  final String? vehicleCategoryId;
-  final String? vehicleCategoryName;
 
   const MapLocationPicker({
     super.key,
     this.title = 'Select Location',
     this.initialLat,
     this.initialLng,
-    this.serviceType = 'ride',
-    this.vehicleCategoryId,
-    this.vehicleCategoryName,
   });
 
   @override
@@ -63,23 +55,8 @@ class MapLocationPicker extends StatefulWidget {
 }
 
 class _MapLocationPickerState extends State<MapLocationPicker> {
-  final SocketService _socket = SocketService();
   GoogleMapController? _mapController;
   LatLng? _pendingCamera; // camera move queued before map ready
-  final Map<String, BitmapDescriptor> _markerIconCache = {};
-  final Map<String, LatLng> _vehiclePositions = {};
-  final Map<String, double> _vehicleHeadings = {};
-  final Map<String, String> _vehicleTypes = {};
-  final Map<String, String> _vehicleTitles = {};
-  Set<Marker> _nearbyVehicleMarkers = {};
-  final Set<Polyline> _previewPolylines = {};
-  StreamSubscription? _nearbyDriversSub;
-  StreamSubscription? _socketConnSub;
-  Timer? _nearbyResubscribeDebounce;
-  Timer? _nearbyInterpolationTimer;
-  Timer? _routePreviewDebounce;
-  String _availabilityText = 'Looking for nearby drivers';
-  bool _groupingEnabled = true;
 
   // Current center of the map (source of truth)
   // null until GPS is confirmed — avoids biasing search toward a hardcoded city
@@ -98,84 +75,12 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   bool _searching = false;
   bool _showSearch = false;
   Timer? _debounce;
-  String? _routeIssue;
-  int _previewEtaSec = 0;
-  double _previewDistanceM = 0;
+  int _searchRequestId = 0;
 
   // Session token for Places Autocomplete (reduces billing)
   String _sessionToken = DateTime.now().millisecondsSinceEpoch.toString();
-  static const List<Map<String, dynamic>> _fallbackPlaces = [
-    {'name': 'Benz Circle', 'address': 'Benz Circle, Vijayawada, Andhra Pradesh', 'lat': 16.5062, 'lng': 80.6480},
-    {'name': 'Vijayawada Railway Station', 'address': 'Vijayawada Junction, Vijayawada, Andhra Pradesh', 'lat': 16.5175, 'lng': 80.6400},
-    {'name': 'PNBS Bus Stand', 'address': 'Pandit Nehru Bus Station, Vijayawada, Andhra Pradesh', 'lat': 16.5179, 'lng': 80.6238},
-    {'name': 'Kanaka Durga Temple', 'address': 'Kanaka Durga Temple, Vijayawada, Andhra Pradesh', 'lat': 16.5176, 'lng': 80.6121},
-    {'name': 'Patamata', 'address': 'Patamata, Vijayawada, Andhra Pradesh', 'lat': 16.4883, 'lng': 80.6681},
-    {'name': 'Labbipet', 'address': 'Labbipet, Vijayawada, Andhra Pradesh', 'lat': 16.5034, 'lng': 80.6488},
-    {'name': 'Moghalrajpuram', 'address': 'Moghalrajpuram, Vijayawada, Andhra Pradesh', 'lat': 16.5057, 'lng': 80.6465},
-    {'name': 'NTR Circle', 'address': 'NTR Circle, Vijayawada, Andhra Pradesh', 'lat': 16.5065, 'lng': 80.6443},
-  ];
-
-  List<_PlacePrediction> _localFallbackMatches(String query) {
-    final normalized = query.trim().toLowerCase();
-    if (normalized.length < 2) return const [];
-    final tokens = normalized.split(RegExp(r'\s+')).where((token) => token.isNotEmpty).toList();
-    final matches = _fallbackPlaces.map((place) {
-      final haystack = '${place['name']} ${place['address']}'.toLowerCase();
-      var score = 0;
-      if (haystack.startsWith(normalized)) score += 40;
-      if (haystack.contains(normalized)) score += 24;
-      for (final token in tokens) {
-        if (haystack.contains(token)) score += 8;
-      }
-      return {'score': score, 'place': place};
-    }).where((entry) => (entry['score'] as int) > 0).toList()
-      ..sort((a, b) => (b['score'] as int).compareTo(a['score'] as int));
-
-    return matches.take(8).map((entry) {
-      final place = entry['place'] as Map<String, dynamic>;
-      return _PlacePrediction(
-        placeId: 'curated:${place['name'].toString().toLowerCase().replaceAll(' ', '-')}',
-        description: '${place['name']}, ${place['address']}',
-        mainText: place['name'].toString(),
-        secondaryText: place['address'].toString(),
-        lat: (place['lat'] as num).toDouble(),
-        lng: (place['lng'] as num).toDouble(),
-      );
-    }).toList();
-  }
 
   // API calls are proxied through server — no client-side key needed
-
-  List<LatLng> _decodePolyline(String encoded) {
-    final points = <LatLng>[];
-    int index = 0;
-    int lat = 0;
-    int lng = 0;
-    while (index < encoded.length) {
-      int shift = 0;
-      int result = 0;
-      int byte;
-      do {
-        byte = encoded.codeUnitAt(index++) - 63;
-        result |= (byte & 0x1f) << shift;
-        shift += 5;
-      } while (byte >= 0x20);
-      final dLat = (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
-      lat += dLat;
-
-      shift = 0;
-      result = 0;
-      do {
-        byte = encoded.codeUnitAt(index++) - 63;
-        result |= (byte & 0x1f) << shift;
-        shift += 5;
-      } while (byte >= 0x20);
-      final dLng = (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
-      lng += dLng;
-      points.add(LatLng(lat / 1e5, lng / 1e5));
-    }
-    return points;
-  }
 
   // ─── Reverse Geocode ─────────────────────────────────────────────
   Future<void> _reverseGeocode(double? lat, double? lng) async {
@@ -226,28 +131,13 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       _lng = widget.initialLng!;
       _locationLoading = false;
       _reverseGeocode(_lat!, _lng!);
-      _subscribeNearbyDrivers();
     } else {
       _getCurrentLocation();
     }
-    _socket.connect(ApiConfig.socketUrl);
-    _nearbyDriversSub =
-        _socket.onNearbyDrivers.listen(_handleNearbyDriversSnapshot);
-    _socketConnSub = _socket.onConnectionChanged.listen((connected) {
-      if (connected) {
-        _subscribeNearbyDrivers();
-      }
-    });
   }
 
   @override
   void dispose() {
-    _socket.unsubscribeNearbyDrivers();
-    _nearbyDriversSub?.cancel();
-    _socketConnSub?.cancel();
-    _nearbyResubscribeDebounce?.cancel();
-    _nearbyInterpolationTimer?.cancel();
-    _routePreviewDebounce?.cancel();
     _searchCtrl.dispose();
     _searchFocus.dispose();
     _debounce?.cancel();
@@ -279,7 +169,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
             _pendingCamera = target;
           }
           _reverseGeocode(_lat, _lng);
-          _subscribeNearbyDrivers();
           return;
         }
         // Ensure loading is stopped even if no location is found
@@ -289,7 +178,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           _locationLoading = false;
           _address = 'Location services disabled. Showing default.';
         });
-        _subscribeNearbyDrivers();
         return;
       }
       var perm = await Geolocator.checkPermission();
@@ -303,7 +191,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           _lng = 80.6480;
           _address = 'Location permission is needed to detect your current location.';
         });
-        _subscribeNearbyDrivers();
         return;
       }
       if (perm == LocationPermission.deniedForever) {
@@ -313,7 +200,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           _lng = 80.6480;
           _address = 'Location permission is blocked. Enable it from settings.';
         });
-        _subscribeNearbyDrivers();
         return;
       }
 
@@ -333,7 +219,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           _pendingCamera = target;
         }
         _reverseGeocode(_lat, _lng);
-        _subscribeNearbyDrivers();
       }
 
       final pos = await Geolocator.getCurrentPosition(
@@ -358,8 +243,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         _pendingCamera = target;
       }
       _reverseGeocode(_lat, _lng);
-      _subscribeNearbyDrivers();
-      _scheduleRoutePreview();
     } catch (e) {
       setState(() => _locationLoading = false);
     }
@@ -372,39 +255,80 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       setState(() => _predictions = []);
       return;
     }
+    final normalizedQuery = query.trim();
+    final requestId = ++_searchRequestId;
     setState(() => _searching = true);
     try {
-      final headers = await AuthService.getHeaders();
+      Map<String, String> headers = const {};
+      try {
+        headers = await AuthService.getHeaders();
+      } catch (_) {}
       final hasGps = _gpsLat != null && _gpsLng != null;
-      final qp = StringBuffer('?query=${Uri.encodeComponent(query)}&sessionToken=$_sessionToken');
+      final qp = StringBuffer('?query=${Uri.encodeComponent(normalizedQuery)}&sessionToken=$_sessionToken');
       if (hasGps) qp.write('&lat=$_gpsLat&lng=$_gpsLng');
       final res = await http.get(
         Uri.parse('${ApiConfig.placesAutocomplete}$qp'),
         headers: headers,
       ).timeout(const Duration(seconds: 6));
+      if (!mounted || requestId != _searchRequestId) return;
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final preds = (data['predictions'] as List<dynamic>?) ?? [];
-        final rawPredictions = preds.isNotEmpty
-            ? preds.map((p) => _PlacePrediction(
-                  placeId: p['placeId']?.toString() ?? '',
-                  description: p['fullDescription']?.toString() ?? p['mainText']?.toString() ?? '',
-                  mainText: p['mainText']?.toString() ?? '',
-                  secondaryText: p['secondaryText']?.toString() ?? '',
-                  lat: (p['lat'] as num?)?.toDouble(),
-                  lng: (p['lng'] as num?)?.toDouble(),
-                )).toList()
-            : _localFallbackMatches(query);
+        final parsed = preds.map((p) => _PlacePrediction(
+          placeId: p['placeId']?.toString() ?? '',
+          description: p['fullDescription']?.toString() ?? p['mainText']?.toString() ?? '',
+          mainText: p['mainText']?.toString() ?? '',
+          secondaryText: p['secondaryText']?.toString() ?? '',
+          lat: (p['lat'] as num?)?.toDouble(),
+          lng: (p['lng'] as num?)?.toDouble(),
+        )).toList();
+        final fallback = parsed.isEmpty
+            ? await _searchPlacesFallback(normalizedQuery)
+            : <_PlacePrediction>[];
+        if (!mounted || requestId != _searchRequestId) return;
         if (mounted) {
           setState(() {
-            _predictions = _rankPredictions(rawPredictions, query);
+            _predictions = parsed.isNotEmpty ? parsed : fallback;
           });
         }
+      } else {
+        final fallback = await _searchPlacesFallback(normalizedQuery);
+        if (!mounted || requestId != _searchRequestId) return;
+        setState(() => _predictions = fallback);
       }
     } catch (_) {
-      if (mounted) setState(() => _predictions = _localFallbackMatches(query));
+      final fallback = await _searchPlacesFallback(normalizedQuery);
+      if (!mounted || requestId != _searchRequestId) return;
+      setState(() => _predictions = fallback);
     }
-    if (mounted) setState(() => _searching = false);
+    if (mounted && requestId == _searchRequestId) {
+      setState(() => _searching = false);
+    }
+  }
+
+  Future<List<_PlacePrediction>> _searchPlacesFallback(String query) async {
+    try {
+      final res = await http.get(
+        Uri.parse(
+          'https://nominatim.openstreetmap.org/search?format=json&q=${Uri.encodeComponent(query)}&limit=8&addressdetails=1&countrycodes=in',
+        ),
+        headers: const {'User-Agent': 'JAGOPro/1.0'},
+      ).timeout(const Duration(seconds: 6));
+      if (res.statusCode != 200) return const [];
+      final data = jsonDecode(res.body) as List<dynamic>;
+      return data.map((item) {
+        final row = Map<String, dynamic>.from(item as Map);
+        return _PlacePrediction(
+          placeId: 'nom:${row['place_id']}',
+          description: row['display_name']?.toString() ?? '',
+          mainText: row['name']?.toString() ?? '',
+          secondaryText: '',
+          lat: double.tryParse((row['lat'] ?? '').toString()),
+          lng: double.tryParse((row['lon'] ?? '').toString()),
+        );
+      }).where((pred) => pred.description.isNotEmpty).toList();
+    } catch (_) {}
+    return const [];
   }
 
   /// Get lat/lng from a Place ID using Place Details API.
@@ -432,7 +356,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         } else {
           _pendingCamera = target;
         }
-        _scheduleRoutePreview();
       }
       return;
     }
@@ -451,9 +374,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final newLat = (data['lat'] as num?)?.toDouble() ?? 0.0;
         final newLng = (data['lng'] as num?)?.toDouble() ?? 0.0;
-        final address = data['formattedAddress']?.toString() ??
-            data['address']?.toString() ??
-            pred.description;
+        final address = data['address']?.toString() ?? pred.description;
         if (newLat != 0.0 && newLng != 0.0 && mounted) {
           setState(() {
             _lat = newLat;
@@ -464,11 +385,29 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           _mapController?.animateCamera(
             CameraUpdate.newLatLngZoom(LatLng(newLat, newLng), 16),
           );
-          _scheduleRoutePreview();
           return;
         }
       }
     } catch (_) {}
+    if ((pred.lat == null || pred.lng == null || pred.lat == 0.0 || pred.lng == 0.0) &&
+        pred.description.isNotEmpty) {
+      final fallback = await _searchPlacesFallback(pred.description);
+      if (fallback.isNotEmpty) {
+        final first = fallback.first;
+        if (mounted && first.lat != null && first.lng != null && first.lat != 0.0 && first.lng != 0.0) {
+          setState(() {
+            _lat = first.lat!;
+            _lng = first.lng!;
+            _address = first.description;
+            _geocoding = false;
+          });
+          _mapController?.animateCamera(
+            CameraUpdate.newLatLngZoom(LatLng(first.lat!, first.lng!), 16),
+          );
+          return;
+        }
+      }
+    }
     if (mounted) setState(() => _geocoding = false);
   }
 
@@ -476,8 +415,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
 
   void _onCameraIdle() {
     _reverseGeocode(_lat, _lng);
-    _scheduleNearbySubscription();
-    _scheduleRoutePreview();
   }
 
   void _onCameraMove(CameraPosition pos) {
@@ -487,7 +424,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
 
   void _onMyLocationTap() async {
     await _getCurrentLocation();
-    _subscribeNearbyDrivers();
   }
 
   void _confirmLocation() {
@@ -497,318 +433,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         PickedLocation(lat: _lat!, lng: _lng!, address: _address),
       );
     }
-  }
-
-  void _scheduleNearbySubscription() {
-    _nearbyResubscribeDebounce?.cancel();
-    _nearbyResubscribeDebounce =
-        Timer(const Duration(milliseconds: 450), _subscribeNearbyDrivers);
-  }
-
-  void _scheduleRoutePreview() {
-    _routePreviewDebounce?.cancel();
-    _routePreviewDebounce =
-        Timer(const Duration(milliseconds: 280), _refreshRoutePreview);
-  }
-
-  LatLng? _previewOrigin() {
-    if (widget.initialLat != null &&
-        widget.initialLng != null &&
-        widget.initialLat != 0 &&
-        widget.initialLng != 0) {
-      return LatLng(widget.initialLat!, widget.initialLng!);
-    }
-    if (_gpsLat != null && _gpsLng != null) {
-      return LatLng(_gpsLat!, _gpsLng!);
-    }
-    return null;
-  }
-
-  double _distanceMeters(LatLng a, LatLng b) {
-    return Geolocator.distanceBetween(
-      a.latitude,
-      a.longitude,
-      b.latitude,
-      b.longitude,
-    );
-  }
-
-  List<_PlacePrediction> _rankPredictions(
-      List<_PlacePrediction> predictions, String query) {
-    final normalized = query.trim().toLowerCase();
-    final anchorLat = _lat ?? _gpsLat;
-    final anchorLng = _lng ?? _gpsLng;
-    final ranked = [...predictions];
-    ranked.sort((a, b) {
-      int score(_PlacePrediction p) {
-        var value = 0;
-        final haystack =
-            '${p.mainText} ${p.secondaryText} ${p.description}'.toLowerCase();
-        if (p.mainText.toLowerCase().startsWith(normalized)) value += 80;
-        if (haystack.startsWith(normalized)) value += 50;
-        if (haystack.contains(normalized)) value += 24;
-        if (anchorLat != null &&
-            anchorLng != null &&
-            p.lat != null &&
-            p.lng != null) {
-          final meters = _distanceMeters(
-            LatLng(anchorLat, anchorLng),
-            LatLng(p.lat!, p.lng!),
-          );
-          value += meters < 1000
-              ? 40
-              : meters < 3000
-                  ? 24
-                  : meters < 8000
-                      ? 8
-                      : 0;
-        }
-        return value;
-      }
-
-      return score(b).compareTo(score(a));
-    });
-    return ranked;
-  }
-
-  Future<void> _refreshRoutePreview() async {
-    final origin = _previewOrigin();
-    final lat = _lat;
-    final lng = _lng;
-    if (origin == null || lat == null || lng == null) return;
-    final destination = LatLng(lat, lng);
-    if (_distanceMeters(origin, destination) < 20) {
-      if (!mounted) return;
-      setState(() {
-        _previewPolylines.clear();
-        _previewEtaSec = 0;
-        _previewDistanceM = 0;
-        _routeIssue = null;
-      });
-      return;
-    }
-    try {
-      final headers = await AuthService.getHeaders();
-      final res = await http
-          .post(
-            Uri.parse(ApiConfig.routeMultiWaypoint),
-            headers: {...headers, 'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'origin': {'lat': origin.latitude, 'lng': origin.longitude},
-              'destination': {'lat': lat, 'lng': lng},
-              'waypoints': [],
-              'optimize': false,
-            }),
-          )
-          .timeout(const Duration(seconds: 6));
-      if (res.statusCode == 200 && mounted) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final polyline = data['overviewPolyline']?.toString();
-        if (polyline != null && polyline.isNotEmpty) {
-          final points = _decodePolyline(polyline);
-          setState(() {
-            _previewPolylines
-              ..clear()
-              ..add(
-                Polyline(
-                  polylineId: const PolylineId('preview_route'),
-                  points: points,
-                  color: JT.primary,
-                  width: 5,
-                  jointType: JointType.round,
-                  startCap: Cap.roundCap,
-                  endCap: Cap.roundCap,
-                ),
-              );
-            _previewEtaSec =
-                (((data['totalDurationMinutes'] as num?)?.toDouble() ?? 0) * 60)
-                    .round();
-            _previewDistanceM =
-                ((data['totalDistanceKm'] as num?)?.toDouble() ?? 0) * 1000;
-            _routeIssue = null;
-          });
-          return;
-        }
-      }
-      if (mounted) {
-        setState(() => _routeIssue = 'Preview route is not available yet.');
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _routeIssue = 'Could not refresh preview route.');
-      }
-    }
-  }
-
-  void _subscribeNearbyDrivers() {
-    final lat = _lat;
-    final lng = _lng;
-    if (lat == null || lng == null) return;
-    _socket.subscribeNearbyDrivers(
-      lat: lat,
-      lng: lng,
-      serviceType: widget.serviceType,
-      vehicleCategoryId: widget.vehicleCategoryId,
-      parcelVehicleCategory:
-          widget.serviceType == 'parcel' ? widget.vehicleCategoryName : null,
-      radiusKm: 5,
-    );
-  }
-
-  Future<BitmapDescriptor> _getVehicleMarkerIcon(String vehicleType) async {
-    if (_markerIconCache.containsKey(vehicleType)) {
-      return _markerIconCache[vehicleType]!;
-    }
-    final descriptor = await _drawVehicleMarker(vehicleType);
-    _markerIconCache[vehicleType] = descriptor;
-    return descriptor;
-  }
-
-  Future<BitmapDescriptor> _drawVehicleMarker(String vehicleType) async {
-    const size = 72.0;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size, size));
-
-    Color bg;
-    String emoji;
-    final normalized = vehicleType.toLowerCase();
-    if (normalized.contains('bike')) {
-      bg = const Color(0xFF2563EB);
-      emoji = '🏍️';
-    } else if (normalized.contains('auto')) {
-      bg = const Color(0xFF0891B2);
-      emoji = '🛺';
-    } else if (normalized.contains('parcel') ||
-        normalized.contains('cargo') ||
-        normalized.contains('truck') ||
-        normalized.contains('pickup')) {
-      bg = const Color(0xFFEA580C);
-      emoji = '📦';
-    } else if (normalized.contains('premium') || normalized.contains('suv')) {
-      bg = const Color(0xFF7C3AED);
-      emoji = '🚘';
-    } else {
-      bg = const Color(0xFF059669);
-      emoji = '🚗';
-    }
-
-    final shadowPaint = Paint()
-      ..color = bg.withValues(alpha: 0.28)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
-    canvas.drawCircle(
-        const Offset(size / 2, size / 2 + 2), size / 2 - 8, shadowPaint);
-
-    canvas.drawCircle(
-        const Offset(size / 2, size / 2), size / 2 - 10, Paint()..color = bg);
-    canvas.drawCircle(
-      const Offset(size / 2, size / 2),
-      size / 2 - 10,
-      Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3,
-    );
-
-    final tp = TextPainter(
-      text: TextSpan(text: emoji, style: const TextStyle(fontSize: 26)),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, Offset((size - tp.width) / 2, (size - tp.height) / 2 - 1));
-
-    final image = await recorder.endRecording().toImage(size.toInt(), size.toInt());
-    final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(data!.buffer.asUint8List());
-  }
-
-  void _handleNearbyDriversSnapshot(Map<String, dynamic> snapshot) {
-    if (!mounted) return;
-    final summary = snapshot['summary'] is Map<String, dynamic>
-        ? Map<String, dynamic>.from(snapshot['summary'])
-        : <String, dynamic>{};
-    final drivers =
-        (snapshot['drivers'] as List<dynamic>? ?? const []).cast<dynamic>();
-    final nextTargets = <String, LatLng>{};
-    final nextHeadings = <String, double>{};
-    final nextTypes = <String, String>{};
-    final nextTitles = <String, String>{};
-
-    for (final raw in drivers) {
-      final driver = Map<String, dynamic>.from(raw as Map);
-      final id = driver['id']?.toString() ?? '';
-      final lat = double.tryParse(driver['lat']?.toString() ?? '');
-      final lng = double.tryParse(driver['lng']?.toString() ?? '');
-      if (id.isEmpty || lat == null || lng == null) continue;
-      nextTargets[id] = LatLng(lat, lng);
-      nextHeadings[id] =
-          double.tryParse(driver['heading']?.toString() ?? '0') ?? 0;
-      nextTypes[id] = (driver['vehicleName'] ??
-              driver['vehicle_name'] ??
-              driver['vehicleType'] ??
-              'car')
-          .toString();
-      nextTitles[id] = driver['fullName']?.toString() ?? 'Nearby driver';
-    }
-
-    final removedIds = _vehiclePositions.keys
-        .where((id) => !nextTargets.containsKey(id))
-        .toList(growable: false);
-    for (final id in removedIds) {
-      _vehiclePositions.remove(id);
-      _vehicleHeadings.remove(id);
-      _vehicleTypes.remove(id);
-      _vehicleTitles.remove(id);
-    }
-
-    _nearbyInterpolationTimer?.cancel();
-    final startPositions = Map<String, LatLng>.from(_vehiclePositions);
-    var step = 0;
-    const totalSteps = 5;
-    _nearbyInterpolationTimer =
-        Timer.periodic(const Duration(milliseconds: 180), (timer) async {
-      step += 1;
-      final t = step / totalSteps;
-      nextTargets.forEach((id, target) {
-        final start = startPositions[id] ?? target;
-        _vehiclePositions[id] = LatLng(
-          start.latitude + (target.latitude - start.latitude) * t,
-          start.longitude + (target.longitude - start.longitude) * t,
-        );
-        _vehicleHeadings[id] = nextHeadings[id] ?? 0;
-        _vehicleTypes[id] = nextTypes[id] ?? 'car';
-        _vehicleTitles[id] = nextTitles[id] ?? 'Nearby driver';
-      });
-      await _rebuildNearbyMarkers();
-      if (step >= totalSteps) {
-        timer.cancel();
-      }
-    });
-
-    setState(() {
-      _availabilityText =
-          summary['availabilityText']?.toString() ?? _availabilityText;
-      _groupingEnabled = summary['groupingEnabled'] != false;
-    });
-  }
-
-  Future<void> _rebuildNearbyMarkers() async {
-    final markers = <Marker>{};
-    for (final entry in _vehiclePositions.entries) {
-      final id = entry.key;
-      final icon = await _getVehicleMarkerIcon(_vehicleTypes[id] ?? 'car');
-      markers.add(Marker(
-        markerId: MarkerId('nearby_$id'),
-        position: entry.value,
-        icon: icon,
-        rotation: _vehicleHeadings[id] ?? 0,
-        anchor: const Offset(0.5, 0.5),
-        flat: true,
-        infoWindow: InfoWindow(title: _vehicleTitles[id] ?? 'Nearby driver'),
-      ));
-    }
-    if (!mounted) return;
-    setState(() {
-      _nearbyVehicleMarkers = markers;
-    });
   }
 
   // ─── Build ──────────────────────────────────────────────────────────────
@@ -827,8 +451,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                 target: LatLng(_lat!, _lng!),
                 zoom: 15,
               ),
-              markers: _nearbyVehicleMarkers,
-              polylines: _previewPolylines,
               myLocationEnabled: true,
               myLocationButtonEnabled: false,
               zoomControlsEnabled: false,
@@ -840,11 +462,16 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                   _pendingCamera = null;
                 }
               },
-              onCameraMove: _onCameraMove,
-              onCameraIdle: () {
-                if (mounted) setState(() {});
-                _onCameraIdle();
-              },
+            onCameraMove: (pos) {
+              // High performance: update values without setState
+              _lat = pos.target.latitude;
+              _lng = pos.target.longitude;
+            },
+            onCameraIdle: () {
+              // Only update UI and geocode when map stops moving
+              if (mounted) setState(() {});
+              _reverseGeocode(_lat, _lng);
+            },
             ),
           if (_locationLoading)
             const Center(child: CircularProgressIndicator()),
@@ -863,10 +490,10 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         margin: const EdgeInsets.only(bottom: 6),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.8),
+                          color: Colors.black.withOpacity(0.8),
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
-                            BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 4)),
+                            BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 4)),
                           ],
                         ),
                         child: Text(
@@ -880,7 +507,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                         width: 8, height: 4,
                         margin: const EdgeInsets.only(top: 2),
                         decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.3),
+                          color: Colors.black.withOpacity(0.3),
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
@@ -914,95 +541,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         ),
 
           // ── Bottom card (address + confirm) ─────────────────────────
-          Positioned(
-            top: _showSearch ? 124 : 72,
-            left: 16,
-            right: 16,
-            child: IgnorePointer(
-              child: AnimatedOpacity(
-                opacity: _locationLoading ? 0 : 1,
-                duration: const Duration(milliseconds: 180),
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.96),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: _groupingEnabled
-                            ? JT.primary.withValues(alpha: 0.18)
-                            : const Color(0xFFEA580C).withValues(alpha: 0.18),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.08),
-                          blurRadius: 18,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: _nearbyVehicleMarkers.isEmpty
-                                ? const Color(0xFFF59E0B)
-                                : const Color(0xFF16A34A),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: (_nearbyVehicleMarkers.isEmpty
-                                        ? const Color(0xFFF59E0B)
-                                        : const Color(0xFF16A34A))
-                                    .withValues(alpha: 0.32),
-                                blurRadius: 10,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Flexible(
-                          child: Text(
-                            _availabilityText,
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.poppins(
-                              color: JT.textPrimary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        if (widget.serviceType == 'parcel') ...[
-                          const SizedBox(width: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFF7ED),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              (widget.vehicleCategoryName ?? 'Parcel').toUpperCase(),
-                              style: GoogleFonts.poppins(
-                                color: const Color(0xFFEA580C),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-
           Positioned(
             bottom: 0,
             left: 0,
@@ -1092,7 +630,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
               focusNode: _searchFocus,
               style: GoogleFonts.poppins(fontSize: 15, color: JT.textPrimary),
               decoration: InputDecoration(
-                hintText: 'Search destination or landmark',
+                hintText: 'Search for a place...',
                 hintStyle: GoogleFonts.poppins(fontSize: 15, color: JT.textSecondary),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 14),
@@ -1166,14 +704,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   // ─── Bottom card ────────────────────────────────────────────────────────
 
   Widget _buildBottomCard(double bottomPadding) {
-    final etaText = _previewEtaSec > 0
-        ? '${(_previewEtaSec / 60).ceil()} mins'
-        : 'Updating';
-    final distanceText = _previewDistanceM > 0
-        ? (_previewDistanceM < 1000
-            ? '${_previewDistanceM.round()} m'
-            : '${(_previewDistanceM / 1000).toStringAsFixed(1)} km')
-        : '--';
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -1191,41 +721,6 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
               width: 36, height: 4,
               decoration: BoxDecoration(color: const Color(0xFFDCE9FF), borderRadius: BorderRadius.circular(2)),
             ),
-          ),
-          const SizedBox(height: 16),
-
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: JT.primary.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  'LIVE PREVIEW',
-                  style: GoogleFonts.poppins(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: JT.primary,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-              ),
-              const Spacer(),
-              Text(
-                _routeIssue == null || _routeIssue!.isEmpty
-                    ? 'Route ready'
-                    : 'Route updating',
-                style: GoogleFonts.poppins(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: _routeIssue == null || _routeIssue!.isEmpty
-                      ? const Color(0xFF0F766E)
-                      : const Color(0xFFB45309),
-                ),
-              ),
-            ],
           ),
           const SizedBox(height: 16),
 
@@ -1285,106 +780,10 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           ),
           const SizedBox(height: 20),
 
-          Row(
-            children: [
-              Expanded(
-                child: _previewMetricCard(
-                  icon: Icons.route_rounded,
-                  label: 'Distance',
-                  value: distanceText,
-                  color: JT.primary,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _previewMetricCard(
-                  icon: Icons.timer_rounded,
-                  label: 'ETA',
-                  value: etaText,
-                  color: const Color(0xFF0F766E),
-                ),
-              ),
-            ],
-          ),
-          if (_routeIssue != null && _routeIssue!.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFFBEB),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFDE68A)),
-              ),
-              child: Text(
-                _routeIssue!,
-                style: GoogleFonts.poppins(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFFB45309),
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 20),
-
           // Confirm button
           JT.gradientButton(
             label: 'Confirm Location',
             onTap: _confirmLocation,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _previewMetricCard({
-    required IconData icon,
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: color, size: 18),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: GoogleFonts.poppins(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: color,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  value,
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: JT.textPrimary,
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),

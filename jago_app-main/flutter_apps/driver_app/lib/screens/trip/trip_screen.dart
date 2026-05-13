@@ -1,22 +1,21 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' show max, min;
+import 'dart:math' show min, max;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
-import '../../services/active_ride_persistence_service.dart';
-import '../../services/trip_navigation_controller.dart';
 import '../../services/socket_service.dart';
 import '../../services/call_service.dart';
+import '../../services/trip_service.dart';
 import '../call/call_screen.dart';
 import '../chat/trip_chat_sheet.dart';
 import '../home/home_screen.dart';
@@ -49,18 +48,6 @@ List<LatLng> _decodePolyline(String encoded) {
   return pts;
 }
 
-class _RouteVoiceStep {
-  final String instruction;
-  final double startMeters;
-  final double endMeters;
-
-  const _RouteVoiceStep({
-    required this.instruction,
-    required this.startMeters,
-    required this.endMeters,
-  });
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 class TripScreen extends StatefulWidget {
@@ -73,6 +60,7 @@ class TripScreen extends StatefulWidget {
 class _TripScreenState extends State<TripScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final SocketService _socket = SocketService();
+  final FlutterTts _tts = FlutterTts();
   GoogleMapController? _mapController;
   LatLng _center = const LatLng(17.3850, 78.4867);
   String _status = 'accepted';
@@ -89,43 +77,11 @@ class _TripScreenState extends State<TripScreen>
   StreamSubscription? _cancelSub;
   StreamSubscription? _incomingCallSub;
   StreamSubscription? _tripStatusSub;
-  StreamSubscription? _tripRecoveredSub;
-  StreamSubscription? _socketConnSub;
   bool _locationWarningShown = false;
   bool _hasLiveLocationAccess = false;
+  String _lastVoiceCue = '';
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
-  Timer? _waitingLifecycleTimer;
-  int _lastTripEventAtMs = 0;
-  String _lastTripStateVersion = '';
-  int _lastRouteRefreshAtMs = 0;
-  int _lastCameraSyncAtMs = 0;
-  String _lastRouteKey = '';
-  String _lastCameraViewKey = '';
-  LatLng? _lastRouteOriginLatLng;
-  String? _routeIssue;
-  int _arrivedGeofenceMeters = 250;
-  int _waitingElapsedSeconds = 0;
-  int _waitingBillableSeconds = 0;
-  int _waitingGraceSeconds = 0;
-  double _waitingCharge = 0;
-  double _waitingChargePerMin = 0;
-  bool _waitingActive = false;
-  bool _internalNavigationActive = true;
-  final FlutterTts _tts = FlutterTts();
-  bool _voiceGuidanceReady = false;
-  List<_RouteVoiceStep> _routeVoiceSteps = const [];
-  int _lastSpokenVoiceStep = -1;
-  String _lastVoiceAnnouncement = '';
-
-  void _log(String message) {
-    assert(() {
-      // Keep deep trip diagnostics in debug only so release builds stay quiet.
-      // ignore: avoid_print
-      print(message);
-      return true;
-    }());
-  }
 
   // Live stats
   double _distanceToTargetM = 0;
@@ -136,659 +92,47 @@ class _TripScreenState extends State<TripScreen>
   // Animation for status pill
   late AnimationController _pulseCtrl;
 
-  String get _tripId =>
-      (_trip?['id'] ?? _trip?['tripId'] ?? widget.trip?['id'] ?? widget.trip?['tripId'] ?? '')
-          .toString();
-
-  String _normalizedStatus(String? raw) {
-    final status = (raw ?? '').trim().toLowerCase();
-    switch (status) {
-      case 'payment_pending':
-        return 'payment_pending';
-      case 'waiting_for_otp':
-        return 'otp_pending';
-      case 'trip_started':
-        return 'in_progress';
-      case 'cancelled_by_user':
-      case 'cancelled_by_driver':
-      case 'cancelled_by_admin':
-        return 'cancelled';
-      default:
-        return status;
-    }
-  }
-
-  String _lifecycleStatusFromTrip(Map<String, dynamic>? trip, {String fallback = 'accepted'}) {
-    final explicit = (trip?['currentStatus'] ??
-            trip?['current_status'] ??
-            trip?['status'])
-        ?.toString()
-        .trim();
-    if (explicit != null && explicit.isNotEmpty) {
-      return explicit;
-    }
-    final canonical = trip?['canonicalState']?.toString().trim();
-    if (canonical != null && canonical.isNotEmpty) {
-      return canonical;
-    }
-    return fallback;
-  }
-
-  String _canonicalizeRouteState(String? raw) {
-    final status = _normalizedStatus(raw);
-    switch (status) {
-      case 'driver_assigned':
-      case 'accepted':
-      case 'heading_to_pickup':
-        return 'heading_to_pickup';
-      case 'arrived':
-      case 'waiting':
-      case 'otp_pending':
-        return status;
-      case 'otp_verified':
-      case 'in_progress':
-      case 'on_the_way':
-      case 'heading_to_destination':
-        return status == 'otp_verified' ? 'heading_to_destination' : status;
-      case 'payment_pending':
-        return 'completed';
-      case 'completed':
-      case 'cancelled':
-        return status;
-      default:
-        return status;
-    }
-  }
-
-  String _resolvedTripStatus(Map<String, dynamic>? trip, {String fallback = 'accepted'}) {
-    final lifecycleStatus =
-        _normalizedStatus(_lifecycleStatusFromTrip(trip, fallback: fallback));
-    if (lifecycleStatus == 'payment_pending') {
-      return lifecycleStatus;
-    }
-    return _canonicalizeRouteState(lifecycleStatus);
-  }
-
-  double _tripDouble(Map<String, dynamic>? trip, List<String> keys) {
-    if (trip == null) return 0;
-    for (final key in keys) {
-      final value = double.tryParse(trip[key]?.toString() ?? '');
-      if (value != null && value != 0) return value;
-    }
-    return 0;
-  }
-
-  String _tripString(
-    Map<String, dynamic>? trip,
-    List<String> keys, {
-    String fallback = '',
-  }) {
-    if (trip == null) return fallback;
-    for (final key in keys) {
-      final value = trip[key]?.toString().trim() ?? '';
-      if (value.isNotEmpty) return value;
-    }
-    return fallback;
-  }
-
-  bool get _isPrePickupStage => _isPickupNavigationStage || _isPickupArrivalStage;
-
-  String get _canonicalRouteState {
-    final raw = (_trip?['canonicalState'] ??
-            _trip?['currentStatus'] ??
-            _trip?['current_status'] ??
-            _trip?['status'])
-        ?.toString()
-        .trim()
-        .toLowerCase();
-    if (raw != null && raw.isNotEmpty) {
-      return _canonicalizeRouteState(raw);
-    }
-    return _canonicalizeRouteState(_status);
-  }
-
-  bool get _isPickupNavigationStage =>
-      _canonicalRouteState == 'accepted' ||
-      _canonicalRouteState == 'driver_assigned' ||
-      _canonicalRouteState == 'heading_to_pickup';
-
-  bool get _isPickupArrivalStage =>
-      _canonicalRouteState == 'arrived' ||
-      _canonicalRouteState == 'waiting' ||
-      _canonicalRouteState == 'otp_pending' ||
-      _canonicalRouteState == 'waiting_for_otp';
-
-  bool get _isDestinationNavigationStage =>
-      _canonicalRouteState == 'otp_verified' ||
-      _canonicalRouteState == 'in_progress' ||
-      _canonicalRouteState == 'on_the_way' ||
-      _canonicalRouteState == 'heading_to_destination';
-
-  bool get _canOpenOtpStage => _isPickupArrivalStage;
-
-  bool get _isTripInMotion => _isDestinationNavigationStage;
-
-  TripNavigationSnapshot get _navigationSnapshot =>
-      TripNavigationController.resolve(
-        trip: _trip,
-        rawState: _canonicalRouteState,
-        routeReady: _polylines.isNotEmpty,
-        nearPickup: _nearPickup,
-        waitingActive: _waitingActive,
-        distanceMeters: _distanceToTargetM,
-        etaSec: _etaSec,
-      );
-
-  double _pickupLat() => _tripDouble(_trip, const ['pickupLat', 'pickup_lat']);
-  double _pickupLng() => _tripDouble(_trip, const ['pickupLng', 'pickup_lng']);
-  double _destinationLat() => _tripDouble(_trip, const ['destinationLat', 'destination_lat']);
-  double _destinationLng() => _tripDouble(_trip, const ['destinationLng', 'destination_lng']);
-
-  LatLng? _activeRouteTarget() {
-    final lat = _isPickupNavigationStage || _isPickupArrivalStage
-        ? _pickupLat()
-        : _destinationLat();
-    final lng = _isPickupNavigationStage || _isPickupArrivalStage
-        ? _pickupLng()
-        : _destinationLng();
-    if (lat == 0 || lng == 0) return null;
-    return LatLng(lat, lng);
-  }
-
-  void _resetRouteSnapshot() {
-    _lastRouteKey = '';
-    _lastRouteOriginLatLng = null;
-    _lastCameraViewKey = '';
-    _lastRouteRefreshAtMs = 0;
-    _lastCameraSyncAtMs = 0;
-    _routeVoiceSteps = const [];
-    _lastSpokenVoiceStep = -1;
-    _lastVoiceAnnouncement = '';
-  }
-
-  Future<void> _initVoiceGuidance() async {
-    try {
-      await _tts.setLanguage('en-IN');
-      await _tts.setSpeechRate(0.42);
-      await _tts.setPitch(1.0);
-      await _tts.setVolume(1.0);
-      _voiceGuidanceReady = true;
-    } catch (_) {
-      _voiceGuidanceReady = false;
-    }
-  }
-
-  List<_RouteVoiceStep> _voiceStepsFromResponse(dynamic rawSteps) {
-    if (rawSteps is! List || rawSteps.isEmpty) return const [];
-    var runningMeters = 0.0;
-    final steps = <_RouteVoiceStep>[];
-    for (final raw in rawSteps) {
-      if (raw is! Map) continue;
-      final instruction = raw['instruction']?.toString().trim() ?? '';
-      if (instruction.isEmpty) continue;
-      final distanceKm = double.tryParse(raw['distanceKm']?.toString() ?? '') ?? 0;
-      final distanceMeters = distanceKm > 0 ? distanceKm * 1000 : 0;
-      final startMeters = runningMeters;
-      runningMeters += distanceMeters;
-      steps.add(_RouteVoiceStep(
-        instruction: instruction,
-        startMeters: startMeters,
-        endMeters: runningMeters,
-      ));
-    }
-    return steps;
-  }
-
-  Future<void> _maybeSpeakRouteGuidance({bool force = false}) async {
-    if (!_internalNavigationActive || !_voiceGuidanceReady || _routeVoiceSteps.isEmpty) {
-      return;
-    }
-    final totalMeters = _routeVoiceSteps.isNotEmpty
-        ? _routeVoiceSteps.last.endMeters
-        : _distanceToTargetM;
-    if (totalMeters <= 0 || _distanceToTargetM <= 0) return;
-    final traveledMeters = max(0.0, totalMeters - _distanceToTargetM);
-    var nextIndex = _routeVoiceSteps.indexWhere(
-      (step) => traveledMeters <= step.endMeters,
-    );
-    if (nextIndex < 0) {
-      nextIndex = _routeVoiceSteps.length - 1;
-    }
-    if (!force && nextIndex <= _lastSpokenVoiceStep) return;
-    final nextStep = _routeVoiceSteps[nextIndex];
-    final message = nextIndex == 0
-        ? 'Navigation started. ${nextStep.instruction}'
-        : 'Next, ${nextStep.instruction}';
-    if (!force && message == _lastVoiceAnnouncement) return;
-    try {
-      await _tts.stop();
-      await _tts.speak(message);
-      _lastSpokenVoiceStep = nextIndex;
-      _lastVoiceAnnouncement = message;
-    } catch (_) {}
-  }
-
-  String _responseMessage(http.Response response, {String fallback = 'Request failed'}) {
-    try {
-      final decoded = jsonDecode(response.body);
-      if (decoded is Map && decoded['message'] != null) {
-        final message = decoded['message'].toString().trim();
-        if (message.isNotEmpty) return message;
-      }
-    } catch (_) {}
-    return fallback;
-  }
-
-  Future<void> _pushDriverLocationSnapshot(
-    Position pos, {
-    bool awaitServer = false,
-  }) async {
-    final payload = {
-      'lat': pos.latitude,
-      'lng': pos.longitude,
-      'heading': pos.heading.isNaN ? 0 : pos.heading,
-      'speed': pos.speed,
-      'isOnline': true,
-    };
-    _socket.sendLocation(
-      lat: pos.latitude,
-      lng: pos.longitude,
-      heading: pos.heading.isNaN ? 0 : pos.heading,
-      speed: pos.speed,
-    );
-    final headers = await AuthService.getHeaders();
-    final request = http.post(
-      Uri.parse(ApiConfig.driverLocation),
-      headers: {...headers, 'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
-    );
-    if (awaitServer) {
-      await request.timeout(const Duration(seconds: 6));
-      return;
-    }
-    request.catchError((_) => http.Response('', 500));
-  }
-
-  void _mergeTripState(Map<String, dynamic>? nextTrip, {String? fallbackStatus}) {
-    if (nextTrip == null && fallbackStatus == null) return;
-    final merged =
-        Map<String, dynamic>.from(_trip ?? widget.trip ?? const <String, dynamic>{});
-    if (nextTrip != null) {
-      merged.addAll(nextTrip);
-    }
-    final status = _resolvedTripStatus(
-      merged,
-      fallback: fallbackStatus ?? _status,
-    );
-    if ((merged['currentStatus']?.toString().trim().isEmpty ?? true) &&
-        (merged['current_status']?.toString().trim().isEmpty ?? true)) {
-      merged['currentStatus'] = status;
-      merged['current_status'] = status;
-    }
-    _trip = merged;
-    _status = status;
-  }
-
-  bool _hasTripRouteCoordinates(Map<String, dynamic>? trip) {
-    if (trip == null) return false;
-    final pickupLat = double.tryParse(
-            trip['pickupLat']?.toString() ?? trip['pickup_lat']?.toString() ?? '') ??
-        0;
-    final pickupLng = double.tryParse(
-            trip['pickupLng']?.toString() ?? trip['pickup_lng']?.toString() ?? '') ??
-        0;
-    final destinationLat = double.tryParse(trip['destinationLat']?.toString() ??
-            trip['destination_lat']?.toString() ??
-            '') ??
-        0;
-    final destinationLng = double.tryParse(trip['destinationLng']?.toString() ??
-            trip['destination_lng']?.toString() ??
-            '') ??
-        0;
-    return pickupLat != 0 &&
-        pickupLng != 0 &&
-        destinationLat != 0 &&
-        destinationLng != 0;
-  }
-
-  Future<void> _refreshTripFromServer({bool force = false}) async {
-    if (!force && _hasTripRouteCoordinates(_trip)) return;
-    try {
-      final headers = await AuthService.getHeaders();
-      final res = await http
-          .get(Uri.parse(ApiConfig.driverActiveTrip), headers: headers)
-          .timeout(const Duration(seconds: 5));
-      if (!mounted || res.statusCode != 200) return;
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      final serverTrip = data['trip'];
-      if (serverTrip is Map) {
-        _applyRealtimeTripPayload(Map<String, dynamic>.from(serverTrip));
-      }
-    } catch (_) {}
-  }
-
-  void _focusRoute(double fromLat, double fromLng, double toLat, double toLng) {
-    final controller = _mapController;
-    if (controller == null) return;
-    controller.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(min(fromLat, toLat), min(fromLng, toLng)),
-          northeast: LatLng(max(fromLat, toLat), max(fromLng, toLng)),
-        ),
-        88,
-      ),
-    );
-  }
-
-  LatLng? _routeTargetForCurrentStatus() {
-    return TripNavigationController.targetForState(_trip, _canonicalRouteState);
-  }
-
-  String _routeKeyForTarget(LatLng target) {
-    return '${_canonicalRouteState}_${target.latitude.toStringAsFixed(5)}_${target.longitude.toStringAsFixed(5)}';
-  }
-
-  double _distanceBetweenLatLng(LatLng a, LatLng b) {
-    return Geolocator.distanceBetween(
-      a.latitude,
-      a.longitude,
-      b.latitude,
-      b.longitude,
-    );
-  }
-
-  bool _shouldRefreshRouteSnapshot(LatLng origin, {bool force = false}) {
-    final target = _routeTargetForCurrentStatus();
-    if (target == null) return false;
-    final nextRouteKey = _routeKeyForTarget(target);
-    if (force || _polylines.isEmpty || nextRouteKey != _lastRouteKey) {
-      return true;
-    }
-    final previousOrigin = _lastRouteOriginLatLng;
-    if (previousOrigin != null &&
-        _distanceBetweenLatLng(previousOrigin, origin) < 45) {
-      return false;
-    }
-    final now = DateTime.now().millisecondsSinceEpoch;
-    return now - _lastRouteRefreshAtMs >= 6000;
-  }
-
-  void _maybeSyncTripCamera({bool force = false}) {
-    final controller = _mapController;
-    final origin = _lastTripPosition;
-    final target = _routeTargetForCurrentStatus();
-    if (controller == null || origin == null) return;
-    final originLatLng = LatLng(origin.latitude, origin.longitude);
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final viewKey = target == null
-        ? 'self_${_canonicalRouteState}'
-        : '${_canonicalRouteState}_${target.latitude.toStringAsFixed(5)}_${target.longitude.toStringAsFixed(5)}';
-    if (!force &&
-        viewKey == _lastCameraViewKey &&
-        now - _lastCameraSyncAtMs < 2500) {
-      return;
-    }
-    _lastCameraSyncAtMs = now;
-    _lastCameraViewKey = viewKey;
-    if (target == null) {
-      controller.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: originLatLng,
-            zoom: _internalNavigationActive ? 17.2 : 15.8,
-            tilt: _internalNavigationActive ? 52 : 0,
-            bearing: _internalNavigationActive && !origin.heading.isNaN
-                ? origin.heading
-                : 0,
-          ),
-        ),
-      );
-      return;
-    }
-    controller.animateCamera(
-      CameraUpdate.newLatLngBounds(
-        LatLngBounds(
-          southwest: LatLng(
-            min(originLatLng.latitude, target.latitude),
-            min(originLatLng.longitude, target.longitude),
-          ),
-          northeast: LatLng(
-            max(originLatLng.latitude, target.latitude),
-            max(originLatLng.longitude, target.longitude),
-          ),
-        ),
-        _internalNavigationActive ? 136 : 88,
-      ),
-    );
-  }
-
   String _shortLocation(String v) {
     final s = v.trim();
     if (s.isEmpty) return s;
     return s.split(',').first.trim();
   }
 
-  int? _parseEventAtMs(dynamic value) {
-    final raw = value?.toString();
-    if (raw == null || raw.isEmpty) return null;
-    return DateTime.tryParse(raw)?.millisecondsSinceEpoch;
-  }
-
-  int _statusRank(String status) {
-    switch (_canonicalizeRouteState(status)) {
-      case 'accepted':
-      case 'driver_assigned':
-      case 'heading_to_pickup':
-        return 1;
-      case 'arrived':
-      case 'waiting':
-      case 'otp_pending':
-        return 2;
-      case 'otp_verified':
-      case 'heading_to_destination':
-      case 'in_progress':
-      case 'on_the_way':
-        return 3;
-      case 'payment_pending':
-      case 'completed':
-      case 'cancelled':
-        return 4;
-      default:
-        return 0;
-    }
-  }
-
-  void _bindSocketLifecycle() {
-    _socketConnSub = _socket.onConnectionChanged.listen((connected) {
-      if (!mounted) return;
-      if (connected) {
-        final tid = _tripId;
-        if (tid.isNotEmpty) {
-          _socket.setActiveTrip(tid);
-        }
-        _syncTripState();
-      }
-    });
-
-    _tripStatusSub = _socket.onTripStatus.listen((data) {
-      _applyRealtimeTripPayload(data, shouldSyncServer: true);
-    });
-    _tripRecoveredSub = _socket.onTripRecovered.listen((data) {
-      _applyRealtimeTripPayload(data, shouldSyncServer: true);
-    });
-  }
-
-  void _applyRealtimeTripPayload(
-    Map<String, dynamic> payload, {
-    bool shouldSyncServer = false,
-  }) {
-    if (!mounted) return;
-    final nextStateVersion = payload['stateVersion']?.toString() ?? '';
-    final nextEventAt = _parseEventAtMs(payload['serverTimestamp']) ?? 0;
-    if (nextStateVersion.isNotEmpty &&
-        nextStateVersion == _lastTripStateVersion &&
-        nextEventAt <= _lastTripEventAtMs) {
-      return;
-    }
-    if (nextEventAt != 0 && nextEventAt < _lastTripEventAtMs) {
-      return;
-    }
-
-    final normalizedStatus = _resolvedTripStatus(payload, fallback: _status);
-    if (_statusRank(normalizedStatus) < _statusRank(_status)) {
-      return;
-    }
-
-    final previousStatus = _status;
-    final previousRouteState = _canonicalRouteState;
-    setState(() {
-      _mergeTripState(payload, fallbackStatus: normalizedStatus);
-    });
-    if (previousStatus != _status) {
-      _resetRouteSnapshot();
-    }
-
-    if (nextStateVersion.isNotEmpty) {
-      _lastTripStateVersion = nextStateVersion;
-    }
-    if (nextEventAt != 0) {
-      _lastTripEventAtMs = nextEventAt;
-    }
-
-    if (_trip != null &&
-        _status != 'completed' &&
-        _status != 'payment_pending' &&
-        _status != 'cancelled') {
-      ActiveRidePersistenceService.persistActiveRide(
-        Map<String, dynamic>.from(_trip!),
-        lastLat: _lastTripPosition?.latitude ?? _center.latitude,
-        lastLng: _lastTripPosition?.longitude ?? _center.longitude,
-        heading: _lastTripPosition?.heading,
-        speed: _lastTripPosition?.speed,
-        wasOnline: true,
-      );
-    }
-
-    _syncWaitingLifecycle(payload);
-    _initMapMarkers();
-    _fetchRouteForCurrentStatus();
-
-    if (_isDestinationNavigationStage &&
-        previousRouteState != 'heading_to_destination' &&
-        previousRouteState != 'in_progress' &&
-        previousRouteState != 'on_the_way') {
-      _startTripTimer();
-    }
-    if (_status == 'completed' ||
-        _status == 'payment_pending' ||
-        _status == 'cancelled') {
-      _waitingLifecycleTimer?.cancel();
-      _stopStatePoll();
-      ActiveRidePersistenceService.clearActiveRide();
-    }
-    if (shouldSyncServer && previousStatus != _status) {
-      _syncTripState();
-    }
-  }
-
-  void _syncWaitingLifecycle(Map<String, dynamic> trip) {
-    final lifecycle = trip['lifecycle'];
-    final waiting =
-        lifecycle is Map ? Map<String, dynamic>.from(lifecycle['waiting'] ?? {}) : null;
-    if (waiting == null || waiting.isEmpty) {
-      _waitingLifecycleTimer?.cancel();
-      if (mounted) {
-        setState(() {
-          _waitingActive = false;
-          _waitingElapsedSeconds = 0;
-          _waitingBillableSeconds = 0;
-          _waitingGraceSeconds = 0;
-          _waitingCharge = 0;
-          _waitingChargePerMin = 0;
-        });
-      }
-      return;
-    }
-
-    final baseElapsed = int.tryParse(waiting['elapsedSeconds']?.toString() ?? '0') ?? 0;
-    final graceSeconds =
-        int.tryParse(waiting['graceSeconds']?.toString() ?? '0') ?? 0;
-    final chargePerMin =
-        double.tryParse(waiting['waitingChargePerMin']?.toString() ?? '0') ?? 0;
-    final active = waiting['active'] == true;
-    final serverAt = _parseEventAtMs(trip['serverTimestamp']) ??
-        DateTime.now().millisecondsSinceEpoch;
-
-    void applyTick() {
-      if (!mounted) return;
-      final extraSeconds = active
-          ? ((DateTime.now().millisecondsSinceEpoch - serverAt) / 1000).floor()
-          : 0;
-      final elapsed = max(0, baseElapsed + extraSeconds);
-      final billable = max(0, elapsed - graceSeconds);
-      final charge = chargePerMin > 0
-          ? double.parse(((billable / 60) * chargePerMin).toStringAsFixed(2))
-          : 0.0;
-      setState(() {
-        _waitingActive = active;
-        _waitingElapsedSeconds = elapsed;
-        _waitingBillableSeconds = billable;
-        _waitingGraceSeconds = graceSeconds;
-        _waitingChargePerMin = chargePerMin;
-        _waitingCharge = charge;
-      });
-    }
-
-    _waitingLifecycleTimer?.cancel();
-    applyTick();
-    if (active) {
-      _waitingLifecycleTimer =
-          Timer.periodic(const Duration(seconds: 1), (_) => applyTick());
-    }
-  }
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _initVoiceGuidance();
     _pulseCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
     _socket.connect(ApiConfig.socketUrl);
+    _initVoiceGuidance();
     _trip = widget.trip;
     if (_trip != null) {
-      _status = _resolvedTripStatus(_trip);
-      _syncWaitingLifecycle(_trip!);
+      _status = _trip!['currentStatus'] ?? _trip!['status'] ?? 'accepted';
       // Register active trip so socket can rejoin room on reconnect
       final tripId = _trip!['tripId'] ?? _trip!['id'];
       if (tripId != null) _socket.setActiveTrip(tripId.toString());
-      ActiveRidePersistenceService.persistActiveRide(
-        Map<String, dynamic>.from(_trip!),
-        wasOnline: true,
-      );
-      final lat = _tripDouble(_trip, const ['pickupLat', 'pickup_lat']);
-      final lng = _tripDouble(_trip, const ['pickupLng', 'pickup_lng']);
-      if (lat != 0 && lng != 0) _center = LatLng(lat, lng);
+      final lat = double.tryParse(_trip!['pickupLat']?.toString() ?? '');
+      final lng = double.tryParse(_trip!['pickupLng']?.toString() ?? '');
+      if (lat != null && lng != null && lat != 0) _center = LatLng(lat, lng);
     }
     _startLocationUpdates();
     _startStatePoll();
     _loadCancelReasons();
     _listenForCancel();
+    _listenForTripStatus();
     CallService().init();
     _listenForIncomingCalls();
-    _bindSocketLifecycle();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initMapMarkers();
       _fetchRouteForCurrentStatus();
-      if (_isTripInMotion) {
+      if (_status == 'in_progress' || _status == 'on_the_way') {
         _startTripTimer();
       }
       _validateActiveTrip();
-      _refreshTripFromServer();
     });
-    _log(
+    print(
         '[TRIP] Screen init — tripId=${_trip?['tripId'] ?? _trip?['id']} status=$_status');
   }
 
@@ -852,7 +196,6 @@ class _TripScreenState extends State<TripScreen>
         if (serverTrip == null) {
           // Trip ended on server — pop to home
           _stopStatePoll();
-          ActiveRidePersistenceService.clearActiveRide();
           if (mounted) {
             Navigator.pushAndRemoveUntil(
                 context,
@@ -861,12 +204,11 @@ class _TripScreenState extends State<TripScreen>
           }
           return;
         }
-        final serverStatus = _resolvedTripStatus(serverTrip, fallback: _status);
-        if (serverStatus == 'completed' ||
-            serverStatus == 'payment_pending' ||
-            serverStatus == 'cancelled') {
+        final serverStatus =
+            (serverTrip['currentStatus'] ?? serverTrip['current_status'] ?? '')
+                .toString();
+        if (serverStatus == 'completed' || serverStatus == 'cancelled') {
           _stopStatePoll();
-          ActiveRidePersistenceService.clearActiveRide();
           if (mounted) {
             Navigator.pushAndRemoveUntil(
                 context,
@@ -875,10 +217,24 @@ class _TripScreenState extends State<TripScreen>
           }
           return;
         }
-        _applyRealtimeTripPayload(serverTrip);
-        return;
+        // Sync status if server differs from local (handles race conditions)
+        if (serverStatus.isNotEmpty && serverStatus != _status) {
+          final previousStatus = _status;
+          setState(() {
+            _status = serverStatus;
+            _trip = serverTrip;
+          });
+          // Route + nav triggers based on new server-authoritative status
+          _fetchRouteForCurrentStatus();
+          if ((serverStatus == 'in_progress' || serverStatus == 'on_the_way') &&
+              previousStatus != 'in_progress' &&
+              previousStatus != 'on_the_way') {
+            _startTripTimer();
+          }
+          print('[TRIP] Poll sync: $previousStatus → $serverStatus');
+        }
       }
-    } catch (_) {} // network error - keep polling
+    } catch (_) {} // network error — keep polling
   }
 
   // ── Timers ────────────────────────────────────────────────────────────────
@@ -917,6 +273,78 @@ class _TripScreenState extends State<TripScreen>
     if (m <= 0) return '--';
     if (m < 1000) return '${m.round()} m';
     return '${(m / 1000).toStringAsFixed(1)} km';
+  }
+
+  bool get _isHeadingToPickup =>
+      _status == 'accepted' || _status == 'driver_assigned';
+
+  bool get _isTripLive =>
+      _status == 'in_progress' || _status == 'on_the_way';
+
+  double _resolveCoord(List<String> keys) {
+    for (final key in keys) {
+      final value = double.tryParse(_trip?[key]?.toString() ?? '');
+      if (value != null && value != 0) return value;
+    }
+    return 0;
+  }
+
+  String _resolveTargetLabel() {
+    if (_isHeadingToPickup) {
+      return _shortLocation((_trip?['pickupShortName'] ??
+              _trip?['pickupAddress'] ??
+              _trip?['pickup_address'] ??
+              'Pickup')
+          .toString());
+    }
+    return _shortLocation((_trip?['destinationShortName'] ??
+            _trip?['destinationAddress'] ??
+            _trip?['destination_address'] ??
+            'Destination')
+        .toString());
+  }
+
+  String _resolveTargetAddress() {
+    if (_isHeadingToPickup) {
+      return (_trip?['pickupAddress'] ?? _trip?['pickup_address'] ?? '')
+          .toString();
+    }
+    return (_trip?['destinationAddress'] ?? _trip?['destination_address'] ?? '')
+        .toString();
+  }
+
+  Future<void> _focusRouteOnMap({bool showReadySnack = false}) async {
+    final tLat = _isHeadingToPickup
+        ? _resolveCoord(['pickupLat', 'pickup_lat'])
+        : _resolveCoord(['destinationLat', 'destination_lat']);
+    final tLng = _isHeadingToPickup
+        ? _resolveCoord(['pickupLng', 'pickup_lng'])
+        : _resolveCoord(['destinationLng', 'destination_lng']);
+    if (tLat == 0 || tLng == 0) return;
+
+    final origin = _lastTripPosition;
+    final fromLat = origin?.latitude ?? _center.latitude;
+    final fromLng = origin?.longitude ?? _center.longitude;
+    await _fetchRoute(fromLat, fromLng, tLat, tLng);
+
+    if (_mapController != null) {
+      final swLat = min(fromLat, tLat);
+      final swLng = min(fromLng, tLng);
+      final neLat = max(fromLat, tLat);
+      final neLng = max(fromLng, tLng);
+      await _mapController!.animateCamera(
+        CameraUpdate.newLatLngBounds(
+          LatLngBounds(
+            southwest: LatLng(swLat, swLng),
+            northeast: LatLng(neLat, neLng),
+          ),
+          84,
+        ),
+      );
+      if (showReadySnack) {
+        _showSnack('Route ready inside app for ${_resolveTargetLabel()}');
+      }
+    }
   }
 
   // ── Socket listeners ──────────────────────────────────────────────────────
@@ -981,22 +409,100 @@ class _TripScreenState extends State<TripScreen>
     });
   }
 
+  void _listenForTripStatus() {
+    _tripStatusSub = _socket.onTripStatus.listen((data) {
+      if (!mounted) return;
+      final incomingTripId = data['tripId']?.toString() ?? '';
+      final currentTripId =
+          _trip?['id']?.toString() ?? _trip?['tripId']?.toString() ?? '';
+      if (incomingTripId.isEmpty ||
+          currentTripId.isEmpty ||
+          incomingTripId != currentTripId) {
+        return;
+      }
+      final incomingStatus = data['status']?.toString() ?? '';
+      if (incomingStatus.isEmpty) return;
+      setState(() {
+        _status = incomingStatus;
+        _trip = _mergeTripState(_trip, data);
+        _loading = false;
+      });
+      if (_isTripLive) {
+        _startTripTimer();
+      }
+      _fetchRouteForCurrentStatus();
+      _announceStatusCue(incomingStatus);
+    });
+  }
+
+  Map<String, dynamic>? _mergeTripState(
+      Map<String, dynamic>? previousTrip, Map<String, dynamic>? nextTrip) {
+    if (previousTrip == null) {
+      return nextTrip == null ? null : Map<String, dynamic>.from(nextTrip);
+    }
+    if (nextTrip == null) return previousTrip;
+    final merged = Map<String, dynamic>.from(previousTrip);
+    nextTrip.forEach((key, value) {
+      final lower = key.toLowerCase();
+      final isCoord = lower.contains('lat') || lower.contains('lng');
+      final asString = value?.toString().trim() ?? '';
+      if (isCoord && (value == null || asString.isEmpty || asString == '0' || asString == '0.0')) {
+        return;
+      }
+      merged[key] = value;
+    });
+    for (final field in [
+      'id',
+      'tripId',
+      'pickupLat',
+      'pickupLng',
+      'pickup_lat',
+      'pickup_lng',
+      'destinationLat',
+      'destinationLng',
+      'destination_lat',
+      'destination_lng',
+      'pickupAddress',
+      'destinationAddress',
+    ]) {
+      merged[field] ??= previousTrip[field];
+    }
+    return merged;
+  }
+
+  Future<void> _refreshTripFromServer({bool openOtpIfArrived = false}) async {
+    final tripId = _trip?['id']?.toString() ?? _trip?['tripId']?.toString() ?? '';
+    if (tripId.isEmpty) return;
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http
+          .get(Uri.parse(ApiConfig.driverActiveTrip), headers: headers)
+          .timeout(const Duration(seconds: 6));
+      if (!mounted || res.statusCode != 200) return;
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final serverTrip = data['trip'] as Map<String, dynamic>?;
+      if (serverTrip == null) return;
+      final serverTripId =
+          serverTrip['id']?.toString() ?? serverTrip['tripId']?.toString() ?? '';
+      if (serverTripId != tripId) return;
+      final serverStatus =
+          (serverTrip['currentStatus'] ?? serverTrip['current_status'] ?? _status)
+              .toString();
+      setState(() {
+        _trip = _mergeTripState(_trip, serverTrip);
+        _status = serverStatus;
+      });
+      _fetchRouteForCurrentStatus();
+      _announceStatusCue(serverStatus);
+      if (openOtpIfArrived && _status == 'arrived') {
+        _showOtpBottomSheet();
+      }
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    if (_trip != null &&
-        _status != 'completed' &&
-        _status != 'payment_pending' &&
-        _status != 'cancelled') {
-      ActiveRidePersistenceService.persistActiveRide(
-        Map<String, dynamic>.from(_trip!),
-        lastLat: _lastTripPosition?.latitude ?? _center.latitude,
-        lastLng: _lastTripPosition?.longitude ?? _center.longitude,
-        heading: _lastTripPosition?.heading,
-        speed: _lastTripPosition?.speed,
-        wasOnline: true,
-      );
-    }
     _otpCtrl.dispose();
     _locationTimer?.cancel();
     _posStream?.cancel();
@@ -1005,12 +511,50 @@ class _TripScreenState extends State<TripScreen>
     _cancelSub?.cancel();
     _incomingCallSub?.cancel();
     _tripStatusSub?.cancel();
-    _tripRecoveredSub?.cancel();
-    _socketConnSub?.cancel();
-    _waitingLifecycleTimer?.cancel();
     _pulseCtrl.dispose();
-    _tts.stop();
+    try {
+      _tts.stop();
+    } catch (_) {}
     super.dispose();
+  }
+
+  Future<void> _initVoiceGuidance() async {
+    try {
+      await _tts.setLanguage('en-IN');
+      await _tts.setSpeechRate(0.45);
+      await _tts.setVolume(1.0);
+      await _tts.setPitch(1.0);
+    } catch (_) {}
+  }
+
+  Future<void> _speakCue(String message, {String? dedupeKey}) async {
+    final key = dedupeKey ?? message;
+    if (key == _lastVoiceCue) return;
+    _lastVoiceCue = key;
+    try {
+      await _tts.stop();
+      await _tts.speak(message);
+    } catch (_) {}
+  }
+
+  void _announceStatusCue(String status) {
+    if (!mounted) return;
+    if (status == 'accepted' || status == 'driver_assigned') {
+      _speakCue(
+        'Trip accepted. Follow the in app route to pickup.',
+        dedupeKey: 'status_pickup',
+      );
+    } else if (status == 'arrived') {
+      _speakCue(
+        'You have arrived at pickup. Ask the customer for OTP.',
+        dedupeKey: 'status_arrived',
+      );
+    } else if (status == 'in_progress' || status == 'on_the_way') {
+      _speakCue(
+        'Trip started. Follow the in app route to destination.',
+        dedupeKey: 'status_destination',
+      );
+    }
   }
 
   @override
@@ -1023,11 +567,7 @@ class _TripScreenState extends State<TripScreen>
       if (tid != null) {
         _socket.setActiveTrip(tid);
       }
-      _resetRouteSnapshot();
       _syncTripState();
-      _refreshTripFromServer(force: true);
-      _fetchRouteForCurrentStatus(force: true);
-      _maybeSyncTripCamera(force: true);
     }
   }
 
@@ -1080,7 +620,7 @@ class _TripScreenState extends State<TripScreen>
     });
   }
 
-  void _updateSelfMarker(double lat, double lng, {double heading = 0}) {
+  void _updateSelfMarker(double lat, double lng) {
     if (!mounted) return;
     setState(() {
       _markers.removeWhere((m) => m.markerId.value == 'self');
@@ -1090,8 +630,6 @@ class _TripScreenState extends State<TripScreen>
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
         infoWindow: const InfoWindow(title: 'You'),
         zIndexInt: 2,
-        rotation: heading,
-        flat: true,
       ));
     });
   }
@@ -1126,9 +664,10 @@ class _TripScreenState extends State<TripScreen>
     );
   }
 
-  Future<Position?> _resolveTripLocation({Position? fallback}) async {
+  Future<Position?> _resolveTripLocation() async {
+    Position? fallback;
     try {
-      fallback ??= await Geolocator.getLastKnownPosition();
+      fallback = await Geolocator.getLastKnownPosition();
     } catch (_) {}
 
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -1174,7 +713,7 @@ class _TripScreenState extends State<TripScreen>
     }
   }
 
-  Future<void> _fetchRouteForCurrentStatus({bool force = false}) async {
+  Future<void> _fetchRouteForCurrentStatus() async {
     final t = _trip;
     if (t == null) return;
     // Use best available GPS origin: prefer real GPS > last cached > map center
@@ -1182,23 +721,33 @@ class _TripScreenState extends State<TripScreen>
     final myLat = origin?.latitude ?? _center.latitude;
     final myLng = origin?.longitude ?? _center.longitude;
 
-    final target = _routeTargetForCurrentStatus();
-    final destLat = target?.latitude ?? 0;
-    final destLng = target?.longitude ?? 0;
+    final toPickup = _status == 'accepted' || _status == 'driver_assigned';
+
+    double destLat, destLng;
+    if (toPickup) {
+      destLat = double.tryParse(t['pickupLat']?.toString() ??
+              t['pickup_lat']?.toString() ??
+              '') ??
+          0;
+      destLng = double.tryParse(t['pickupLng']?.toString() ??
+              t['pickup_lng']?.toString() ??
+              '') ??
+          0;
+    } else {
+      destLat = double.tryParse(t['destinationLat']?.toString() ??
+              t['destination_lat']?.toString() ??
+              '') ??
+          0;
+      destLng = double.tryParse(t['destinationLng']?.toString() ??
+              t['destination_lng']?.toString() ??
+              '') ??
+          0;
+    }
     if (destLat == 0 || destLng == 0) {
-      if (mounted) {
-        setState(() => _routeIssue = 'Navigation target unavailable for current trip stage.');
-      }
-      _log('[ROUTE] Skipping fetch — no valid destination coords (status=$_status)');
+      print('[ROUTE] Skipping fetch — no valid destination coords (status=$_status)');
       return;
     }
-    _log('[ROUTE] Fetching route from ($myLat,$myLng) → ($destLat,$destLng) [status=$_status]');
-    final originLatLng = LatLng(myLat, myLng);
-    if (!_shouldRefreshRouteSnapshot(originLatLng, force: force)) {
-      _maybeSyncTripCamera();
-      return;
-    }
-    _lastRouteRefreshAtMs = DateTime.now().millisecondsSinceEpoch;
+    print('[ROUTE] Fetching route from ($myLat,$myLng) → ($destLat,$destLng) [status=$_status]');
     await _fetchRoute(myLat, myLng, destLat, destLng);
   }
 
@@ -1224,7 +773,6 @@ class _TripScreenState extends State<TripScreen>
         final distKm = (data['totalDistanceKm'] as num?)?.toDouble() ?? 0.0;
         final durMin =
             (data['totalDurationMinutes'] as num?)?.toDouble() ?? 0.0;
-        final voiceSteps = _voiceStepsFromResponse(data['steps']);
         if (overviewPolyline != null && mounted) {
           final pts = _decodePolyline(overviewPolyline);
           setState(() {
@@ -1238,39 +786,13 @@ class _TripScreenState extends State<TripScreen>
             ));
             _distanceToTargetM = distKm * 1000;
             _etaSec = (durMin * 60).round();
-            _routeIssue = null;
-            _routeVoiceSteps = voiceSteps;
-            _lastSpokenVoiceStep = -1;
-            _lastVoiceAnnouncement = '';
           });
-          _lastRouteOriginLatLng = LatLng(fromLat, fromLng);
-          _lastRouteKey = _routeKeyForTarget(LatLng(toLat, toLng));
-          _maybeSyncTripCamera(force: true);
-          _maybeSpeakRouteGuidance(force: true);
-        } else if (mounted) {
-          setState(() => _routeIssue = 'Navigation route is not available yet. Pull to refresh trip details.');
         }
-      } else if (mounted) {
-        setState(() => _routeIssue = 'Route service failed to return directions. Check network and retry navigation.');
       }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _routeIssue = 'Could not load live route. Check network and retry.');
-      }
-    }
+    } catch (_) {}
   }
 
   // ── Location updates ──────────────────────────────────────────────────────
-
-  String? _arrivedPreflightError(Position? latestPos) {
-    return TripNavigationController.validateArrivedPreflight(
-      trip: _trip,
-      driverLocation: latestPos == null
-          ? null
-          : LatLng(latestPos.latitude, latestPos.longitude),
-      geofenceMeters: _arrivedGeofenceMeters,
-    );
-  }
 
   Future<void> _startLocationUpdates() async {
     _locationTimer?.cancel();
@@ -1287,11 +809,7 @@ class _TripScreenState extends State<TripScreen>
     if (mounted) {
       setState(
           () => _center = LatLng(initialPos.latitude, initialPos.longitude));
-      _updateSelfMarker(
-        initialPos.latitude,
-        initialPos.longitude,
-        heading: initialPos.heading.isNaN ? 0 : initialPos.heading,
-      );
+      _updateSelfMarker(initialPos.latitude, initialPos.longitude);
       // Now that we have real GPS, re-fetch route with accurate origin
       _fetchRouteForCurrentStatus();
     }
@@ -1307,8 +825,8 @@ class _TripScreenState extends State<TripScreen>
         accuracy: LocationAccuracy.high,
         distanceFilter: 5,
         intervalDuration: Duration(seconds: 3),
-        foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationText: 'JAGO pilot is sharing your live trip location',
+        foregroundNotificationConfig: ForegroundNotificationConfig(
+          notificationText: 'JAGO Pro Pilot is sharing your live trip location',
           notificationTitle: 'Trip tracking active',
           enableWakeLock: true,
           setOngoing: true,
@@ -1318,23 +836,9 @@ class _TripScreenState extends State<TripScreen>
       _lastTripPosition = pos;
       if (!mounted) return;
       setState(() => _center = LatLng(pos.latitude, pos.longitude));
-      _updateSelfMarker(
-        pos.latitude,
-        pos.longitude,
-        heading: pos.heading.isNaN ? 0 : pos.heading,
-      );
-      ActiveRidePersistenceService.updateTrackingHeartbeat(
-        tripId: _tripId,
-        status: _status,
-        lat: pos.latitude,
-        lng: pos.longitude,
-        heading: pos.heading.isNaN ? 0 : pos.heading,
-        speed: pos.speed,
-        wasOnline: true,
-      );
+      _mapController?.animateCamera(CameraUpdate.newLatLng(_center));
+      _updateSelfMarker(pos.latitude, pos.longitude);
       _computeDistanceAndEta(pos.latitude, pos.longitude);
-      _maybeSyncTripCamera();
-      _fetchRouteForCurrentStatus();
     }, onError: (_) {
       _showSnack('Could not read live location. Check GPS permissions.',
           error: true);
@@ -1344,20 +848,31 @@ class _TripScreenState extends State<TripScreen>
     _locationTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       final pos = _lastTripPosition;
       if (pos == null || !mounted) return;
-      await _pushDriverLocationSnapshot(pos);
+      _socket.sendLocation(
+          lat: pos.latitude, lng: pos.longitude, speed: pos.speed);
+      final locHeaders = await AuthService.getHeaders();
+      http
+          .post(Uri.parse(ApiConfig.driverLocation),
+              headers: {...locHeaders, 'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'lat': pos.latitude,
+                'lng': pos.longitude,
+                'isOnline': true
+              }))
+          .catchError((_) => http.Response('', 500));
     });
   }
 
   void _computeDistanceAndEta(double lat, double lng) {
     if (_trip == null) return;
-    final toPickup = _isPickupNavigationStage || _isPickupArrivalStage;
+    final toPickup = _status == 'accepted' || _status == 'driver_assigned';
     if (lat == 0 && lng == 0) return; // Ignore invalid coordinates
     final tLat = toPickup
-        ? _tripDouble(_trip, const ['pickupLat', 'pickup_lat'])
-        : _tripDouble(_trip, const ['destinationLat', 'destination_lat']);
+        ? double.tryParse(_trip!['pickupLat']?.toString() ?? '') ?? 0.0
+        : double.tryParse(_trip!['destinationLat']?.toString() ?? '') ?? 0.0;
     final tLng = toPickup
-        ? _tripDouble(_trip, const ['pickupLng', 'pickup_lng'])
-        : _tripDouble(_trip, const ['destinationLng', 'destination_lng']);
+        ? double.tryParse(_trip!['pickupLng']?.toString() ?? '') ?? 0.0
+        : double.tryParse(_trip!['destinationLng']?.toString() ?? '') ?? 0.0;
     if (tLat == 0 && tLng == 0) return;
     final dm = Geolocator.distanceBetween(lat, lng, tLat, tLng);
     final etaS = dm > 0 ? (dm / 8.33).round() : 0;
@@ -1366,12 +881,18 @@ class _TripScreenState extends State<TripScreen>
         _distanceToTargetM = dm;
         _etaSec = etaS;
       });
-    _maybeSpeakRouteGuidance();
     if (toPickup) {
       final near = dm <= 100;
       if (mounted && near != _nearPickup) {
         setState(() => _nearPickup = near);
         if (near) _showSnack('You are near the pickup location!');
+      }
+    } else {
+      if (dm <= 300) {
+        _speakCue(
+          'You are nearing the destination. Follow the highlighted route.',
+          dedupeKey: 'near_destination',
+        );
       }
     }
   }
@@ -1397,115 +918,125 @@ class _TripScreenState extends State<TripScreen>
   // ── Trip actions ──────────────────────────────────────────────────────────
 
   Future<void> _nextStep() async {
-    if (_canOpenOtpStage) {
+    if (_loading) return;
+    if (_status == 'arrived') {
       _showOtpBottomSheet();
+      return;
+    }
+    if (_status != 'accepted' &&
+        _status != 'driver_assigned' &&
+        _status != 'in_progress' &&
+        _status != 'on_the_way') {
+      _showSnack('Invalid trip status for this action', error: true);
       return;
     }
     setState(() => _loading = true);
     final h = await AuthService.getHeaders();
-    final tripId = _tripId;
+    final tripId = (_trip?['id'] ?? _trip?['tripId'] ?? '').toString();
+    if (tripId.isEmpty) {
+      _showSnack('Trip ID missing', error: true);
+      setState(() => _loading = false);
+      return;
+    }
 
     try {
-      if (_isPickupNavigationStage) {
-        final latestPos = await _resolveTripLocation(fallback: _lastTripPosition);
-        final arrivedError = _arrivedPreflightError(latestPos);
-        if (arrivedError != null) {
-          _showSnack(
-            arrivedError,
-            error: true,
-          );
-          setState(() => _loading = false);
-          return;
-        }
-        if (latestPos == null) {
-          setState(() => _loading = false);
-          return;
-        }
-        _lastTripPosition = latestPos;
-        if (mounted) {
-          setState(() => _center = LatLng(latestPos.latitude, latestPos.longitude));
-          _updateSelfMarker(
-            latestPos.latitude,
-            latestPos.longitude,
-            heading: latestPos.heading.isNaN ? 0 : latestPos.heading,
-          );
-        }
-        await _pushDriverLocationSnapshot(latestPos, awaitServer: true);
-        final res = await http.post(Uri.parse(ApiConfig.driverArrived),
-            headers: {...h, 'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'tripId': tripId,
-              'lat': latestPos.latitude,
-              'lng': latestPos.longitude,
-              'heading': latestPos.heading.isNaN ? 0 : latestPos.heading,
-              'speed': latestPos.speed,
-            }));
+      if (_status == 'accepted' || _status == 'driver_assigned') {
+        final body = await TripService.markArrived(tripId);
         if (!mounted) return;
-        if (res.statusCode == 200) {
-          Map<String, dynamic>? responseBody;
-          try {
-            responseBody = jsonDecode(res.body) as Map<String, dynamic>;
-          } catch (_) {}
+        if (body['success'] == true ||
+            (body['trip'] != null && body['idempotent'] == true)) {
           setState(() {
-            _mergeTripState(
-              responseBody?['trip'] is Map
-                  ? Map<String, dynamic>.from(responseBody!['trip'] as Map)
+            _status = 'arrived';
+            _trip = _mergeTripState(
+              _trip,
+              body['trip'] is Map<String, dynamic>
+                  ? body['trip'] as Map<String, dynamic>
                   : null,
-              fallbackStatus: 'arrived',
             );
             _loading = false;
           });
-          _resetRouteSnapshot();
-          await _refreshTripFromServer(force: true);
-          _initMapMarkers();
-          _log('[TRIP] Arrived at pickup');
-          _showSnack('Arrived! Ask customer for OTP.');
+          print('[TRIP] ✅ Arrived at pickup — tripId=$tripId');
+          _showSnack('Arrived! Ask customer for OTP 📍');
           // Pre-fetch route to destination while driver waits for OTP
           // (polylines will be ready the moment trip starts)
-          await _fetchRouteForCurrentStatus(force: true);
-        } else {
-          final message = _responseMessage(res, fallback: 'Could not mark arrival');
-          if (res.statusCode == 409 &&
-              message.toLowerCase().contains('state changed before arrival')) {
-            setState(() {
-              _mergeTripState(null, fallbackStatus: 'arrived');
-              _loading = false;
-            });
-            _resetRouteSnapshot();
-            await _refreshTripFromServer(force: true);
-            _initMapMarkers();
-            _showSnack('Trip already marked arrived. Enter customer OTP.');
-            _showOtpBottomSheet();
-            return;
-          }
-          if (res.statusCode >= 500) {
-            await _refreshTripFromServer(force: true);
-            if (!mounted) return;
-            if (_isPickupArrivalStage) {
-              setState(() => _loading = false);
-              _resetRouteSnapshot();
-              _initMapMarkers();
-              _showSnack('Trip reached arrived state. Enter customer OTP.');
-              _showOtpBottomSheet();
-              return;
+          await _refreshTripFromServer();
+          // Actually we want destination route pre-loaded, fetch it explicitly
+          final t = _trip;
+          if (t != null) {
+            final dLat = double.tryParse(t['destinationLat']?.toString() ?? t['destination_lat']?.toString() ?? '') ?? 0.0;
+            final dLng = double.tryParse(t['destinationLng']?.toString() ?? t['destination_lng']?.toString() ?? '') ?? 0.0;
+            final origin = _lastTripPosition;
+            final fromLat = origin?.latitude ?? _center.latitude;
+            final fromLng = origin?.longitude ?? _center.longitude;
+            if (dLat != 0 && dLng != 0) {
+              await _fetchRoute(fromLat, fromLng, dLat, dLng);
             }
           }
-          _showSnack(message, error: true);
+        } else {
+          await _refreshTripFromServer(openOtpIfArrived: true);
+          if (_status == 'arrived') {
+            setState(() => _loading = false);
+            return;
+          }
+          final code = (body['code'] ?? '').toString();
+          _showSnack(
+            _arrivedErrorMessage(
+              code,
+              body['message']?.toString() ?? body['error']?.toString(),
+            ),
+            error: code != 'TRIP_ALREADY_STARTED',
+          );
           setState(() => _loading = false);
         }
-      } else if (_isDestinationNavigationStage) {
+      } else if (_status == 'in_progress' || _status == 'on_the_way') {
         await _completeTrip(h);
         return;
       }
+    } on TimeoutException {
+      if (!mounted) return;
+      await _refreshTripFromServer(openOtpIfArrived: true);
+      if (_status != 'arrived') {
+        _showSnack(
+            'Unable to update trip status. Checking latest trip state...',
+            error: true);
+      }
+      setState(() => _loading = false);
     } catch (_) {
       if (!mounted) return;
-      _showSnack('Network error. Try again.', error: true);
+      await _refreshTripFromServer(openOtpIfArrived: true);
+      if (_status != 'arrived') {
+        _showSnack('Network issue while updating arrival. Retrying sync...',
+            error: true);
+      }
       setState(() => _loading = false);
     }
   }
 
+  String _arrivedErrorMessage(String code, String? fallback) {
+    switch (code) {
+      case 'TRIP_ALREADY_STARTED':
+        return 'Ride already started on server. Syncing latest trip state...';
+      case 'TRIP_OWNERSHIP_MISMATCH':
+        return 'This trip is already assigned to another driver.';
+      case 'TRIP_CANCELLED':
+        return 'Trip was cancelled by customer.';
+      case 'TRIP_ALREADY_COMPLETED':
+        return 'Trip already completed.';
+      case 'TRIP_NOT_FOUND':
+        return 'Trip not found. Refreshing latest trip state...';
+      case 'INVALID_TRIP_STATUS':
+        return fallback?.isNotEmpty == true
+            ? fallback!
+            : 'Trip status changed. Refreshing latest trip state...';
+      default:
+        return fallback?.isNotEmpty == true
+            ? fallback!
+            : 'Unable to update trip status. Checking latest trip state...';
+    }
+  }
+
   Future<void> _completeTrip(Map<String, String> authHeaders) async {
-    final tripId = _tripId;
+    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
     final estFare = _trip?['estimatedFare'] ?? _trip?['estimated_fare'] ?? 0.0;
     final estDist =
         _trip?['estimatedDistance'] ?? _trip?['estimated_distance'] ?? 0.0;
@@ -1520,45 +1051,23 @@ class _TripScreenState extends State<TripScreen>
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         final pricing = data['pricing'] as Map<String, dynamic>? ?? {};
-        final completionStatus =
-            data['completionStatus']?.toString() ?? 'completed';
-        final walletPendingAmount =
-            double.tryParse(data['walletPendingAmount']?.toString() ?? '0') ??
-                0.0;
-        final requiresCashPayment = data['requiresCashPayment'] == true;
         final rideFare = pricing['rideFare'] ??
             data['trip']?['actualFare'] ??
             data['trip']?['actual_fare'] ??
             estFare;
         final driverEarnings = pricing['driverWalletCredit'] ?? rideFare;
         final commission = pricing['platformDeduction'] ?? 0;
-        setState(() {
-          _mergeTripState(
-            {
-              if (data['trip'] is Map) ...Map<String, dynamic>.from(data['trip']),
-              'currentStatus': completionStatus,
-              'current_status': completionStatus,
-              'status': completionStatus,
-              'walletPendingAmount': walletPendingAmount,
-              'requiresCashPayment': requiresCashPayment,
-            },
-            fallbackStatus: completionStatus,
-          );
-        });
         _socket.setActiveTrip(null); // clear trip room tracking
         _locationTimer?.cancel();
         _posStream?.cancel();
         _stopTripTimer();
-        _log(
+        print(
             '[TRIP] ✅ Ride completed — tripId=$tripId fare=$rideFare earnings=$driverEarnings');
         if (!mounted) return;
         _showCompletionSheet(
           rideFare.toString(),
           driverEarnings: driverEarnings.toString(),
           commission: commission.toString(),
-          walletPendingAmount: walletPendingAmount,
-          requiresCashPayment: requiresCashPayment,
-          completionStatus: completionStatus,
         );
       } else {
         String errMsg = 'Error completing trip';
@@ -1570,7 +1079,7 @@ class _TripScreenState extends State<TripScreen>
         setState(() => _loading = false);
       }
     } catch (e) {
-      _log('[TRIP] ❌ complete-trip network error: $e');
+      print('[TRIP] ❌ complete-trip network error: $e');
       if (!mounted) return;
       _showSnack('Network error. Please tap "Complete" again.', error: true);
       setState(() => _loading = false);
@@ -1580,7 +1089,7 @@ class _TripScreenState extends State<TripScreen>
   Future<void> _cancelTrip(String reason) async {
     setState(() => _loading = true);
     final cancelHeaders = await AuthService.getHeaders();
-    final tripId = _tripId;
+    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
     try {
       await http.post(Uri.parse(ApiConfig.driverCancelTrip),
           headers: {...cancelHeaders, 'Content-Type': 'application/json'},
@@ -1630,12 +1139,12 @@ class _TripScreenState extends State<TripScreen>
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                    Text('Enter customer OTP',
+                    Text('Enter Customer OTP',
                         style: GoogleFonts.poppins(
                             color: JT.textPrimary,
                             fontWeight: FontWeight.w400,
                             fontSize: 18)),
-                    Text('Ask customer for OTP shown in JAGO app',
+                    Text('Ask customer for OTP shown in JAGO Pro app',
                         style: GoogleFonts.poppins(
                             color: JT.textSecondary, fontSize: 12)),
                   ])),
@@ -1726,45 +1235,36 @@ class _TripScreenState extends State<TripScreen>
   Future<void> _verifyOtpAndStart(String otp) async {
     setState(() => _loading = true);
     final h = await AuthService.getHeaders();
-    final tripId = _tripId;
+    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
     try {
       final res = await http.post(Uri.parse(ApiConfig.driverVerifyOtp),
           headers: {...h, 'Content-Type': 'application/json'},
           body: jsonEncode({'tripId': tripId, 'otp': otp}));
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final serverTrip = body['trip'] is Map<String, dynamic>
+          ? body['trip'] as Map<String, dynamic>
+          : null;
       if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final tripPayload =
-            data['trip'] is Map ? Map<String, dynamic>.from(data['trip'] as Map) : null;
-        _log('[TRIP] ✅ OTP verified — trip started — tripId=$tripId');
+        print('[TRIP] ✅ OTP verified — trip started — tripId=$tripId');
         if (!mounted) return;
         setState(() {
-          _mergeTripState(tripPayload, fallbackStatus: 'heading_to_destination');
+          _trip = _mergeTripState(_trip, serverTrip);
+          _status = (serverTrip?['currentStatus'] ??
+                  serverTrip?['current_status'] ??
+                  'on_the_way')
+              .toString();
           _loading = false;
         });
-        _resetRouteSnapshot();
-        await _refreshTripFromServer(force: true);
-        _initMapMarkers();
         _startTripTimer();
 
-        // Use real GPS position as route origin (not stale map center)
-        final origin = _lastTripPosition;
-        final fromLat = origin?.latitude ?? _center.latitude;
-        final fromLng = origin?.longitude ?? _center.longitude;
-
-        // Animate map + fetch route to destination
-        final dLat =
-            _tripDouble(_trip, const ['destinationLat', 'destination_lat']);
-        final dLng =
-            _tripDouble(_trip, const ['destinationLng', 'destination_lng']);
-        if (dLat != 0 && dLng != 0) {
-          _focusRoute(fromLat, fromLng, dLat, dLng);
-          await _fetchRouteForCurrentStatus(force: true);
-        }
-        _showSnack('Trip started! Follow the map to reach destination');
+        await _focusRouteOnMap(showReadySnack: true);
+        _announceStatusCue(_status);
+        _showSnack('Trip started! Destination route is live inside the app');
         _showPickupPhotoPrompt(tripId);
       } else {
+        final err = jsonDecode(res.body);
         if (!mounted) return;
-        _showSnack(_responseMessage(res, fallback: 'Wrong OTP'), error: true);
+        _showSnack(err['message'] ?? 'Wrong OTP', error: true);
         setState(() => _loading = false);
       }
     } catch (_) {
@@ -1886,11 +1386,7 @@ class _TripScreenState extends State<TripScreen>
   // ── Completion sheet ──────────────────────────────────────────────────────
 
   void _showCompletionSheet(String fare,
-      {String driverEarnings = '0',
-      String commission = '0',
-      double walletPendingAmount = 0,
-      bool requiresCashPayment = false,
-      String completionStatus = 'completed'}) {
+      {String driverEarnings = '0', String commission = '0'}) {
     int selectedRating = 0;
     bool ratingSubmitted = false;
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
@@ -1900,13 +1396,6 @@ class _TripScreenState extends State<TripScreen>
     final commissionAmt = double.tryParse(commission) ?? 0.0;
     final fullFare = double.tryParse(fare) ?? 0.0;
     final elapsed = _formatElapsed(_tripElapsedSec);
-    final hasPendingSettlement = completionStatus == 'payment_pending' ||
-        requiresCashPayment ||
-        walletPendingAmount > 0;
-    final title = hasPendingSettlement ? 'Ride Closed' : 'Trip Complete!';
-    final subtitle = hasPendingSettlement
-        ? 'Collect the pending amount to fully settle this ride.'
-        : 'Great job! Ride completed successfully.';
 
     showModalBottomSheet(
       context: context,
@@ -1941,13 +1430,13 @@ class _TripScreenState extends State<TripScreen>
                 child: const Icon(Icons.check_rounded,
                     color: JT.success, size: 44)),
             const SizedBox(height: 16),
-            Text(title,
+            Text('Trip Complete!',
                 style: GoogleFonts.poppins(
                     color: JT.textPrimary,
                     fontSize: 22,
                     fontWeight: FontWeight.w500)),
             const SizedBox(height: 4),
-            Text(subtitle,
+            Text('Great job! Ride completed successfully.',
                 style:
                     GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13)),
             const SizedBox(height: 20),
@@ -1992,41 +1481,7 @@ class _TripScreenState extends State<TripScreen>
             ),
             const SizedBox(height: 14),
             // Payment instruction
-            if (hasPendingSettlement)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                    color: const Color(0xFFFFFBEB),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.35))),
-                child: Row(children: [
-                  Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                          color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12)),
-                      child: const Icon(Icons.payments_rounded,
-                          color: Color(0xFFF59E0B), size: 24)),
-                  const SizedBox(width: 14),
-                  Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        Text('Collect ₹${walletPendingAmount.toStringAsFixed(0)} to settle the ride',
-                            style: GoogleFonts.poppins(
-                                color: const Color(0xFFB45309),
-                                fontWeight: FontWeight.w400,
-                                fontSize: 15)),
-                        Text(
-                            isCash
-                                ? 'Cash collection is still pending for this trip'
-                                : 'Wallet/online deduction left a pending balance to collect',
-                            style: GoogleFonts.poppins(
-                                color: JT.textSecondary, fontSize: 11)),
-                      ])),
-                ]),
-              )
-            else if (isCash)
+            if (isCash)
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -2393,97 +1848,31 @@ class _TripScreenState extends State<TripScreen>
         builder: (_) => TripChatSheet(tripId: tripId, senderName: 'Driver'));
   }
 
-  Future<void> _activateInAppNavigation({bool announce = true}) async {
-    final toPickup = _isPickupNavigationStage || _isPickupArrivalStage;
-    final tLat = toPickup ? _pickupLat() : _destinationLat();
-    final tLng = toPickup ? _pickupLng() : _destinationLng();
-    final label = toPickup
-        ? _shortLocation(_tripString(_trip,
-            const ['pickupShortName', 'pickupAddress', 'pickup_address'],
-            fallback: 'Pickup'))
-        : _shortLocation(_tripString(_trip, const [
-            'destinationShortName',
-            'destinationAddress',
-            'destination_address',
-          ], fallback: 'Destination'));
-
-    if (tLat == 0 || tLng == 0) {
-      await _refreshTripFromServer(force: true);
-    }
-    final targetLat = toPickup ? _pickupLat() : _destinationLat();
-    final targetLng = toPickup ? _pickupLng() : _destinationLng();
-    if (targetLat == 0 || targetLng == 0) {
-      _showSnack('Navigation target unavailable. Refreshing trip details failed.', error: true);
-      return;
-    }
-
-    if (mounted) {
-      setState(() => _internalNavigationActive = true);
-    }
-    await _fetchRouteForCurrentStatus(force: true);
-    _maybeSyncTripCamera(force: true);
-    if (!announce) return;
-    final nav = _navigationSnapshot;
-    if (_polylines.isNotEmpty) {
-      _showSnack(
-        '${toPickup ? 'Pickup' : 'Destination'} navigation active in app${nav.etaLabel != '--' ? ' • ETA ${nav.etaLabel}' : ''}.',
-      );
-      return;
-    }
-    _showSnack(
-      _routeIssue == null
-          ? 'Live navigation focus active in app. Route preview is still loading.'
-          : 'Map focus active in app. ${_routeIssue!}',
-      error: _routeIssue != null,
-    );
-  }
-
   Future<void> _openNavigation() async {
-    await _activateInAppNavigation();
-  }
+    final tLat = _isHeadingToPickup
+        ? _resolveCoord(['pickupLat', 'pickup_lat'])
+        : _resolveCoord(['destinationLat', 'destination_lat']);
+    final tLng = _isHeadingToPickup
+        ? _resolveCoord(['pickupLng', 'pickup_lng'])
+        : _resolveCoord(['destinationLng', 'destination_lng']);
+    final label = _resolveTargetLabel();
 
-  Future<void> _openExternalNavigation() async {
-    final toPickup = _isPickupNavigationStage || _isPickupArrivalStage;
-    final tLat = toPickup ? _pickupLat() : _destinationLat();
-    final tLng = toPickup ? _pickupLng() : _destinationLng();
-    final label = toPickup
-        ? _shortLocation(_tripString(_trip,
-            const ['pickupShortName', 'pickupAddress', 'pickup_address'],
-            fallback: 'Pickup'))
-        : _shortLocation(_tripString(_trip, const [
-            'destinationShortName',
-            'destinationAddress',
-            'destination_address',
-          ], fallback: 'Destination'));
-    if (tLat == 0 || tLng == 0) {
-      await _refreshTripFromServer(force: true);
-    }
-    final targetLat = toPickup ? _pickupLat() : _destinationLat();
-    final targetLng = toPickup ? _pickupLng() : _destinationLng();
-    if (targetLat == 0 || targetLng == 0) {
-      _showSnack('Navigation target unavailable. Refreshing trip details failed.', error: true);
-      return;
-    }
-    await _activateInAppNavigation(announce: false);
-    final candidates = <Uri>[
-      Uri.parse('google.navigation:q=$targetLat,$targetLng&mode=d'),
-      Uri.parse(
-          'https://www.google.com/maps/dir/?api=1&destination=$targetLat,$targetLng&destination_place_id=&travelmode=driving'),
-      Uri.parse('geo:$targetLat,$targetLng?q=$targetLat,$targetLng(${Uri.encodeComponent(label)})'),
-    ];
-
-    for (final uri in candidates) {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (tLat != 0 && tLng != 0) {
+      await _focusRouteOnMap(showReadySnack: true);
+      if (_mapController != null) {
         return;
       }
     }
-    _showSnack(
-      _routeIssue == null
-          ? 'No navigation app found to open this route.'
-          : 'Navigation app not available. ${_routeIssue!}',
-      error: true,
-    );
+    final uri = tLat != 0 && tLng != 0
+        ? Uri.parse(
+            'https://www.google.com/maps/dir/?api=1&destination=$tLat,$tLng&travelmode=driving')
+        : Uri.parse(
+            'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(label)}');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      _showSnack('Cannot open navigation', error: true);
+    }
   }
 
   Future<void> _triggerSos() async {
@@ -2587,8 +1976,6 @@ class _TripScreenState extends State<TripScreen>
                 _mapController = c;
                 c.animateCamera(CameraUpdate.newLatLng(_center));
                 _initMapMarkers();
-                _maybeSyncTripCamera(force: true);
-                _fetchRouteForCurrentStatus(force: true);
               },
               markers: _markers,
               polylines: _polylines,
@@ -2615,6 +2002,8 @@ class _TripScreenState extends State<TripScreen>
                     _buildTopBar(pickup, dest),
                     const SizedBox(height: 10),
                     _buildNavigationInstructions(),
+                    const SizedBox(height: 10),
+                    _buildRouteStageCard(pickup, dest),
                   ],
                 ),
               ),
@@ -2663,7 +2052,8 @@ class _TripScreenState extends State<TripScreen>
                     _buildLiveStats(),
                     const SizedBox(height: 8),
                     _buildPaymentBadge(),
-                    if (_isTripInMotion && isParcel) ...[
+                    if ((_status == 'in_progress' || _status == 'on_the_way') &&
+                        isParcel) ...[
                       const SizedBox(height: 6),
                       _buildDeliveryOtpBtn(),
                     ],
@@ -2683,10 +2073,9 @@ class _TripScreenState extends State<TripScreen>
   // ── Top bar ───────────────────────────────────────────────────────────────
 
   Widget _buildTopBar(String pickup, String dest) {
-    final nav = _navigationSnapshot;
     final stepInfo = _getStepInfo();
-    final isOnTheWay = nav.isDestinationNavigationStage;
-    final isArrived = nav.isPickupArrivalStage;
+    final isOnTheWay = _status == 'in_progress' || _status == 'on_the_way';
+    final isArrived = _status == 'arrived';
     final Color barColor = isOnTheWay
         ? JT.success
         : isArrived
@@ -2726,11 +2115,11 @@ class _TripScreenState extends State<TripScreen>
         Expanded(
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(nav.headline,
+          Text(stepInfo['label'] as String,
               style: GoogleFonts.poppins(
                   color: barColor, fontSize: 14, fontWeight: FontWeight.w400)),
           const SizedBox(height: 2),
-          Text(nav.targetLabel.isNotEmpty ? nav.targetLabel : (isOnTheWay ? dest : pickup),
+          Text(isOnTheWay ? dest : pickup,
               style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 11),
               maxLines: 1,
               overflow: TextOverflow.ellipsis),
@@ -2764,12 +2153,12 @@ class _TripScreenState extends State<TripScreen>
   }
 
   Widget _buildNavigationInstructions() {
-    final nav = _navigationSnapshot;
-    final isOnTheWay = nav.isDestinationNavigationStage;
-    if (nav.isPickupArrivalStage) return const SizedBox.shrink();
+    final isOnTheWay = _status == 'in_progress' || _status == 'on_the_way';
+    if (_status == 'arrived') return const SizedBox.shrink();
 
     final Color accentColor = isOnTheWay ? JT.success : JT.primary;
-    final String instruction = nav.headline;
+    final String instruction =
+        isOnTheWay ? 'Head to Destination' : 'Head to Pickup';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -2799,26 +2188,14 @@ class _TripScreenState extends State<TripScreen>
                       fontWeight: FontWeight.w600),
                 ),
                 Text(
-                  _routeIssue ??
-                      (nav.routeReady
-                          ? 'EST. ARRIVAL: ${nav.etaLabel}'
-                          : nav.helperLabel),
+                  _etaSec > 0
+                      ? 'EST. ARRIVAL: ${_formatEta(_etaSec)}'
+                      : 'FOLLOW THE ROUTE',
                   style: GoogleFonts.poppins(
                       color: Colors.white70,
                       fontSize: 11,
-                  fontWeight: FontWeight.w500),
+                      fontWeight: FontWeight.w500),
                 ),
-                if (_internalNavigationActive) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'In-app navigation live • Camera and route stay synced on this map',
-                    style: GoogleFonts.poppins(
-                      color: Colors.white.withValues(alpha: 0.92),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -2829,7 +2206,7 @@ class _TripScreenState extends State<TripScreen>
                   color: Colors.black.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8)),
               child: Text(
-                nav.distanceLabel,
+                _formatDist(_distanceToTargetM),
                 style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -2842,6 +2219,201 @@ class _TripScreenState extends State<TripScreen>
   }
 
   // ── Customer card ─────────────────────────────────────────────────────────
+
+  Widget _buildRouteStageCard(String pickup, String dest) {
+    final targetLabel = _resolveTargetLabel();
+    final targetAddress = _resolveTargetAddress();
+    final stageColor = _isTripLive ? JT.success : JT.primary;
+    final stageTitle = _isHeadingToPickup
+        ? 'Pickup Route Live'
+        : 'Destination Route Live';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: stageColor.withValues(alpha: 0.18)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: stageColor.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.alt_route_rounded, color: stageColor, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      stageTitle,
+                      style: GoogleFonts.poppins(
+                        color: stageColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      targetAddress.isNotEmpty ? targetAddress : targetLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        color: JT.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: stageColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  _etaSec > 0 ? _formatEta(_etaSec) : 'Live',
+                  style: GoogleFonts.poppins(
+                    color: stageColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildMiniRouteStop(
+                  icon: Icons.radio_button_checked_rounded,
+                  label: 'Pickup',
+                  value: pickup,
+                  active: _isHeadingToPickup,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildMiniRouteStop(
+                  icon: Icons.location_on_rounded,
+                  label: 'Destination',
+                  value: dest,
+                  active: !_isHeadingToPickup,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _loading ? null : _openNavigation,
+                  icon: const Icon(Icons.center_focus_strong_rounded, size: 18),
+                  label: const Text('View Route'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: stageColor,
+                    side: BorderSide(color: stageColor.withValues(alpha: 0.28)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _loading
+                      ? null
+                      : () => _focusRouteOnMap(showReadySnack: true),
+                  icon: const Icon(Icons.navigation_rounded, size: 18),
+                  label:
+                      Text(_isTripLive ? 'Focus Destination' : 'Focus Pickup'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: stageColor,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniRouteStop({
+    required IconData icon,
+    required String label,
+    required String value,
+    required bool active,
+  }) {
+    final color = active ? JT.primary : JT.textSecondary;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: active ? JT.bgSoft : JT.surfaceAlt,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: active ? JT.primary.withValues(alpha: 0.20) : JT.border,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.poppins(
+                    color: color,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    color: JT.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildCustomerCard(String name, String? phone) {
     final pm = _trip?['paymentMethod'] ?? _trip?['payment_method'] ?? 'cash';
@@ -2942,10 +2514,10 @@ class _TripScreenState extends State<TripScreen>
   }
 
   Widget _pill(String label, String value, Color color) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
           color: color.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: color.withValues(alpha: 0.15))),
       child: Column(children: [
         Text(value,
@@ -2962,51 +2534,10 @@ class _TripScreenState extends State<TripScreen>
   // ── Live stats (distance/ETA/timer) ───────────────────────────────────────
 
   Widget _buildLiveStats() {
-    final nav = _navigationSnapshot;
-    final isOnTheWay = nav.isDestinationNavigationStage;
-    final isNavigating = nav.isPickupNavigationStage;
+    final isOnTheWay = _status == 'in_progress' || _status == 'on_the_way';
+    final isNavigating = _status == 'accepted' || _status == 'driver_assigned';
 
-    if (nav.isPickupArrivalStage) {
-      return Container(
-          margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-              color: JT.warning.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: JT.warning.withValues(alpha: 0.3))),
-          child: Column(children: [
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.location_on_rounded, color: JT.warning, size: 18),
-              const SizedBox(width: 8),
-              Text('At pickup - waiting for customer',
-                  style: GoogleFonts.poppins(
-                      color: JT.warning,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500)),
-            ]),
-            if (_waitingActive || _waitingElapsedSeconds > 0) ...[
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _pill(
-                        'Wait Time', _formatElapsed(_waitingElapsedSeconds), JT.warning),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _pill(
-                        'Waiting Earned',
-                        _waitingCharge > 0
-                            ? 'Rs ${_waitingCharge.toStringAsFixed(2)}'
-                            : _waitingBillableSeconds > 0
-                                ? _formatElapsed(_waitingBillableSeconds)
-                                : '${_waitingGraceSeconds}s grace',
-                        JT.success),
-                  ),
-                ],
-              ),
-            ],
-          ]));
+    if (_status == 'arrived') {
       return Container(
           margin: const EdgeInsets.only(bottom: 6),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -3050,9 +2581,9 @@ class _TripScreenState extends State<TripScreen>
                   fontSize: 15,
                   fontWeight: FontWeight.w500)),
           const SizedBox(width: 6),
-          Text(nav.routeReady ? 'away' : 'route loading',
-              style: GoogleFonts.poppins(
-                  color: JT.textSecondary, fontSize: 12)),
+          Text('away',
+              style:
+                  GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12)),
           const SizedBox(width: 12),
           const Icon(Icons.access_time_rounded,
               size: 13, color: JT.iconInactive),
@@ -3100,7 +2631,7 @@ class _TripScreenState extends State<TripScreen>
                 .toString()) ??
         0;
 
-    if (isCash && _isTripInMotion) {
+    if (isCash && (_status == 'in_progress' || _status == 'on_the_way')) {
       return Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -3198,14 +2729,12 @@ class _TripScreenState extends State<TripScreen>
 
   Widget _buildActionBtn() {
     final step = _getStepInfo();
-    final nav = _navigationSnapshot;
-    final isOnTheWay = nav.isDestinationNavigationStage;
-    final showGlow = nav.nearPickup && nav.isPickupNavigationStage;
-    final pickupCoordsMissing =
-        nav.isPickupNavigationStage && (_pickupLat() == 0 || _pickupLng() == 0);
+    final isOnTheWay = _status == 'in_progress' || _status == 'on_the_way';
+    final showGlow =
+        _nearPickup && (_status == 'accepted' || _status == 'driver_assigned');
 
     return GestureDetector(
-      onTap: (_loading || pickupCoordsMissing) ? null : _nextStep,
+      onTap: _loading ? null : _nextStep,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         width: double.infinity,
@@ -3284,19 +2813,11 @@ class _TripScreenState extends State<TripScreen>
               _startInAppCall(n);
             }),
           _quickBtn(Icons.chat_rounded, 'Chat', JT.primary, _openTripChat),
-          _quickBtn(
-            Icons.navigation_rounded,
-            _internalNavigationActive ? 'Recenter' : 'Navigate',
-            JT.primary,
-            _openNavigation,
-          ),
-          _quickBtn(
-            Icons.map_outlined,
-            'Open Maps',
-            JT.secondary,
-            _openExternalNavigation,
-          ),
-          if (_isPickupNavigationStage || _isPickupArrivalStage)
+          _quickBtn(Icons.navigation_rounded, 'Navigate', JT.primary,
+              _openNavigation),
+          if (_status == 'accepted' ||
+              _status == 'driver_assigned' ||
+              _status == 'arrived')
             _quickBtn(
                 Icons.cancel_outlined, 'Cancel', JT.warning, _showCancelDialog),
           _quickBtn(Icons.sos_rounded, 'SOS', JT.error, _triggerSos),
@@ -3425,26 +2946,22 @@ class _TripScreenState extends State<TripScreen>
   // ── Step info ─────────────────────────────────────────────────────────────
 
   Map<String, dynamic> _getStepInfo() {
-    final nav = _navigationSnapshot;
-    switch (nav.canonicalState) {
-      case 'heading_to_pickup':
+    switch (_status) {
+      case 'driver_assigned':
+      case 'accepted':
         return {
-          'label': nav.headline,
+          'label': 'Navigating to Pickup',
           'icon': Icons.navigation_rounded,
-          'action': nav.actionLabel
+          'action': 'Arrived at Pickup'
         };
       case 'arrived':
-      case 'waiting':
-      case 'otp_pending':
         return {
           'label': 'Arrived — Enter OTP to Start',
           'icon': Icons.lock_open_rounded,
           'action': 'Enter Customer OTP'
         };
-      case 'otp_verified':
       case 'in_progress':
       case 'on_the_way':
-      case 'heading_to_destination':
         return {
           'label': 'Trip in Progress',
           'icon': Icons.speed_rounded,
@@ -3459,4 +2976,3 @@ class _TripScreenState extends State<TripScreen>
     }
   }
 }
-

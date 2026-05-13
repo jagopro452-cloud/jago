@@ -73,13 +73,23 @@ class _IncomingParcelSheetState extends State<IncomingParcelSheet>
 
   Future<void> _announceVoice() async {
     try {
+      final vehicleType = widget.parcel['vehicleCategory']?.toString() ?? '';
+      final vehicleLabel = vehicleType.contains('pickup') || vehicleType.contains('truck')
+          ? 'pickup truck'
+          : vehicleType.contains('tata') || vehicleType.contains('tempo')
+              ? 'mini truck'
+              : vehicleType.contains('auto')
+                  ? 'auto parcel'
+                  : 'parcel';
       await _tts.setLanguage('en-IN');
       await _tts.setSpeechRate(0.45);
       await _tts.setVolume(1.0);
       await _tts.setPitch(1.0);
       // Small delay so alarm starts first
       await Future.delayed(const Duration(milliseconds: 400));
-      await _tts.speak('New parcel delivery request! Accept now.');
+      await _tts.speak('New $vehicleLabel order. Parcel delivery request. Accept now.');
+      await Future.delayed(const Duration(milliseconds: 900));
+      await _tts.speak('Parcel order waiting. Accept now.');
     } catch (_) {}
   }
 

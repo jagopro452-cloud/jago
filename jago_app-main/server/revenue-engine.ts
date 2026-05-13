@@ -25,7 +25,7 @@ const rawSql = sql;
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export interface RevenueBreakdown {
-  model: "commission" | "subscription" | "hybrid" | "launch_free";
+  model: "commission" | "subscription" | "hybrid" | "free" | "launch_free";
   commission: number;       // commission amount (₹)
   platformFee: number;      // subscription flat fee (₹)
   gst: number;              // GST amount (₹)
@@ -197,6 +197,19 @@ export async function calculateRevenueBreakdown(
       commissionPct: 0, gstPct: 0,
       fareBeforeDeduction: fare, driverEarnings: (farePaise - deductPaise) / 100,
     };
+  } else if (activeModel === "free") {
+    breakdown = {
+      model: "free",
+      commission: 0,
+      platformFee: 0,
+      gst: 0,
+      insurance: 0,
+      total: 0,
+      commissionPct: 0,
+      gstPct: 0,
+      fareBeforeDeduction: fare,
+      driverEarnings: fare,
+    };
   } else if (activeModel === "commission") {
     // COMMISSION MODEL: commission% + GST-on-commission + insurance → ALL go to admin
     // Rates: per-module config takes priority over global settings
@@ -317,7 +330,12 @@ export async function settleRevenue(params: {
   const commissionOwed = parseFloat((deductAmount - gstAmount).toFixed(2)); // commission + insurance portion
 
   if (deductAmount <= 0) {
-    return { newWalletBalance: 0, isLocked: false };
+    const currentWallet = await getDriverWalletSummary(driverId);
+    return {
+      newWalletBalance: currentWallet?.walletBalance ?? 0,
+      isLocked: currentWallet?.isLocked ?? false,
+      lockReason: currentWallet?.lockReason ?? undefined,
+    };
   }
 
   const s = await loadRevenueSettings();
@@ -435,6 +453,7 @@ export async function settleRevenue(params: {
 
   // ── Admin revenue record ────────────────────────────────────────────────
   const revenueType = breakdown.model === "launch_free" ? "gst_only"
+    : breakdown.model === "free" ? "free"
     : breakdown.model === "commission" ? "commission"
     : breakdown.model === "hybrid" ? "hybrid_fee"
     : "subscription_fee";
@@ -503,6 +522,17 @@ export async function requestWithdrawal(driverId: string, amount: number, method
   if (wallet.walletBalance < amount) throw new Error("Insufficient wallet balance");
   if (amount <= 0) throw new Error("Amount must be greater than 0");
 
+  const debitR = await rawDb.execute(rawSql`
+    UPDATE users
+    SET wallet_balance = wallet_balance - ${amount}
+    WHERE id=${driverId}::uuid
+      AND wallet_balance >= ${amount}
+    RETURNING wallet_balance
+  `);
+  if (!(debitR.rows as any[]).length) {
+    throw new Error("Insufficient wallet balance");
+  }
+
   // Create withdrawal request
   const r = await rawDb.execute(rawSql`
     INSERT INTO driver_payments (driver_id, amount, payment_type, status, description)
@@ -511,13 +541,8 @@ export async function requestWithdrawal(driverId: string, amount: number, method
     RETURNING id, amount, status, created_at
   `);
 
-  // Debit wallet immediately (hold funds)
-  await rawDb.execute(rawSql`
-    UPDATE users SET wallet_balance = wallet_balance - ${amount} WHERE id=${driverId}::uuid
-  `);
-
   // Record transaction
-  const newBal = wallet.walletBalance - amount;
+  const newBal = parseFloat((debitR.rows[0] as any)?.wallet_balance ?? "0");
   await rawDb.execute(rawSql`
     INSERT INTO transactions (user_id, account, credit, debit, balance, transaction_type)
     VALUES (${driverId}::uuid, ${"Withdrawal via " + method}, 0, ${amount}, ${newBal}, 'withdrawal')
@@ -560,6 +585,7 @@ export async function getPendingWithdrawals() {
     FROM driver_payments dp
     LEFT JOIN users u ON u.id = dp.driver_id
     WHERE dp.payment_type = 'withdrawal_request'
+      AND dp.status = 'pending'
     ORDER BY dp.created_at DESC
     LIMIT 100
   `);

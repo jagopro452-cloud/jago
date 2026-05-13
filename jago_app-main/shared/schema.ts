@@ -231,6 +231,7 @@ export const blogs = pgTable("blogs", {
 export const withdrawRequests = pgTable("withdraw_requests", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id"),
+  driverPaymentId: uuid("driver_payment_id"),
   amount: numeric("amount", { precision: 23, scale: 3 }).default("0"),
   note: text("note"),
   status: varchar("status", { length: 50 }).default("pending"),

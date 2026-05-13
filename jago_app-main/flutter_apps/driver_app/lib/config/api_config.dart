@@ -1,28 +1,19 @@
 class ApiConfig {
   // Override at compile time:  --dart-define=API_BASE_URL=https://yourdomain.com
   static const String compileTimeBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
-  static const String compileTimeAppEnv = String.fromEnvironment('APP_ENV', defaultValue: '');
 
   // Production server URL
-  static const String _prodUrl = 'https://oyster-app-9e9cd.ondigitalocean.app';
-  static const String _stagingUrl = 'https://jago-staging-ljuq3.ondigitalocean.app';
+  static const String _prodUrl = 'https://jago-staging-ljuq3.ondigitalocean.app';
 
   // For Android Emulator use 10.0.2.2. For Physical Device use your PC's IP (e.g. 192.168.0.x)
   static const String _lanDevUrl = 'http://192.168.1.6:5000'; // Target specific physical IP
 
-  static bool _isProd = const bool.fromEnvironment('dart.vm.product');
-  static String get _appEnv => compileTimeAppEnv.trim().toLowerCase();
-
-  static String _normalizeUrl(String value) {
-    return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
-  }
+  static bool _isProd = true; // Production: use live DO backend
 
   static String get baseUrl {
     if (compileTimeBaseUrl.isNotEmpty) {
-      return _normalizeUrl(compileTimeBaseUrl);
-    }
-    if (_appEnv == 'staging') {
-      return _stagingUrl;
+      final u = compileTimeBaseUrl;
+      return u.endsWith('/') ? u.substring(0, u.length - 1) : u;
     }
     return _isProd ? _prodUrl : _lanDevUrl;
   }
@@ -30,14 +21,9 @@ class ApiConfig {
   static void useProduction() => _isProd = true;
   static void useDevelopment() => _isProd = false;
 
-  static String staticAsset(String relativePath) {
-    final normalizedPath = relativePath.startsWith('/') ? relativePath : '/$relativePath';
-    return '${_normalizeUrl(baseUrl)}$normalizedPath';
-  }
-
   // Set at build time: --dart-define=GOOGLE_MAPS_KEY=AIzaSy...
   // Never hardcode — key must be rotated in Google Cloud Console
-  static const String googleMapsApiKey = String.fromEnvironment('GOOGLE_MAPS_KEY', defaultValue: '');
+  static const String googleMapsApiKey = String.fromEnvironment('GOOGLE_MAPS_KEY', defaultValue: 'AIzaSyAiMVYA_ppxeT344tkcoSsjeGGMaPU26eI');
 
   // Socket.IO base URL (same server, no path)
   static String get socketUrl => baseUrl;
@@ -122,6 +108,11 @@ class ApiConfig {
   static String driverParcelAccept(String id) => '$baseUrl/api/app/driver/parcel/$id/accept';
   static String driverParcelPickupOtp(String id) => '$baseUrl/api/app/driver/parcel/$id/pickup-otp';
   static String driverParcelDropOtp(String id) => '$baseUrl/api/app/driver/parcel/$id/drop-otp';
+
+  // Outstation Pool
+  static String get driverOutstationPoolRides => '$baseUrl/api/app/driver/outstation-pool/rides';
+  static String driverOutstationPoolRide(String id) => '$baseUrl/api/app/driver/outstation-pool/rides/$id';
+  static String driverCompleteOutstationPoolRide(String id) => '$baseUrl/api/app/driver/outstation-pool/rides/$id/complete';
 
   // ── Heatmap Earnings Predictor ────────────────────────────────────────
   static String driverHeatmap({double lat = 17.38, double lng = 78.49, double radius = 10}) =>

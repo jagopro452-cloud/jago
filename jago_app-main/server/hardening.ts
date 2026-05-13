@@ -16,6 +16,7 @@ import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
 import { io } from "./socket";
 import { sendFcmNotification } from "./fcm";
+import { restartDispatchForTrip } from "./dispatch";
 // Removed legacy SMS notification logic. Only FCM and socket notifications are supported.
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -203,9 +204,26 @@ async function reassignTripToNextDriver(
   
   const trip = tripR.rows[0] as any;
   
-  // Restart dispatch with same trip
-  // (Reuse existing dispatch engine, skip the failed driver)
-  // TODO: Call startDispatch again with exclusion list
+  await rawDb.execute(rawSql`
+    UPDATE trip_requests
+    SET current_status = 'searching',
+        driver_id = NULL,
+        pickup_otp = NULL,
+        driver_accepted_at = NULL,
+        driver_arriving_at = NULL,
+        rejected_driver_ids = array_append(COALESCE(rejected_driver_ids, '{}'::uuid[]), ${failedDriverId}::uuid),
+        updated_at = NOW()
+    WHERE id = ${tripId}::uuid
+      AND current_status IN ('driver_assigned', 'accepted', 'arrived')
+  `).catch(() => {});
+  await rawDb.execute(rawSql`
+    UPDATE users
+    SET current_trip_id = NULL
+    WHERE id = ${failedDriverId}::uuid
+      AND current_trip_id = ${tripId}::uuid
+  `).catch(() => {});
+
+  await restartDispatchForTrip(tripId, [failedDriverId]);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

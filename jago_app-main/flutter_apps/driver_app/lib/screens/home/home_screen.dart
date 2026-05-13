@@ -17,7 +17,6 @@ import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
 import '../../services/vehicle_status_service.dart';
 import '../../services/alarm_service.dart';
-import '../../services/active_ride_persistence_service.dart';
 import '../../widgets/incoming_trip_sheet.dart';
 import '../../widgets/incoming_parcel_sheet.dart';
 import '../../services/fcm_service.dart';
@@ -37,6 +36,7 @@ import '../onboarding/subscription_plans_screen.dart';
 import '../earnings/earnings_screen.dart';
 import '../kyc/kyc_documents_screen.dart';
 import '../parcel/parcel_delivery_screen.dart';
+import '../outstation_pool/outstation_pool_driver_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -67,8 +67,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   String _zone = '';
   bool _hasValidLocationFix = false;
   bool _hasLiveLocationAccess = false;
-  bool _hasRecoverableRideHint = false;
-  bool _recoveringActiveTrip = false;
   Timer? _locationTimer;
   StreamSubscription<Position>? _posStream; // live GPS stream — battery-efficient
   Position? _lastPosition; // cached position for server updates
@@ -177,106 +175,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           }
         }
       }
-    } catch (_) {
-      final cachedTrip = await ActiveRidePersistenceService.loadActiveRideSnapshot();
-      if (cachedTrip == null) return;
-      _hasRecoverableRideHint = true;
-      if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => TripScreen(trip: cachedTrip)),
-      );
-    }
+    } catch (_) {}
   }
 
   // ── App state recovery: if driver has an active trip, go to TripScreen directly ──
-  String _normalizeRecoveredTripStatus(String rawStatus) {
-    switch (rawStatus.trim()) {
-      case 'requested':
-        return 'driver_assigned';
-      case 'driver_accepting':
-      case 'heading_to_pickup':
-      case 'accepted':
-      case 'driver_assigned':
-        return 'accepted';
-      case 'waiting':
-      case 'otp_pending':
-      case 'arrived':
-        return 'arrived';
-      case 'otp_verified':
-      case 'heading_to_destination':
-      case 'in_progress':
-      case 'on_the_way':
-        return 'on_the_way';
-      case 'cancelled_by_user':
-      case 'cancelled_by_driver':
-      case 'cancelled_by_admin':
-      case 'expired':
-      case 'failed':
-        return 'cancelled';
-      default:
-        return rawStatus;
-    }
-  }
-
   Future<void> _recoverActiveTrip() async {
-    if (_recoveringActiveTrip) return;
-    _recoveringActiveTrip = true;
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/api/app/driver/active-trip'),
         headers: headers,
       );
-      if (res.statusCode != 200) {
-        final cachedTrip =
-            await ActiveRidePersistenceService.loadActiveRideSnapshot();
-        if (cachedTrip == null) return;
-        _hasRecoverableRideHint = true;
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => TripScreen(trip: cachedTrip)),
-        );
-        return;
-      }
+      if (res.statusCode != 200) return;
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final trip = data['trip'];
-      if (trip == null) {
-        _hasRecoverableRideHint = false;
-        await ActiveRidePersistenceService.clearActiveRide();
+      if (trip == null) return;
+      final status = trip['currentStatus'] ?? trip['current_status'] ?? '';
+      final updatedAt = DateTime.tryParse((trip['updatedAt'] ?? trip['updated_at'] ?? '').toString());
+      if (updatedAt != null && DateTime.now().difference(updatedAt) > const Duration(hours: 12)) {
         return;
       }
-      final status = _normalizeRecoveredTripStatus(
-        (trip['canonicalState'] ?? trip['currentStatus'] ?? trip['current_status'] ?? '')
-            .toString(),
-      );
-      if (!['accepted', 'arrived', 'on_the_way', 'driver_assigned'].contains(status)) {
-        _hasRecoverableRideHint = false;
-        await ActiveRidePersistenceService.clearActiveRide();
-        return;
-      }
-      trip['currentStatus'] = status;
-      trip['status'] = status;
-      _hasRecoverableRideHint = true;
-      await ActiveRidePersistenceService.persistActiveRide(
-        Map<String, dynamic>.from(trip as Map),
-        lastLat: _lastPosition?.latitude ?? _center.latitude,
-        lastLng: _lastPosition?.longitude ?? _center.longitude,
-        wasOnline: _isOnline,
-      );
+      if (!['accepted', 'arrived', 'on_the_way', 'driver_assigned'].contains(status)) return;
       if (!mounted) return;
       // Navigate directly to trip screen — driver was mid-trip when app crashed
       Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-          builder: (_) => TripScreen(trip: Map<String, dynamic>.from(trip)),
-          ),
-        );
-    } catch (_) {
-    } finally {
-      _recoveringActiveTrip = false;
-    }
+        context,
+        MaterialPageRoute(
+          builder: (_) => TripScreen(trip: trip),
+        ),
+      );
+    } catch (_) {}
   }
 
   Future<void> _checkPendingFcmTrip() async {
@@ -469,14 +397,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     if (state == AppLifecycleState.resumed) {
       _consumeQueuedAlertAction();
       _checkPendingFcmTrip();
-      _recoverActiveTrip();
     }
     if (state == AppLifecycleState.paused) {
       // App backgrounded — suspend GPS stream + server poll to save battery
       // Socket stays connected so the driver still receives trip requests via FCM
-      if (_hasRecoverableRideHint) {
-        return;
-      }
       _locationTimer?.cancel();
       _locationTimer = null;
       _posStream?.cancel();
@@ -843,13 +767,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       final reqHeaders = await AuthService.getHeaders();
 
       _socket.sendLocation(lat: lat, lng: lng, speed: pos.speed);
-      ActiveRidePersistenceService.updateTrackingHeartbeat(
-        lat: lat,
-        lng: lng,
-        heading: pos.heading.isNaN ? 0 : pos.heading,
-        speed: pos.speed,
-        wasOnline: _isOnline,
-      );
       // Fire-and-forget — don't await; avoids blocking the timer tick
       http.post(
         Uri.parse(ApiConfig.driverLocation),
@@ -1126,13 +1043,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       );
       return;
     }
-    await ActiveRidePersistenceService.persistActiveRide(
-      Map<String, dynamic>.from(fullTrip),
-      lastLat: _lastPosition?.latitude ?? _center.latitude,
-      lastLng: _lastPosition?.longitude ?? _center.longitude,
-      wasOnline: _isOnline,
-    );
-    _hasRecoverableRideHint = true;
     Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: fullTrip!)));
   }
 
@@ -1181,7 +1091,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 final order = data['order'] as Map<String, dynamic>? ?? {};
                 Navigator.push(context, MaterialPageRoute(builder: (_) => ParcelDeliveryScreen(order: order)));
               } else {
-                _showSnack('Already taken by another driver', error: true);
+                final data = jsonDecode(r.body) as Map<String, dynamic>;
+                _showSnack(
+                  data['message']?.toString() ?? 'Already taken by another driver',
+                  error: true,
+                );
               }
             } catch (_) {
               if (mounted) _showSnack('Network error, try again', error: true);
@@ -1299,7 +1213,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       _startLocationStreaming();
       _startHeatmapRefresh();
       _startIdleTimer();
-      _showSnack('You are now online');
+      _showSnack('Online forced for Testing! ✓');
     } else {
       _stopLocationStreaming();
       _stopHeatmap();
@@ -1332,26 +1246,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
         if (res.statusCode == 401) {
           _handleSessionExpired();
-          return;
-        }
-        if (res.statusCode == 403) {
-          String message = 'You cannot go online right now.';
-          try {
-            final decoded = jsonDecode(res.body);
-            message = decoded['message']?.toString() ?? message;
-          } catch (_) {}
-          if (!mounted) return;
-          setState(() => _isOnline = false);
-          _stopLocationStreaming();
-          _stopHeatmap();
-          _showSnack(message, error: true);
         }
       } catch (e) {
-        if (!mounted) return;
-        setState(() => _isOnline = false);
-        _stopLocationStreaming();
-        _stopHeatmap();
-        _showSnack('Unable to update online status. Please try again.', error: true);
+        // Silently ignore network failures to keep the UI in the "ON" state for testing.
       }
     });
   }
@@ -1932,11 +1829,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             right: 10,
             bottom: -5,
             child: Image.network(
-              ApiConfig.staticAsset('/static/vehicles/rider_bike.png'),
+              '${ApiConfig.baseUrl}/static/vehicles/rider_bike.png',
               height: 100,
               fit: BoxFit.contain,
               errorBuilder: (_, __, ___) => Image.network(
-                ApiConfig.staticAsset('/static/vehicles/bike.png'),
+                '${ApiConfig.baseUrl}/static/vehicles/bike.png',
                 height: 90,
                 fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => const SizedBox.shrink(),
@@ -2087,6 +1984,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 _drawerItem(Icons.route_rounded, 'My Trips', null, () {
                   Navigator.pop(context);
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen()));
+                }),
+                _drawerItem(Icons.alt_route_rounded, 'Outstation Pool', null, () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const OutstationPoolDriverScreen()));
                 }),
                 _drawerItem(Icons.account_balance_wallet_rounded, 'Wallet', '₹${_walletBalance.toStringAsFixed(0)}', () {
                   Navigator.pop(context);

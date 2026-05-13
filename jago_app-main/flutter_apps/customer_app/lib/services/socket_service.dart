@@ -11,14 +11,10 @@ class SocketService {
   IO.Socket? _socket;
   bool _isConnected = false;
   String? _activeTripId; // stored so we can re-join trip room after server restart
-  int _lastTripEventAtMs = 0;
-  int _lastDriverLocationAtMs = 0;
-  String _lastTripStateVersion = '';
 
   final _driverAssignedController = StreamController<Map<String, dynamic>>.broadcast();
   final _driverLocationController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripStatusController = StreamController<Map<String, dynamic>>.broadcast();
-  final _tripRecoveredController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripCancelledController = StreamController<Map<String, dynamic>>.broadcast();
   final _connectedController = StreamController<bool>.broadcast();
   final _chatMessageController = StreamController<Map<String, dynamic>>.broadcast();
@@ -26,7 +22,6 @@ class SocketService {
   final _noDriversController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripSearchingController = StreamController<Map<String, dynamic>>.broadcast();
   final _paymentPendingController = StreamController<Map<String, dynamic>>.broadcast();
-  final _nearbyDriversController = StreamController<Map<String, dynamic>>.broadcast();
   final _callIncomingController = StreamController<Map<String, dynamic>>.broadcast();
   final _callOfferController = StreamController<Map<String, dynamic>>.broadcast();
   final _callAnswerController = StreamController<Map<String, dynamic>>.broadcast();
@@ -34,20 +29,9 @@ class SocketService {
   final _callEndedController = StreamController<Map<String, dynamic>>.broadcast();
   final _callRejectedController = StreamController<Map<String, dynamic>>.broadcast();
 
-  void _log(String message) {
-    assert(() {
-      // Keep detailed socket diagnostics in debug builds only.
-      // Release builds should stay quiet and lightweight.
-      // ignore: avoid_print
-      print(message);
-      return true;
-    }());
-  }
-
   Stream<Map<String, dynamic>> get onDriverAssigned => _driverAssignedController.stream;
   Stream<Map<String, dynamic>> get onDriverLocation => _driverLocationController.stream;
   Stream<Map<String, dynamic>> get onTripStatus => _tripStatusController.stream;
-  Stream<Map<String, dynamic>> get onTripRecovered => _tripRecoveredController.stream;
   Stream<Map<String, dynamic>> get onTripCancelled => _tripCancelledController.stream;
   Stream<bool> get onConnectionChanged => _connectedController.stream;
   Stream<Map<String, dynamic>> get onChatMessage => _chatMessageController.stream;
@@ -55,7 +39,6 @@ class SocketService {
   Stream<Map<String, dynamic>> get onNoDrivers => _noDriversController.stream;
   Stream<Map<String, dynamic>> get onTripSearching => _tripSearchingController.stream;
   Stream<Map<String, dynamic>> get onPaymentPending => _paymentPendingController.stream;
-  Stream<Map<String, dynamic>> get onNearbyDrivers => _nearbyDriversController.stream;
   Stream<Map<String, dynamic>> get onCallIncoming => _callIncomingController.stream;
   Stream<Map<String, dynamic>> get onCallOffer => _callOfferController.stream;
   Stream<Map<String, dynamic>> get onCallAnswer => _callAnswerController.stream;
@@ -134,11 +117,11 @@ class SocketService {
     _socket!.on('error', (err) {
       _isConnected = false;
       _connectedController.add(false);
-      _log('[SOCKET] Error: $err');
+      print('[SOCKET] Error: $err');
     });
 
     _socket!.on('auth:error', (data) {
-      _log('[SOCKET] Auth error: $data');
+      print('[SOCKET] Auth error: $data');
       // If we get an auth error, we might need to refresh the token or re-login.
       // For now, let's just push a disconnected state.
       _isConnected = false;
@@ -179,44 +162,16 @@ class SocketService {
 
     // Real-time driver GPS location
     _socket!.on('driver:location_update', (data) {
-      final payload = Map<String, dynamic>.from(data);
-      final eventAt = _parseTimestampMs(payload['serverTimestamp']);
-      if (eventAt != null && eventAt < _lastDriverLocationAtMs) {
-        return;
-      }
-      if (eventAt != null) {
-        _lastDriverLocationAtMs = eventAt;
-      }
-      _driverLocationController.add(payload);
+      _driverLocationController.add(Map<String, dynamic>.from(data));
     });
 
     // Trip status changed (arrived, in_progress, completed, cancelled)
     _socket!.on('trip:status_update', (data) {
       if (data == null) return;
       try {
-        final payload = Map<String, dynamic>.from(data);
-        if (_isStaleTripPayload(payload)) {
-          return;
-        }
-        _rememberTripPayload(payload);
-        _tripStatusController.add(payload);
+        _tripStatusController.add(Map<String, dynamic>.from(data));
       } catch (e) {
-        _log('[SOCKET] Error processing trip:status_update: $e');
-      }
-    });
-
-    _socket!.on('trip:recovered', (data) {
-      if (data == null) return;
-      try {
-        final payload = Map<String, dynamic>.from(data);
-        if (_isStaleTripPayload(payload)) {
-          return;
-        }
-        _rememberTripPayload(payload);
-        _tripRecoveredController.add(payload);
-        _tripStatusController.add(payload);
-      } catch (e) {
-        _log('[SOCKET] Error processing trip:recovered: $e');
+        print('[SOCKET] Error processing trip:status_update: $e');
       }
     });
 
@@ -224,6 +179,7 @@ class SocketService {
     _socket!.on('trip:completed', (data) {
       if (data == null) return;
       try {
+        _activeTripId = null;
         final payload = Map<String, dynamic>.from(data);
         _tripStatusController.add({
           'tripId': payload['tripId'],
@@ -236,12 +192,13 @@ class SocketService {
           if (payload['userPayable'] != null) 'userPayable': payload['userPayable'],
         });
       } catch (e) {
-        _log('[SOCKET] Error processing trip:completed: $e');
+        print('[SOCKET] Error processing trip:completed: $e');
       }
     });
 
     // Trip cancelled by driver
     _socket!.on('trip:cancelled', (data) {
+      _activeTripId = null;
       _tripCancelledController.add(Map<String, dynamic>.from(data));
     });
 
@@ -257,6 +214,7 @@ class SocketService {
 
     // No drivers found — trip auto-cancelled
     _socket!.on('trip:no_drivers', (data) {
+      _activeTripId = null;
       _noDriversController.add(Map<String, dynamic>.from(data));
       // Also push as cancelled so tracking screen updates
       _tripCancelledController.add({...Map<String, dynamic>.from(data), 'reason': 'no_drivers'});
@@ -269,6 +227,7 @@ class SocketService {
 
     // Trip timeout — server gave up finding driver
     _socket!.on('trip:timeout', (data) {
+      _activeTripId = null;
       _noDriversController.add(Map<String, dynamic>.from(data));
       _tripCancelledController.add({...Map<String, dynamic>.from(data), 'reason': 'timeout'});
     });
@@ -276,15 +235,6 @@ class SocketService {
     // Payment not yet verified — trip held at payment_pending
     _socket!.on('trip:payment_pending', (data) {
       _paymentPendingController.add(Map<String, dynamic>.from(data));
-    });
-
-    _socket!.on('nearby:drivers_snapshot', (data) {
-      if (data == null) return;
-      try {
-        _nearbyDriversController.add(Map<String, dynamic>.from(data));
-      } catch (e) {
-        _log('[SOCKET] Error processing nearby:drivers_snapshot: $e');
-      }
     });
 
     // ── WebRTC Call Signaling ──────────────────────────────────
@@ -326,32 +276,6 @@ class SocketService {
       _socket!.emit('customer:leave_trip', {'tripId': tripId});
     }
     _activeTripId = null;
-  }
-
-  void subscribeNearbyDrivers({
-    required double lat,
-    required double lng,
-    String serviceType = 'ride',
-    String? vehicleCategoryId,
-    String? parcelVehicleCategory,
-    int seats = 1,
-    double radiusKm = 5,
-  }) {
-    if (_socket == null || !(_isConnected || _socket!.connected)) return;
-    _socket!.emit('customer:subscribe_nearby', {
-      'lat': lat,
-      'lng': lng,
-      'serviceType': serviceType,
-      'vehicleCategoryId': vehicleCategoryId,
-      'parcelVehicleCategory': parcelVehicleCategory,
-      'seats': seats,
-      'radiusKm': radiusKm,
-    });
-  }
-
-  void unsubscribeNearbyDrivers() {
-    if (_socket == null || !(_isConnected || _socket!.connected)) return;
-    _socket!.emit('customer:unsubscribe_nearby');
   }
 
   // Cancel a trip
@@ -419,7 +343,6 @@ class SocketService {
     _driverAssignedController.close();
     _driverLocationController.close();
     _tripStatusController.close();
-    _tripRecoveredController.close();
     _tripCancelledController.close();
     _connectedController.close();
     _chatMessageController.close();
@@ -427,45 +350,11 @@ class SocketService {
     _noDriversController.close();
     _tripSearchingController.close();
     _paymentPendingController.close();
-    _nearbyDriversController.close();
     _callIncomingController.close();
     _callOfferController.close();
     _callAnswerController.close();
     _callIceController.close();
     _callEndedController.close();
     _callRejectedController.close();
-  }
-
-  int? _parseTimestampMs(dynamic value) {
-    final raw = value?.toString();
-    if (raw == null || raw.isEmpty) return null;
-    return DateTime.tryParse(raw)?.millisecondsSinceEpoch;
-  }
-
-  bool _isStaleTripPayload(Map<String, dynamic> payload) {
-    final nextStateVersion = payload['stateVersion']?.toString() ?? '';
-    final nextEventAt = _parseTimestampMs(payload['serverTimestamp']);
-    if (nextStateVersion.isNotEmpty &&
-        _lastTripStateVersion.isNotEmpty &&
-        nextStateVersion == _lastTripStateVersion &&
-        nextEventAt != null &&
-        nextEventAt <= _lastTripEventAtMs) {
-      return true;
-    }
-    if (nextEventAt != null && nextEventAt < _lastTripEventAtMs) {
-      return true;
-    }
-    return false;
-  }
-
-  void _rememberTripPayload(Map<String, dynamic> payload) {
-    final nextStateVersion = payload['stateVersion']?.toString() ?? '';
-    final nextEventAt = _parseTimestampMs(payload['serverTimestamp']);
-    if (nextStateVersion.isNotEmpty) {
-      _lastTripStateVersion = nextStateVersion;
-    }
-    if (nextEventAt != null) {
-      _lastTripEventAtMs = nextEventAt;
-    }
   }
 }
