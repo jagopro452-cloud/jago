@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -17,9 +18,12 @@ class WalletScreen extends StatefulWidget {
 class _WalletScreenState extends State<WalletScreen>
     with SingleTickerProviderStateMixin {
   Map<String, dynamic>? _wallet;
+  List<Map<String, dynamic>> _paymentMethods = [];
   bool _loading = true;
   bool _paying = false;
+  bool _paymentMethodsLoading = true;
   double? _pendingAmount;
+  String? _walletError;
   late AnimationController _headerCtrl;
   late Animation<double> _headerFade;
 
@@ -37,6 +41,7 @@ class _WalletScreenState extends State<WalletScreen>
     _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
     _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
     _fetchWallet();
+    _fetchPaymentMethods();
   }
 
   @override
@@ -46,23 +51,69 @@ class _WalletScreenState extends State<WalletScreen>
     super.dispose();
   }
 
-  Future<void> _fetchWallet() async {
-    final headers = await AuthService.getHeaders();
+  Map<String, dynamic> _safeBody(String raw) {
     try {
+      return jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<void> _fetchWallet() async {
+    try {
+      final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse(ApiConfig.wallet), headers: headers);
       if (res.statusCode == 200) {
         if (mounted) {
           setState(() {
             _wallet = jsonDecode(res.body);
             _loading = false;
+            _walletError = null;
           });
           _headerCtrl.forward();
         }
       } else {
-        if (mounted) setState(() => _loading = false);
+        final body = _safeBody(res.body);
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _walletError =
+                body['message']?.toString() ?? 'Could not load wallet right now.';
+          });
+        }
       }
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _walletError =
+              'Could not load wallet right now. Check your connection and retry.';
+        });
+      }
+    }
+  }
+
+  Future<void> _fetchPaymentMethods() async {
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http
+          .get(Uri.parse(ApiConfig.paymentMethods), headers: headers)
+          .timeout(const Duration(seconds: 12));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final body = _safeBody(res.body);
+        final methods = (body['methods'] as List<dynamic>? ?? [])
+            .map((entry) => Map<String, dynamic>.from(entry as Map))
+            .toList();
+        setState(() {
+          _paymentMethods = methods;
+          _paymentMethodsLoading = false;
+        });
+      } else {
+        setState(() => _paymentMethodsLoading = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _paymentMethodsLoading = false);
     }
   }
 
@@ -77,12 +128,14 @@ class _WalletScreenState extends State<WalletScreen>
         headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({'amount': amount}),
       );
-      final body = jsonDecode(res.body);
+      final body = _safeBody(res.body);
       if (res.statusCode != 200) {
         if (mounted) setState(() => _paying = false);
         if (mounted) {
           _showSnack(
-              body['message'] ?? 'Failed to create order', JT.primaryDark);
+              body['message']?.toString() ??
+                  'Could not start wallet payment right now.',
+              JT.primaryDark);
         }
         return;
       }
@@ -104,8 +157,11 @@ class _WalletScreenState extends State<WalletScreen>
       _razorpay.open(options);
     } catch (e) {
       if (mounted) setState(() => _paying = false);
-      if (mounted)
-        _showSnack('Network error. Please try again.', JT.primaryDark);
+      if (mounted) {
+        _showSnack(
+            'Could not reach the payment gateway. Check your connection and try again.',
+            JT.primaryDark);
+      }
     }
   }
 
@@ -123,7 +179,7 @@ class _WalletScreenState extends State<WalletScreen>
           'amount': _pendingAmount,
         }),
       );
-      final body = jsonDecode(res.body);
+      final body = _safeBody(res.body);
       if (mounted) {
         if (res.statusCode == 200) {
           _showSnack(
@@ -133,7 +189,9 @@ class _WalletScreenState extends State<WalletScreen>
           _fetchWallet();
         } else {
           _showSnack(
-              body['message'] ?? 'Payment verification failed', JT.primaryDark);
+              body['message']?.toString() ??
+                  'Payment completed but verification failed.',
+              JT.primaryDark);
         }
       }
     } catch (_) {
@@ -372,6 +430,8 @@ class _WalletScreenState extends State<WalletScreen>
       backgroundColor: lavenderBg,
       body: _loading
           ? _buildWalletSkeleton()
+          : _walletError != null
+              ? _buildErrorState()
           : CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
@@ -417,6 +477,70 @@ class _WalletScreenState extends State<WalletScreen>
                 const SliverToBoxAdapter(child: SizedBox(height: 40)),
               ],
             ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: const Color(0xFFF1F5F9), width: 1.5),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.wifi_off_rounded,
+                  size: 46, color: Color(0xFFEF4444)),
+              const SizedBox(height: 16),
+              Text(
+                'Wallet Unavailable',
+                style: GoogleFonts.poppins(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF111827),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _walletError ?? 'Could not load wallet right now.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: const Color(0xFF6B7280),
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _loading = true;
+                    _walletError = null;
+                  });
+                  _fetchWallet();
+                  _fetchPaymentMethods();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF7C3AED),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: Text(
+                  'Retry',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -580,13 +704,71 @@ class _WalletScreenState extends State<WalletScreen>
     );
   }
 
+  IconData _methodIcon(String key) {
+    switch (key) {
+      case 'upi':
+        return Icons.qr_code_scanner_rounded;
+      case 'cards':
+        return Icons.credit_card_rounded;
+      case 'net_banking':
+        return Icons.account_balance_rounded;
+      case 'wallet':
+      case 'wallets':
+        return Icons.account_balance_wallet_rounded;
+      case 'cash':
+        return Icons.payments_rounded;
+      default:
+        return Icons.wallet_rounded;
+    }
+  }
+
+  Color _methodColor(String key) {
+    switch (key) {
+      case 'upi':
+        return const Color(0xFF2D8CFF);
+      case 'cards':
+        return const Color(0xFF7C3AED);
+      case 'net_banking':
+        return const Color(0xFF10B981);
+      case 'wallet':
+      case 'wallets':
+        return const Color(0xFFF59E0B);
+      case 'cash':
+        return const Color(0xFFEF4444);
+      default:
+        return const Color(0xFF6B7280);
+    }
+  }
+
   Widget _buildPaymentMethods() {
-    final methods = [
-      { 'label': 'UPI', 'icon': Icons.qr_code_scanner_rounded, 'color': const Color(0xFF2D8CFF), 'bg': const Color(0xFFF0F7FF) },
-      { 'label': 'Cards', 'icon': Icons.credit_card_rounded, 'color': const Color(0xFF7C3AED), 'bg': const Color(0xFFF5F3FF) },
-      { 'label': 'Net Banking', 'icon': Icons.account_balance_rounded, 'color': const Color(0xFF10B981), 'bg': const Color(0xFFECFDF5) },
-      { 'label': 'Wallets', 'icon': Icons.account_balance_wallet_rounded, 'color': const Color(0xFFF59E0B), 'bg': const Color(0xFFFFFBEB) },
-    ];
+    final methods = _paymentMethods.isNotEmpty
+        ? _paymentMethods
+        : [
+            {
+              'id': 'upi',
+              'name': 'UPI',
+              'isActive': true,
+              'providers': const [],
+            },
+            {
+              'id': 'cards',
+              'name': 'Cards',
+              'isActive': true,
+              'providers': const [],
+            },
+            {
+              'id': 'net_banking',
+              'name': 'Net Banking',
+              'isActive': true,
+              'providers': const [],
+            },
+            {
+              'id': 'wallets',
+              'name': 'Wallet Apps',
+              'isActive': true,
+              'providers': const [],
+            },
+          ];
 
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 24, 20, 0),
@@ -609,23 +791,122 @@ class _WalletScreenState extends State<WalletScreen>
           Text('Powered by Razorpay — all methods accepted',
               style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFF9CA3AF))),
           const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: methods.map((m) {
-              return Column(
-                children: [
-                  Container(
-                    width: 64, height: 64,
-                    decoration: BoxDecoration(
-                      color: m['bg'] as Color,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Icon(m['icon'] as IconData, color: m['color'] as Color, size: 26),
+          if (_paymentMethodsLoading) ...[
+            Row(
+              children: [
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Refreshing live payment methods...',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: const Color(0xFF6B7280),
                   ),
-                  const SizedBox(height: 10),
-                  Text(m['label'] as String,
-                      style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w500, color: const Color(0xFF374151))),
-                ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: methods.map((m) {
+              final key = (m['id'] ?? m['icon'] ?? '').toString().toLowerCase();
+              final title = (m['name'] ?? m['label'] ?? 'Method').toString();
+              final active = (m['isActive'] ?? true) == true;
+              final color = _methodColor(key);
+              final providers = (m['providers'] as List?)
+                      ?.map((e) => (e as Map)['name']?.toString() ?? '')
+                      .where((e) => e.isNotEmpty)
+                      .take(3)
+                      .join(' • ') ??
+                  '';
+              return AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: active ? 1 : 0.48,
+                child: Container(
+                  width: 148,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: color.withValues(alpha: 0.18),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Icon(
+                              _methodIcon(key),
+                              color: color,
+                              size: 22,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (!active)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF3F4F6),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                'Off',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF6B7280),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF1F2937),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        providers.isNotEmpty
+                            ? providers
+                            : active
+                                ? 'Available now'
+                                : 'Temporarily unavailable',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          height: 1.35,
+                          color: const Color(0xFF6B7280),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               );
             }).toList(),
           ),

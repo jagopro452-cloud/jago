@@ -59,6 +59,8 @@ class ApiConfig {
   static String get walletRecharge => '$baseUrl/api/app/customer/wallet/recharge';
   static String get walletCreateOrder => '$baseUrl/api/app/customer/wallet/create-order';
   static String get walletVerifyPayment => '$baseUrl/api/app/customer/wallet/verify-payment';
+  static String get paymentMethods => '$baseUrl/api/app/payment-methods';
+  static String get upiProviders => '$baseUrl/api/app/upi-providers';
   static String get savedPlaces => '$baseUrl/api/app/customer/saved-places';
   static String get applyCoupon => '$baseUrl/api/app/customer/apply-coupon';
   static String get rideCreateOrder => '$baseUrl/api/app/customer/ride/create-order';

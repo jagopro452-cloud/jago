@@ -138,7 +138,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       _getLocation();
       _fetchDashboard();
       _fetchLaunchBenefit();
-      _fetchEligibleServices();
+      await _fetchEligibleServices();
       _fetchRevenueConfig();
       _watchVehicleAvailability();
       _connectSocket();
@@ -2078,7 +2078,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
               padding: const EdgeInsets.symmetric(horizontal: 12),
               physics: const BouncingScrollPhysics(),
               children: [
-                _drawerItem(Icons.grid_view_rounded, 'Dashboard', null, () {}),
+                _drawerItem(Icons.grid_view_rounded, 'Dashboard', null, () {
+                  Navigator.pop(context);
+                  setState(() => _navIndex = 0);
+                }),
                 _drawerItem(Icons.local_atm_rounded, 'Earnings', '₹${_earningsToday.toStringAsFixed(0)}', () {
                   Navigator.pop(context);
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const EarningsScreen()));
@@ -3147,7 +3150,6 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
     final isLocked = _wallet?['isLocked'] ?? false;
     final history = (_wallet?['history'] ?? _wallet?['transactions'] ?? []) as List;
     final withdrawals = (_wallet?['withdrawRequests'] ?? []) as List;
-
     return Container(
       color: const Color(0xFFF8FAFC),
       child: Column(
@@ -3302,6 +3304,66 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
   }
 
   Widget _walletStat(String label, String value, Color color, IconData icon) {
+    final history = (_wallet?['history'] ?? _wallet?['transactions'] ?? []) as List;
+    final withdrawals = (_wallet?['withdrawRequests'] ?? []) as List;
+    final now = DateTime.now();
+
+    double amountOf(dynamic raw) =>
+        double.tryParse(raw?.toString() ?? '0') ?? 0;
+
+    DateTime? parseDate(dynamic raw) =>
+        raw == null ? null : DateTime.tryParse(raw.toString());
+
+    bool isSameMonth(DateTime? date) =>
+        date != null && date.year == now.year && date.month == now.month;
+
+    String resolvedValue = value;
+    if (label == 'This Month') {
+      final total = history.fold<double>(0, (sum, item) {
+        final tx = Map<String, dynamic>.from(item as Map);
+        final date = parseDate(tx['created_at'] ?? tx['date'] ?? tx['createdAt']);
+        if (!isSameMonth(date)) return sum;
+        final type = (tx['transaction_type'] ?? tx['type'] ?? '')
+            .toString()
+            .toLowerCase();
+        final account = (tx['account'] ?? tx['description'] ?? '')
+            .toString()
+            .toLowerCase();
+        final credit = amountOf(tx['credit']);
+        final amount = amountOf(tx['amount']);
+        final earned = credit > 0 ? credit : amount;
+        final looksLikeEarning = type.contains('trip_earning') ||
+            account.contains('trip earning') ||
+            account.contains('ride earning');
+        return looksLikeEarning ? sum + earned : sum;
+      });
+      resolvedValue = '₹${total.toStringAsFixed(0)}';
+    } else if (label == 'Total Recharge') {
+      final total = history.fold<double>(0, (sum, item) {
+        final tx = Map<String, dynamic>.from(item as Map);
+        final type = (tx['transaction_type'] ?? tx['type'] ?? '')
+            .toString()
+            .toLowerCase();
+        final account = (tx['account'] ?? tx['description'] ?? '')
+            .toString()
+            .toLowerCase();
+        final credit = amountOf(tx['credit']);
+        final amount = amountOf(tx['amount']);
+        final recharge = credit > 0 ? credit : amount;
+        final looksLikeRecharge = type.contains('wallet_recharge') ||
+            account.contains('wallet recharge') ||
+            account.contains('recharge');
+        return looksLikeRecharge ? sum + recharge : sum;
+      });
+      resolvedValue = '₹${total.toStringAsFixed(0)}';
+    } else if (label == 'Withdrawn') {
+      final total = withdrawals.fold<double>(0, (sum, item) {
+        final row = Map<String, dynamic>.from(item as Map);
+        return sum + amountOf(row['amount']);
+      });
+      resolvedValue = '₹${total.toStringAsFixed(0)}';
+    }
+
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
@@ -3314,7 +3376,7 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
         child: Column(children: [
           Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 14)),
           const SizedBox(height: 6),
-          Text(value, style: GoogleFonts.poppins(color: const Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.w700)),
+          Text(resolvedValue, style: GoogleFonts.poppins(color: const Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.w700)),
           Text(label, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: const Color(0xFF94A3B8), fontSize: 9.5, fontWeight: FontWeight.w500)),
         ]),
       ),

@@ -46,7 +46,7 @@ export function Logo({
   const imgElement = (
     <img
       src={src}
-      alt="JAGO Pro"
+      alt="JAGO"
       className={`jl-logo-img ${className}`}
       style={{
         height: actualHeight,

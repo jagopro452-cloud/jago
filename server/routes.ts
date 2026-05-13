@@ -8679,18 +8679,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               io.to(`user:${trip.customerId}`).emit("trip:searching", { tripId, message: "Looking for another pilot..." });
             }
             const rejectExcludeList = (trip.rejectedDriverIds || []).filter(Boolean);
-            findBestDrivers(
-              Number(trip.pickupLat), Number(trip.pickupLng),
+            notifyNearbyDriversNewTrip(
+              tripId,
+              Number(trip.pickupLat),
+              Number(trip.pickupLng),
               trip.vehicleCategoryId || undefined,
-              rejectExcludeList, 3
-            ).then(nextBestDrivers => {
-              for (const nd of nextBestDrivers) {
-                io.to(`user:${nd.driverId}`).emit("trip:new_request", {
-                  tripId, pickupAddress: trip.pickupAddress || "Pickup",
-                  estimatedFare: Number(trip.estimatedFare) || 0,
-                });
-              }
-            }).catch(dbCatch("db"));
+              rejectExcludeList,
+            ).catch(dbCatch("db"));
           }
         });
       }
@@ -17455,12 +17450,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   // -- Payment Methods: list supported -------------------------------------
   app.get("/api/app/payment-methods", authApp, async (_req, res) => {
     try {
+      const { keyId, keySecret } = await getRazorpayKeys();
+      const gatewayConfigured = !!(keyId && keySecret);
       res.json({
         methods: [
-          { id: "cash", name: "Cash", icon: "??", isActive: true },
-          { id: "upi", name: "UPI", icon: "??", isActive: true, providers: SUPPORTED_UPI_PROVIDERS.filter(p => p.isActive) },
-          { id: "wallet", name: "Wallet", icon: "??", isActive: true },
+          { id: "cash", name: "Cash", icon: "cash", isActive: true, channel: "offline" },
+          { id: "wallet", name: "Wallet", icon: "wallet", isActive: true, channel: "balance" },
+          { id: "upi", name: "UPI", icon: "upi", isActive: gatewayConfigured, channel: "gateway", providers: SUPPORTED_UPI_PROVIDERS.filter(p => p.isActive) },
+          { id: "cards", name: "Cards", icon: "card", isActive: gatewayConfigured, channel: "gateway" },
+          { id: "net_banking", name: "Net Banking", icon: "bank", isActive: gatewayConfigured, channel: "gateway" },
+          { id: "wallets", name: "Wallet Apps", icon: "apps", isActive: gatewayConfigured, channel: "gateway" },
         ],
+        gatewayConfigured,
       });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });

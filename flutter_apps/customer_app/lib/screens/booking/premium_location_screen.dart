@@ -48,17 +48,13 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
   double _dropLat = 0;
   double _dropLng = 0;
 
-  List<dynamic> _searchResults = [];
+  List<Map<String, dynamic>> _searchResults = [];
   Timer? _debounce;
   bool _isTyping = false;
   bool _detectingLocation = false;
-
-  final String _googleKey = ApiConfig.googleMapsApiKey;
-  
-  final Map<String, String> _googleHeaders = {
-    "X-Android-Package": "com.mindwhile.jago_customer",
-    "X-Android-Cert": "6268DAF7E1B51A673E0F9B4D9570997B8B1ED1B2",
-  };
+  bool _searching = false;
+  int _searchRequestId = 0;
+  String _sessionToken = '';
 
   @override
   void initState() {
@@ -67,6 +63,7 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
     _pickupLat = widget.pickupLat;
     _pickupLng = widget.pickupLng;
     _pickupCtrl.text = _pickup;
+    _sessionToken = DateTime.now().millisecondsSinceEpoch.toString();
     _pickupFocus.addListener(_onFocusChange);
     _dropFocus.addListener(_onFocusChange);
   }
@@ -116,13 +113,19 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
 
   Future<String> _reverseGeocode(double lat, double lng) async {
     try {
-      final url = "https://maps.googleapis.com/maps/api/geocode/json?latlng=$lat,$lng&key=$_googleKey";
-      final res = await http.get(Uri.parse(url), headers: _googleHeaders);
+      Map<String, String> headers = const {};
+      try {
+        headers = await AuthService.getHeaders();
+      } catch (_) {}
+      final res = await http.get(
+        Uri.parse('${ApiConfig.reverseGeocode}?lat=$lat&lng=$lng'),
+        headers: headers,
+      );
       if (res.statusCode == 200) {
         final data = json.decode(res.body);
-        if (data['results'] != null && data['results'].isNotEmpty) {
-          return data['results'][0]['formatted_address'] ?? "Selected Location";
-        }
+        return data['formattedAddress']?.toString() ??
+            data['address']?.toString() ??
+            "Selected Location";
       }
     } catch (_) {}
     return "Selected Location";
@@ -133,51 +136,121 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
     _debounce = Timer(const Duration(milliseconds: 400), () async {
       final q = query.trim();
       if (q.length < 2) {
-        if (mounted) setState(() => _searchResults = []);
+        if (mounted) {
+          setState(() {
+            _searchResults = [];
+            _searching = false;
+          });
+        }
         return;
       }
+      final requestId = ++_searchRequestId;
+      if (mounted) setState(() => _searching = true);
       try {
-        String bias = "";
+        Map<String, String> headers = const {};
+        try {
+          headers = await AuthService.getHeaders();
+        } catch (_) {}
+
+        final qp = StringBuffer('?query=${Uri.encodeComponent(q)}');
+        qp.write('&sessionToken=$_sessionToken');
         if (_pickupLat != 0 && _pickupLng != 0) {
-          bias = "&locationbias=circle:10000@$_pickupLat,$_pickupLng";
+          qp.write('&lat=$_pickupLat&lng=$_pickupLng');
         }
-        final url = "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${Uri.encodeComponent(q)}&key=$_googleKey$bias";
-        final res = await http.get(Uri.parse(url), headers: _googleHeaders);
+
+        final res = await http
+            .get(Uri.parse('${ApiConfig.placesAutocomplete}$qp'), headers: headers)
+            .timeout(const Duration(seconds: 6));
+        if (!mounted || requestId != _searchRequestId) return;
+
         if (res.statusCode == 200) {
-          final data = json.decode(res.body);
-          if (mounted) setState(() => _searchResults = data['predictions'] ?? []);
+          final data = json.decode(res.body) as Map<String, dynamic>;
+          final predictions = (data['predictions'] as List<dynamic>? ?? [])
+              .map((p) => <String, dynamic>{
+                    'name': p['fullDescription']?.toString() ??
+                        p['description']?.toString() ??
+                        p['mainText']?.toString() ??
+                        '',
+                    'mainText': p['mainText']?.toString() ?? '',
+                    'secondaryText': p['secondaryText']?.toString() ?? '',
+                    'placeId': p['placeId']?.toString() ??
+                        p['place_id']?.toString() ??
+                        '',
+                    'lat': (p['lat'] as num?)?.toDouble() ?? 0.0,
+                    'lng': (p['lng'] as num?)?.toDouble() ?? 0.0,
+                  })
+              .where((p) => (p['name'] as String).isNotEmpty)
+              .toList();
+          setState(() => _searchResults = predictions);
+        } else {
+          setState(() => _searchResults = []);
         }
-      } catch (_) {}
+      } catch (_) {
+        if (mounted && requestId == _searchRequestId) {
+          setState(() => _searchResults = []);
+        }
+      } finally {
+        if (mounted && requestId == _searchRequestId) {
+          setState(() => _searching = false);
+        }
+      }
     });
   }
 
-  Future<void> _selectPlace(dynamic p) async {
-    final placeId = p['place_id'];
-    if (placeId == null) return;
+  Future<void> _selectPlace(Map<String, dynamic> p) async {
+    final placeId = p['placeId']?.toString() ?? p['place_id']?.toString() ?? '';
+    if (placeId.isEmpty) return;
     try {
-      final url = "https://maps.googleapis.com/maps/api/place/details/json?place_id=$placeId&key=$_googleKey";
-      final res = await http.get(Uri.parse(url), headers: _googleHeaders);
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        if (data['result'] != null) {
-          final loc = data['result']['geometry']['location'];
-          final double lat = (loc['lat'] as num).toDouble();
-          final double lng = (loc['lng'] as num).toDouble();
-          String addr = data['result']['formatted_address'] ?? p['description'] ?? "Selected Location";
-          if (mounted) {
-            setState(() {
-              if (_pickupFocus.hasFocus) {
-                _pickup = addr; _pickupLat = lat; _pickupLng = lng; _pickupCtrl.text = addr;
-              } else {
-                _drop = addr; _dropLat = lat; _dropLng = lng; _dropCtrl.text = addr;
-              }
-              _searchResults = [];
-              FocusScope.of(context).unfocus();
-            });
+      double lat = (p['lat'] as num?)?.toDouble() ?? 0.0;
+      double lng = (p['lng'] as num?)?.toDouble() ?? 0.0;
+      String addr = p['name']?.toString() ?? 'Selected Location';
+
+      if (lat == 0.0 || lng == 0.0) {
+        Map<String, String> headers = const {};
+        try {
+          headers = await AuthService.getHeaders();
+        } catch (_) {}
+        final res = await http.get(
+          Uri.parse(
+              '${ApiConfig.placeDetails}?placeId=${Uri.encodeComponent(placeId)}&sessionToken=$_sessionToken'),
+          headers: headers,
+        ).timeout(const Duration(seconds: 6));
+        _sessionToken = DateTime.now().millisecondsSinceEpoch.toString();
+        if (res.statusCode != 200) return;
+        final data = json.decode(res.body) as Map<String, dynamic>;
+        lat = (data['lat'] as num?)?.toDouble() ?? 0.0;
+        lng = (data['lng'] as num?)?.toDouble() ?? 0.0;
+        addr = data['address']?.toString() ?? addr;
+      }
+
+      if (lat == 0.0 || lng == 0.0) return;
+      if (mounted) {
+        setState(() {
+          if (_pickupFocus.hasFocus) {
+            _pickup = addr;
+            _pickupLat = lat;
+            _pickupLng = lng;
+            _pickupCtrl.text = addr;
+          } else {
+            _drop = addr;
+            _dropLat = lat;
+            _dropLng = lng;
+            _dropCtrl.text = addr;
           }
-        }
+          _searchResults = [];
+          _searching = false;
+          FocusScope.of(context).unfocus();
+        });
       }
     } catch (_) {}
+  }
+
+  void _clearResults() {
+    if (!mounted) return;
+    setState(() {
+      _searchResults = [];
+      _searching = false;
+    });
   }
 
   void _swapLocations() {
@@ -279,13 +352,17 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(title.toUpperCase(), style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w800, color: isPickup ? const Color(0xFF6366F1) : const Color(0xFFF43F5E), letterSpacing: 1.2)), if (trailing != null) trailing]),
       const SizedBox(height: 10),
-      TextField(controller: controller, focusNode: focusNode, onChanged: onChanged, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: const Color(0xFF1E293B)), decoration: InputDecoration(hintText: loading ? "Locating you..." : hint, hintStyle: GoogleFonts.poppins(fontSize: 14, color: const Color(0xFFCBD5E1), fontWeight: FontWeight.w400), prefixIcon: Icon(icon, color: iconColor, size: 22), filled: true, fillColor: const Color(0xFFF8FAFC), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFF1F5F9), width: 1.5)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: iconColor, width: 2)), suffixIcon: loading ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF6366F1)))) : null)),
+      TextField(controller: controller, focusNode: focusNode, onChanged: onChanged, style: GoogleFonts.poppins(fontSize: 15, fontWeight: FontWeight.w600, color: const Color(0xFF1E293B)), decoration: InputDecoration(hintText: loading ? "Locating you..." : hint, hintStyle: GoogleFonts.poppins(fontSize: 14, color: const Color(0xFFCBD5E1), fontWeight: FontWeight.w400), prefixIcon: Icon(icon, color: iconColor, size: 22), filled: true, fillColor: const Color(0xFFF8FAFC), contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFF1F5F9), width: 1.5)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: iconColor, width: 2)), suffixIcon: loading || (_searching && focusNode.hasFocus) ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF6366F1)))) : (controller.text.isNotEmpty && focusNode.hasFocus ? IconButton(onPressed: () { controller.clear(); _clearResults(); }, icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8), size: 18)) : null))),
     ]);
   }
 
   Widget _buildSearchResults() {
     return Container(constraints: const BoxConstraints(maxHeight: 250), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFF1F5F9))), child: ListView.separated(shrinkWrap: true, padding: EdgeInsets.zero, itemCount: _searchResults.length, separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFF1F5F9)), itemBuilder: (context, index) {
-      final p = _searchResults[index]; final mainText = p['structured_formatting']?['main_text'] ?? p['description']?.split(',').first ?? 'Location'; final secText = p['structured_formatting']?['secondary_text'] ?? '';
+      final p = _searchResults[index];
+      final mainText = p['mainText']?.toString().isNotEmpty == true
+          ? p['mainText'].toString()
+          : (p['name']?.toString().split(',').first ?? 'Location');
+      final secText = p['secondaryText']?.toString() ?? '';
       return ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), leading: const Icon(Icons.location_on_rounded, color: Color(0xFF6366F1), size: 20), title: Text(mainText, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF1E293B))), subtitle: secText.isNotEmpty ? Text(secText, style: GoogleFonts.poppins(fontSize: 11, color: const Color(0xFF64748B)), maxLines: 1, overflow: TextOverflow.ellipsis) : null, onTap: () => _selectPlace(p));
     }));
   }

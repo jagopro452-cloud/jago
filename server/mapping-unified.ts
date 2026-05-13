@@ -271,10 +271,7 @@ export async function getPlaceDetails(
     let url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=geometry,formatted_address,name,address_components&key=${apiKey}`;
     if (sessionToken) url += `&sessiontoken=${encodeURIComponent(sessionToken)}`;
 
-    const r = await fetch(url, { 
-      signal: controller.signal,
-      headers: { 'Referer': 'https://jagopro.org' }
-    });
+    const r = await fetch(url, { signal: controller.signal });
     if (!r.ok) return null;
     const data = await r.json() as any;
 
@@ -371,10 +368,7 @@ export async function reverseGeocode(
     const timeout = setTimeout(() => controller.abort(), 4000);
     try {
       const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`;
-      const r = await fetch(url, { 
-      signal: controller.signal,
-      headers: { 'Referer': 'https://jagopro.org' }
-    });
+      const r = await fetch(url, { signal: controller.signal });
       if (r.ok) {
         const data = await r.json() as any;
         if (data?.status === "OK" && data.results?.length) {
