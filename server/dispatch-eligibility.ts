@@ -308,13 +308,9 @@ export async function isDriverEligibleForDispatch(
     return { eligible: false, reason: "intercity_not_enabled", profile };
   }
   if (requirements.city) {
-    const driverCity = normalizeVehicleKey(profile.city || "");
     const eligibleCities = profile.cityEligibility;
     if (eligibleCities.length && !eligibleCities.includes(normalizeVehicleKey(requirements.city))) {
       return { eligible: false, reason: "city_not_enabled", profile };
-    }
-    if (!eligibleCities.length && driverCity && driverCity !== normalizeVehicleKey(requirements.city)) {
-      return { eligible: false, reason: "city_mismatch", profile };
     }
   }
   return { eligible: true, profile };

@@ -55,6 +55,7 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
   bool _searching = false;
   int _searchRequestId = 0;
   String _sessionToken = '';
+  String? _zoneWarning;
 
   @override
   void initState() {
@@ -66,6 +67,20 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
     _sessionToken = DateTime.now().millisecondsSinceEpoch.toString();
     _pickupFocus.addListener(_onFocusChange);
     _dropFocus.addListener(_onFocusChange);
+  }
+
+  void _showNotServingMessage([String? zoneName]) {
+    final zoneSuffix = (zoneName != null && zoneName.trim().isNotEmpty)
+        ? ' in $zoneName'
+        : '';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'We are not serving this area$zoneSuffix yet. Please choose a location inside your active service zone.',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -140,6 +155,7 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
           setState(() {
             _searchResults = [];
             _searching = false;
+            _zoneWarning = null;
           });
         }
         return;
@@ -165,6 +181,7 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
 
         if (res.statusCode == 200) {
           final data = json.decode(res.body) as Map<String, dynamic>;
+          final zoneWarning = data['message']?.toString();
           final predictions = (data['predictions'] as List<dynamic>? ?? [])
               .map((p) => <String, dynamic>{
                     'name': p['fullDescription']?.toString() ??
@@ -178,16 +195,28 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
                         '',
                     'lat': (p['lat'] as num?)?.toDouble() ?? 0.0,
                     'lng': (p['lng'] as num?)?.toDouble() ?? 0.0,
+                    'serviceable': p['serviceable'] == true,
+                    'zoneName': p['zoneName']?.toString() ?? '',
+                    'notServing': p['notServing'] == true,
                   })
               .where((p) => (p['name'] as String).isNotEmpty)
               .toList();
-          setState(() => _searchResults = predictions);
+          setState(() {
+            _zoneWarning = zoneWarning;
+            _searchResults = predictions;
+          });
         } else {
-          setState(() => _searchResults = []);
+          setState(() {
+            _zoneWarning = null;
+            _searchResults = [];
+          });
         }
       } catch (_) {
         if (mounted && requestId == _searchRequestId) {
-          setState(() => _searchResults = []);
+          setState(() {
+            _zoneWarning = null;
+            _searchResults = [];
+          });
         }
       } finally {
         if (mounted && requestId == _searchRequestId) {
@@ -204,6 +233,8 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
       double lat = (p['lat'] as num?)?.toDouble() ?? 0.0;
       double lng = (p['lng'] as num?)?.toDouble() ?? 0.0;
       String addr = p['name']?.toString() ?? 'Selected Location';
+      final alreadyServiceable = p['serviceable'] == true;
+      final predictionZoneName = p['zoneName']?.toString();
 
       if (lat == 0.0 || lng == 0.0) {
         Map<String, String> headers = const {};
@@ -221,9 +252,20 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
         lat = (data['lat'] as num?)?.toDouble() ?? 0.0;
         lng = (data['lng'] as num?)?.toDouble() ?? 0.0;
         addr = data['address']?.toString() ?? addr;
+        if (data['serviceable'] != true) {
+          if (mounted) _showNotServingMessage(data['zoneName']?.toString());
+          return;
+        }
       }
 
       if (lat == 0.0 || lng == 0.0) return;
+      if (!alreadyServiceable &&
+          (placeId.startsWith('local:') || placeId.startsWith('nom:'))) {
+        if (p['serviceable'] != true) {
+          if (mounted) _showNotServingMessage(predictionZoneName);
+          return;
+        }
+      }
       if (mounted) {
         setState(() {
           if (_pickupFocus.hasFocus) {
@@ -334,6 +376,27 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
           if (res != null) { setState(() { _drop = res.address; _dropLat = res.lat; _dropLng = res.lng; _dropCtrl.text = _drop; }); }
         });
       }, child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFF43F5E).withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: Text("Map", style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFFF43F5E)))))),
+      if (_isTyping && _zoneWarning != null && _searchResults.every((item) => item['serviceable'] != true))
+        Padding(
+          padding: const EdgeInsets.only(top: 14),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF43F5E).withOpacity(0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFF43F5E).withOpacity(0.18)),
+            ),
+            child: Text(
+              _zoneWarning!,
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFFBE123C),
+              ),
+            ),
+          ),
+        ),
       AnimatedSwitcher(duration: const Duration(milliseconds: 300), child: (_isTyping && _searchResults.isNotEmpty) ? Column(children: [const SizedBox(height: 16), _buildSearchResults()]) : const SizedBox.shrink()),
       const SizedBox(height: 32),
       GestureDetector(onTap: _proceedToBooking, child: AnimatedContainer(duration: const Duration(milliseconds: 200), height: 58, decoration: BoxDecoration(gradient: (_pickupLat != 0 && _dropLat != 0) ? const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF4338CA), Color(0xFFF43F5E)]) : const LinearGradient(colors: [Color(0xFFE2E8F0), Color(0xFFE2E8F0)]), borderRadius: BorderRadius.circular(20), boxShadow: (_pickupLat != 0 && _dropLat != 0) ? [BoxShadow(color: const Color(0xFF6366F1).withOpacity(0.3), blurRadius: 25, offset: const Offset(0, 10))] : []), child: Center(child: Text((_pickup.isEmpty || _drop.isEmpty) ? "Set your journey" : "Explore Premium Rides", style: GoogleFonts.poppins(fontSize: 17, fontWeight: FontWeight.w700, color: (_pickupLat != 0 && _dropLat != 0) ? Colors.white : const Color(0xFF94A3B8)))))),
@@ -363,7 +426,46 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
           ? p['mainText'].toString()
           : (p['name']?.toString().split(',').first ?? 'Location');
       final secText = p['secondaryText']?.toString() ?? '';
-      return ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), leading: const Icon(Icons.location_on_rounded, color: Color(0xFF6366F1), size: 20), title: Text(mainText, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF1E293B))), subtitle: secText.isNotEmpty ? Text(secText, style: GoogleFonts.poppins(fontSize: 11, color: const Color(0xFF64748B)), maxLines: 1, overflow: TextOverflow.ellipsis) : null, onTap: () => _selectPlace(p));
+      final serviceable = p['serviceable'] == true;
+      final zoneName = p['zoneName']?.toString() ?? '';
+      return ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Icon(
+          serviceable ? Icons.location_on_rounded : Icons.location_off_rounded,
+          color: serviceable ? const Color(0xFF6366F1) : const Color(0xFFF43F5E),
+          size: 20,
+        ),
+        title: Text(mainText, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF1E293B))),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (secText.isNotEmpty)
+              Text(secText, style: GoogleFonts.poppins(fontSize: 11, color: const Color(0xFF64748B)), maxLines: 1, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: serviceable
+                    ? const Color(0xFF6366F1).withOpacity(0.08)
+                    : const Color(0xFFF43F5E).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                serviceable
+                    ? (zoneName.isNotEmpty ? 'Serving in $zoneName' : 'Serving area')
+                    : 'Not serving this area',
+                style: GoogleFonts.poppins(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: serviceable ? const Color(0xFF4338CA) : const Color(0xFFBE123C),
+                ),
+              ),
+            ),
+          ],
+        ),
+        onTap: () => _selectPlace(p),
+      );
     }));
   }
 }

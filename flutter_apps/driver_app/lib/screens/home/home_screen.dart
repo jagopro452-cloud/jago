@@ -96,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
   // ── Eligible Services ──────────────────────────────────────────────────
   List<Map<String, dynamic>> _eligibleServices = [];
+  bool _eligibleServicesLoaded = false;
 
   // ── Revenue Config ─────────────────────────────────────────────────────
   Map<String, Map<String, dynamic>> _revenueConfig = {};
@@ -264,8 +265,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       return false;
     }
     final tripServiceKey = _tripServiceKey(trip);
-    if (tripServiceKey == null || tripServiceKey.isEmpty || _eligibleServices.isEmpty) {
+    if (tripServiceKey == null || tripServiceKey.isEmpty) {
       return true;
+    }
+    if (!_eligibleServicesLoaded) {
+      return false;
+    }
+    if (_eligibleServices.isEmpty) {
+      return false;
     }
     final eligibleKeys = _eligibleServices
         .map((entry) => entry['key']?.toString() ?? '')
@@ -762,9 +769,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       if (res.statusCode == 200 && mounted) {
         final data = jsonDecode(res.body);
         final list = (data['services'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
-        setState(() => _eligibleServices = list);
+        setState(() {
+          _eligibleServices = list;
+          _eligibleServicesLoaded = true;
+        });
+        return;
       }
     } catch (_) {}
+    if (mounted) {
+      setState(() => _eligibleServicesLoaded = true);
+    }
   }
 
   Future<void> _fetchRevenueConfig() async {

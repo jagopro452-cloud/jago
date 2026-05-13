@@ -28,6 +28,10 @@ export interface PlacePrediction {
   types: string[];
   lat?: number;
   lng?: number;
+  serviceable?: boolean;
+  zoneId?: string | null;
+  zoneName?: string | null;
+  notServing?: boolean;
 }
 
 export interface ReverseGeocodeResult {
@@ -38,6 +42,10 @@ export interface ReverseGeocodeResult {
   state: string;
   pincode: string;
   country: string;
+  serviceable?: boolean;
+  zoneId?: string | null;
+  zoneName?: string | null;
+  notServing?: boolean;
 }
 
 export interface MultiWaypointRoute {
@@ -127,6 +135,134 @@ const reverseGeocodeCache = new SimpleCache<ReverseGeocodeResult>(2000, 60 * 60 
 const placesCache = new SimpleCache<PlacePrediction[]>(1000, 5 * 60 * 1000);               // 5 min
 const etaCache = new SimpleCache<ETAResult>(3000, 2 * 60 * 1000);                          // 2 min
 
+type ActiveZone = {
+  id: string;
+  name: string;
+  coordinates: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  radius_km: number | null;
+};
+
+const activeZonesCache = new SimpleCache<ActiveZone[]>(20, 2 * 60 * 1000);
+
+function pointInPolygon(lat: number, lng: number, ring: any[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = Number(ring[i]?.[1]);
+    const yi = Number(ring[i]?.[0]);
+    const xj = Number(ring[j]?.[1]);
+    const yj = Number(ring[j]?.[0]);
+    const intersect = ((yi > lat) !== (yj > lat))
+      && (lng < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+async function getActiveZones(): Promise<ActiveZone[]> {
+  const cached = activeZonesCache.get("active-zones");
+  if (cached) return cached;
+  try {
+    const res = await rawDb.execute(rawSql`
+      SELECT id, name, coordinates, latitude, longitude, radius_km
+      FROM zones
+      WHERE is_active = true
+      ORDER BY name ASC
+    `);
+    const zones = (res.rows as any[]).map((row) => ({
+      id: String(row.id),
+      name: String(row.name || "Service Area"),
+      coordinates: row.coordinates ? String(row.coordinates) : null,
+      latitude: row.latitude != null ? Number(row.latitude) : null,
+      longitude: row.longitude != null ? Number(row.longitude) : null,
+      radius_km: row.radius_km != null ? Number(row.radius_km) : null,
+    }));
+    activeZonesCache.set("active-zones", zones);
+    return zones;
+  } catch {
+    return [];
+  }
+}
+
+async function detectServingZone(
+  lat?: number,
+  lng?: number
+): Promise<{ serviceable: boolean; zoneId: string | null; zoneName: string | null }> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { serviceable: false, zoneId: null, zoneName: null };
+  }
+  const zones = await getActiveZones();
+  for (const zone of zones) {
+    if (!zone.coordinates) continue;
+    try {
+      const geo = JSON.parse(zone.coordinates);
+      if (geo?.type === "Polygon" && geo.coordinates?.[0]) {
+        if (pointInPolygon(lat!, lng!, geo.coordinates[0])) {
+          return { serviceable: true, zoneId: zone.id, zoneName: zone.name };
+        }
+      } else if (geo?.type === "MultiPolygon" && Array.isArray(geo.coordinates)) {
+        for (const poly of geo.coordinates) {
+          if (poly?.[0] && pointInPolygon(lat!, lng!, poly[0])) {
+            return { serviceable: true, zoneId: zone.id, zoneName: zone.name };
+          }
+        }
+      }
+    } catch {
+      // Ignore malformed polygons and continue with radius fallback.
+    }
+  }
+
+  for (const zone of zones) {
+    if (zone.coordinates) continue;
+    if (!Number.isFinite(zone.latitude) || !Number.isFinite(zone.longitude)) continue;
+    const radiusKm = zone.radius_km && zone.radius_km > 0 ? zone.radius_km : 5;
+    if (haversineKm(lat!, lng!, zone.latitude!, zone.longitude!) <= radiusKm) {
+      return { serviceable: true, zoneId: zone.id, zoneName: zone.name };
+    }
+  }
+
+  return { serviceable: false, zoneId: null, zoneName: null };
+}
+
+function applyServiceability<T extends { lat?: number; lng?: number }>(
+  item: T,
+  zone: { serviceable: boolean; zoneId: string | null; zoneName: string | null }
+): T & { serviceable: boolean; zoneId: string | null; zoneName: string | null; notServing: boolean } {
+  return {
+    ...item,
+    serviceable: zone.serviceable,
+    zoneId: zone.zoneId,
+    zoneName: zone.zoneName,
+    notServing: !zone.serviceable,
+  };
+}
+
+async function enrichPredictionsWithServiceability(
+  predictions: PlacePrediction[],
+  sessionToken?: string
+): Promise<PlacePrediction[]> {
+  const enriched = await Promise.all(predictions.slice(0, 8).map(async (prediction) => {
+    let lat = prediction.lat;
+    let lng = prediction.lng;
+    if ((!Number.isFinite(lat) || !Number.isFinite(lng)) && prediction.placeId && !prediction.placeId.startsWith("local:") && !prediction.placeId.startsWith("nom:")) {
+      const details = await getPlaceDetails(prediction.placeId, sessionToken);
+      lat = details?.lat;
+      lng = details?.lng;
+    }
+    const zone = await detectServingZone(lat, lng);
+    return applyServiceability({
+      ...prediction,
+      lat,
+      lng,
+    }, zone);
+  }));
+
+  const serviceable = enriched.filter((item) => item.serviceable);
+  if (serviceable.length > 0) return serviceable;
+  return enriched;
+}
+
 // ── 1. PLACES AUTOCOMPLETE ──────────────────────────────────────────────────
 
 /**
@@ -157,7 +293,7 @@ export async function searchPlaces(
   const timeout = setTimeout(() => controller.abort(), 4000);
 
   try {
-    let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&key=${apiKey}`;
+    let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&key=${apiKey}&components=country:in&language=en`;
 
     if (lat && lng) {
       url += `&location=${lat},${lng}&radius=${radius || 50000}`;
@@ -195,9 +331,9 @@ export async function searchPlaces(
       description: p.description || "", // Backward compatibility
       types: p.types || [],
     }));
-
-    placesCache.set(cacheKey, results);
-    return results;
+    const filtered = await enrichPredictionsWithServiceability(results, sessionToken);
+    placesCache.set(cacheKey, filtered);
+    return filtered;
   } catch (e: any) {
     console.error(`[mapping-unified:searchPlaces] Failed:`, e.message || e);
     return searchNominatimFallback(query);
@@ -210,7 +346,7 @@ async function searchNominatimFallback(query: string): Promise<PlacePrediction[]
   try {
     const nomController = new AbortController();
     const nomTimeout = setTimeout(() => nomController.abort(), 4000);
-    const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=15`;
+    const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=15&countrycodes=in`;
     
     const nr = await fetch(nomUrl, {
       signal: nomController.signal,
@@ -222,7 +358,7 @@ async function searchNominatimFallback(query: string): Promise<PlacePrediction[]
     if (nr.ok) {
       const nd = await nr.json() as any[];
       if (Array.isArray(nd) && nd.length > 0) {
-        const results: PlacePrediction[] = nd.map((p: any) => {
+        const rawResults: PlacePrediction[] = nd.map((p: any) => {
           const parts = (p.display_name || "").split(",");
           const main = p.name || parts[0];
           const sec = parts.slice(1).join(",").trim();
@@ -240,11 +376,11 @@ async function searchNominatimFallback(query: string): Promise<PlacePrediction[]
         
         // Deduplicate nominatim results by mainText
         const unique = new Map<string, PlacePrediction>();
-        for (const res of results) {
+        for (const res of rawResults) {
           const key = (res.mainText + res.secondaryText).toLowerCase();
           if (!unique.has(key)) unique.set(key, res);
         }
-        return Array.from(unique.values()).slice(0, 8);
+        return enrichPredictionsWithServiceability(Array.from(unique.values()).slice(0, 8));
       }
     }
   } catch(e) {
@@ -260,7 +396,7 @@ async function searchNominatimFallback(query: string): Promise<PlacePrediction[]
 export async function getPlaceDetails(
   placeId: string,
   sessionToken?: string
-): Promise<{ lat: number; lng: number; address: string; shortName: string } | null> {
+): Promise<{ lat: number; lng: number; address: string; shortName: string; serviceable: boolean; zoneId: string | null; zoneName: string | null; notServing: boolean } | null> {
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) return null;
 
@@ -278,11 +414,16 @@ export async function getPlaceDetails(
     if (data?.status !== "OK" || !data.result?.geometry?.location) return null;
 
     const loc = data.result.geometry.location;
+    const zone = await detectServingZone(Number(loc.lat), Number(loc.lng));
     return {
       lat: Number(loc.lat),
       lng: Number(loc.lng),
       address: data.result.formatted_address || "",
       shortName: data.result.name || extractShortName(data.result.formatted_address || ""),
+      serviceable: zone.serviceable,
+      zoneId: zone.zoneId,
+      zoneName: zone.zoneName,
+      notServing: !zone.serviceable,
     };
   } catch {
     return null;
@@ -321,7 +462,7 @@ async function searchPopularLocations(query: string): Promise<PlacePrediction[]>
         unique.set(res.mainText.toLowerCase(), res);
       }
     }
-    return Array.from(unique.values());
+    return enrichPredictionsWithServiceability(Array.from(unique.values()));
   } catch {
     return [];
   }
@@ -374,6 +515,7 @@ export async function reverseGeocode(
         if (data?.status === "OK" && data.results?.length) {
           const top = data.results[0];
           const components = top.address_components || [];
+          const zone = await detectServingZone(lat, lng);
           const result: ReverseGeocodeResult = {
             formattedAddress: top.formatted_address || "",
             shortName: extractShortName(top.formatted_address || ""),
@@ -382,6 +524,10 @@ export async function reverseGeocode(
             state: findComponent(components, "administrative_area_level_1") || "",
             pincode: findComponent(components, "postal_code") || "",
             country: findComponent(components, "country") || "India",
+            serviceable: zone.serviceable,
+            zoneId: zone.zoneId,
+            zoneName: zone.zoneName,
+            notServing: !zone.serviceable,
           };
           reverseGeocodeCache.set(key, result);
           rawDb.execute(rawSql`
@@ -411,6 +557,7 @@ export async function reverseGeocode(
         const nd = await nr.json() as any;
         if (nd?.display_name) {
           const addr = nd.address || {};
+          const zone = await detectServingZone(lat, lng);
           const result: ReverseGeocodeResult = {
             formattedAddress: nd.display_name,
             shortName: addr.suburb || addr.neighbourhood || addr.city || addr.town || "",
@@ -419,6 +566,10 @@ export async function reverseGeocode(
             state: addr.state || "",
             pincode: addr.postcode || "",
             country: addr.country || "India",
+            serviceable: zone.serviceable,
+            zoneId: zone.zoneId,
+            zoneName: zone.zoneName,
+            notServing: !zone.serviceable,
           };
           reverseGeocodeCache.set(key, result);
           return result;

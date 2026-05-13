@@ -17353,7 +17353,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const lng = req.query.lng ? Number(req.query.lng) : undefined;
       if (!query) return res.status(400).json({ message: "query required" });
       const predictions = await searchPlaces(query, sessionToken, lat, lng);
-      res.json({ predictions });
+      const serviceablePredictions = predictions.filter((p: any) => p?.serviceable);
+      const serviceableZoneNames = Array.from(new Set(
+        serviceablePredictions
+          .map((p: any) => p?.zoneName)
+          .filter((name: any) => typeof name === "string" && name.trim().length > 0)
+      ));
+      res.json({
+        predictions,
+        hasServiceableResults: serviceablePredictions.length > 0,
+        serviceableZoneNames,
+        message: serviceablePredictions.length > 0
+          ? null
+          : "We are not serving this area yet. Please choose a location inside an active service zone.",
+      });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 

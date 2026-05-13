@@ -759,6 +759,14 @@ async function findDriversInRadius(
     return scoredStrict;
   }
 
+  console.log(
+    `[DISPATCH] Strict eligibility returned 0 drivers for trip requirements ` +
+    `service=${requirements.platformServiceKey || "unknown"} ` +
+    `vehicle=${requirements.vehicleCategoryId || "any"} ` +
+    `tripType=${requirements.tripType || "normal"}; skipping legacy fallback to avoid wrong-driver dispatch.`
+  );
+  return [];
+
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const safeIds = excludeDriverIds.filter((id) => uuidRe.test(id));
   const excludeClause = safeIds.length > 0

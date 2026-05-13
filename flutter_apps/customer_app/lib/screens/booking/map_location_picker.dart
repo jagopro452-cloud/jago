@@ -67,6 +67,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   String _address = 'Move the map to select location';
   bool _geocoding = false;
   bool _locationLoading = true;
+  bool _serviceable = true;
+  String? _zoneName;
 
   // Search state
   final _searchCtrl = TextEditingController();
@@ -97,7 +99,12 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final addr = data['formattedAddress']?.toString() ?? '';
         if (addr.isNotEmpty) {
-          setState(() { _address = addr; _geocoding = false; });
+          setState(() {
+            _address = addr;
+            _serviceable = data['serviceable'] != false;
+            _zoneName = data['zoneName']?.toString();
+            _geocoding = false;
+          });
           return;
         }
       }
@@ -113,7 +120,12 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final addr = data['display_name']?.toString() ?? '';
         if (addr.isNotEmpty) {
-          setState(() { _address = addr; _geocoding = false; });
+          setState(() {
+            _address = addr;
+            _serviceable = false;
+            _zoneName = null;
+            _geocoding = false;
+          });
           return;
         }
       }
@@ -281,6 +293,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           secondaryText: p['secondaryText']?.toString() ?? '',
           lat: (p['lat'] as num?)?.toDouble(),
           lng: (p['lng'] as num?)?.toDouble(),
+          serviceable: p['serviceable'] == true,
+          zoneName: p['zoneName']?.toString() ?? '',
         )).toList();
         final fallback = parsed.isEmpty
             ? await _searchPlacesFallback(normalizedQuery)
@@ -325,6 +339,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           secondaryText: '',
           lat: double.tryParse((row['lat'] ?? '').toString()),
           lng: double.tryParse((row['lon'] ?? '').toString()),
+          serviceable: false,
         );
       }).where((pred) => pred.description.isNotEmpty).toList();
     } catch (_) {}
@@ -343,11 +358,22 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
 
     // If the prediction already has coordinates (local DB result), use them directly
     if (pred.lat != null && pred.lng != null && pred.lat != 0.0 && pred.lng != 0.0) {
+      if (!pred.serviceable) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('We are not serving this area yet. Please choose a location inside your active zone.'),
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
+        return;
+      }
       if (mounted) {
         setState(() {
           _lat = pred.lat!;
           _lng = pred.lng!;
           _address = pred.description;
+          _serviceable = true;
+          _zoneName = pred.zoneName;
           _geocoding = false;
         });
         final target = LatLng(_lat!, _lng!);
@@ -375,11 +401,23 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         final newLat = (data['lat'] as num?)?.toDouble() ?? 0.0;
         final newLng = (data['lng'] as num?)?.toDouble() ?? 0.0;
         final address = data['address']?.toString() ?? pred.description;
+        if (data['serviceable'] != true) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('We are not serving this area yet. Please choose a location inside your active zone.'),
+              behavior: SnackBarBehavior.floating,
+            ));
+          }
+          setState(() => _geocoding = false);
+          return;
+        }
         if (newLat != 0.0 && newLng != 0.0 && mounted) {
           setState(() {
             _lat = newLat;
             _lng = newLng;
             _address = address;
+            _serviceable = true;
+            _zoneName = data['zoneName']?.toString();
             _geocoding = false;
           });
           _mapController?.animateCamera(
@@ -428,6 +466,13 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
 
   void _confirmLocation() {
     if (_lat != null && _lng != null) {
+      if (!_serviceable) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('This location is outside the active service zone. Please choose a served area.'),
+          behavior: SnackBarBehavior.floating,
+        ));
+        return;
+      }
       Navigator.pop(
         context,
         PickedLocation(lat: _lat!, lng: _lng!, address: _address),
@@ -761,6 +806,28 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                             maxLines: 3,
                             overflow: TextOverflow.ellipsis,
                           ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _serviceable
+                            ? JT.primary.withValues(alpha: 0.1)
+                            : const Color(0xFFF43F5E).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        _serviceable
+                            ? (_zoneName != null && _zoneName!.isNotEmpty
+                                ? 'Serving in $_zoneName'
+                                : 'Serving area')
+                            : 'Not serving this area',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _serviceable ? JT.primary : const Color(0xFFBE123C),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -799,6 +866,8 @@ class _PlacePrediction {
   final String secondaryText;
   final double? lat;
   final double? lng;
+  final bool serviceable;
+  final String? zoneName;
   const _PlacePrediction({
     required this.placeId,
     required this.description,
@@ -806,5 +875,7 @@ class _PlacePrediction {
     required this.secondaryText,
     this.lat,
     this.lng,
+    this.serviceable = true,
+    this.zoneName,
   });
 }
