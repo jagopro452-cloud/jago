@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "server/realtime-ops.ts",
+    "server/socket.ts",
+    "server/routes.ts",
+    "client/src/pages/admin/realtime-ops.tsx",
+    "client/src/pages/admin/admin-routes.tsx",
+    "client/src/pages/admin/layout.tsx"
+  ],
+  "exclude": [
+    "client/src/pages/landing-corrupted.tsx"
+  ]
+}
