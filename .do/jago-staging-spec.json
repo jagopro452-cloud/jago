@@ -1,0 +1,67 @@
+{
+  "name": "jago-staging",
+  "region": "blr",
+  "services": [
+    {
+      "name": "jago-staging-web",
+      "github": {
+        "repo": "jagopro452-cloud/jago",
+        "branch": "release/preprod-hardening-2026-05-13-critical-fixes"
+      },
+      "build_command": "npm ci && npm run build",
+      "run_command": "npm run start",
+      "source_dir": "/",
+      "http_port": 5000,
+      "instance_size_slug": "basic-s",
+      "instance_count": 1,
+      "health_check": {
+        "initial_delay_seconds": 30,
+        "period_seconds": 30,
+        "timeout_seconds": 10,
+        "success_threshold": 1,
+        "failure_threshold": 3,
+        "http_path": "/api/health"
+      },
+      "envs": [
+        { "key": "NODE_ENV", "value": "production", "scope": "RUN_AND_BUILD_TIME" },
+        { "key": "PORT", "value": "5000", "scope": "RUN_AND_BUILD_TIME" },
+        { "key": "APP_ENV", "value": "staging", "scope": "RUN_AND_BUILD_TIME" },
+        { "key": "APP_BASE_URL", "value": "https://jago-staging-ljuq3.ondigitalocean.app", "scope": "RUN_AND_BUILD_TIME" },
+        { "key": "SOCKET_ALLOWED_ORIGINS", "value": "https://jago-staging-ljuq3.ondigitalocean.app", "scope": "RUN_AND_BUILD_TIME" },
+        { "key": "ENABLE_DEV_OTP_RESPONSES", "value": "false", "scope": "RUN_AND_BUILD_TIME" },
+        { "key": "ADMIN_NAME", "value": "Jago Staging Admin", "scope": "RUN_AND_BUILD_TIME" },
+        { "key": "ADMIN_PASSWORD_SYNC_ON_RESTART", "value": "true", "scope": "RUN_AND_BUILD_TIME" },
+        { "key": "ADMIN_SESSION_TTL_HOURS", "value": "8", "scope": "RUN_AND_BUILD_TIME" },
+        { "key": "ADMIN_2FA_REQUIRED", "value": "false", "scope": "RUN_AND_BUILD_TIME" },
+        { "key": "DATABASE_URL", "value": "EV[1:JLp94z4ZL5yg37kRfDpArNbxtvtdF9hU:UvV68RY8Uux1GKufVoA+V/wqOZsFhc8AN9Zrta6TKbMQTp2p//w0JAqbNOI6F4RgNIQ00zE=]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "REDIS_URL", "value": "EV[1:NCmj6IP0eyXfTAXW6G+njCz0QBghi3/C:zNOFxweIozf6l+JS4MqQ5xWfnKn4QXw9kwHkrUTPoVLg0VMJjjPleWYoboMd8uE=]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "ADMIN_EMAIL", "value": "EV[1:85MSjb8Ms0qK4ZOFYszx6tEf45cUlRpg:0EaQKZtsIYKkfyG/b9CFKMU7JP6ZvRtOGObN4nXXBdNG3qsvGhSRXx+d]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "ADMIN_PASSWORD", "value": "EV[1:oQsFjKtvRrz0g0mYCw7jI9Vu03M+Usk5:0yr0EhnyjzluT7qrKK6p/cqwKsNjk4VFXn+DU/CWgw==]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "ADMIN_PHONE", "value": "EV[1:lIWbcDMsNlfzg5w0aFVdwklYw7oaia8H:rt96WQaa51/FRixmWWgvRg==]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "ADMIN_RESET_KEY", "value": "EV[1:gx905LbYGpGxUZGoEePIs3lPr2kQK9F3:/5FNwMY4SCGhLuIWZFYZzQ==]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "OPS_API_KEY", "value": "EV[1:/8ASTa407UabXBv/IRps/NuHh9LkT0I5:SIXyruuiZuAFRgyrvRGJXw==]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "ALERT_WEBHOOK_URL", "value": "EV[1:zM4jCgjb9G2BjpWTSPXuHmY8CLz8rohe:PslaVbxZVYuG3vPJaW40lQ==]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "GOOGLE_MAPS_API_KEY", "value": "EV[1:trveivYmByNW+hLIF9ZgL5RzZYFiWiOq:G6C5yA1xb1USF3wgrfd07Q==]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "FIREBASE_SERVICE_ACCOUNT_KEY", "value": "EV[1:/6q5OCA4WMTQ/Smb45hNkod7OSsfZg27:/chrxloDxPQ0K+0SsJkSpw==]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "FIREBASE_WEB_API_KEY", "value": "EV[1:B/3GeBFjVmTCBlYVg1rpMzQKTK54zrq+:sHZK87USQnDPJnqXkOmA2w==]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "RAZORPAY_KEY_ID", "value": "EV[1:DnDukDnnOLMjuXemcqnX25AqamdxwC1I:jw2je7hKs7lOMDuFTQ2gWQ==]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "RAZORPAY_KEY_SECRET", "value": "EV[1:y1cGDmH6V222dd9MTf0JnDTVpF6hUnft:4Udm/2FElkuwz3YAV4/b+A==]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "RAZORPAY_WEBHOOK_SECRET", "value": "EV[1:rHUylX2iiibigGk/fBgYVcCc4kGQ5XQg:GWhF9cld7XskVXNAzyW4jA==]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "TWO_FACTOR_API_KEY", "value": "EV[1:sL4zKazNUZ+WGHeSMH7y1XP5kxMa7zeX:7CwBJXoDM14Yy7DfRcF3Yg==]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" },
+        { "key": "ANTHROPIC_API_KEY", "value": "EV[1:PySWoyGZINfI0qH1U7lUS0/SEntlLGQI:oiQ/tr/NAyTh2rqgbdxTIw==]", "scope": "RUN_AND_BUILD_TIME", "type": "SECRET" }
+      ]
+    }
+  ],
+  "databases": [
+    { "name": "jago-staging-postgres", "engine": "PG", "version": "18", "size": "db-s-1vcpu-1gb", "production": true, "cluster_name": "jago-staging-postgres" },
+    { "name": "jago-staging-redis", "engine": "VALKEY", "version": "8", "size": "db-s-1vcpu-1gb", "production": true, "cluster_name": "jago-staging-redis" }
+  ],
+  "ingress": {
+    "rules": [
+      {
+        "match": { "path": { "prefix": "/" } },
+        "component": { "name": "jago-staging-web" }
+      }
+    ]
+  }
+}
