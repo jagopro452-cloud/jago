@@ -550,18 +550,33 @@ export default function Zones() {
 
   const openEdit = (zone: any) => {
     setEditing(zone);
-    setFormForModal({ name: zone.name, coordinates: zone.coordinates || "", serviceType: zone.serviceType || "both", surgeFactor: Number(zone.surgeFactor) || 1.0, isActive: zone.isActive, latitude: zone.latitude ?? null, longitude: zone.longitude ?? null, radiusKm: Number(zone.radiusKm) || 5 });
+    setFormForModal({
+      name: getZoneName(zone),
+      coordinates: zone.coordinates || zone.coords || "",
+      serviceType: getZoneServiceType(zone),
+      surgeFactor: Number(zone.surgeFactor ?? zone.surge_factor) || 1.0,
+      isActive: getZoneActive(zone),
+      latitude: zone.latitude ?? zone.lat ?? null,
+      longitude: zone.longitude ?? zone.lng ?? null,
+      radiusKm: Number(zone.radiusKm ?? zone.radius_km) || 5,
+    });
     setOpen(true);
   };
 
-  const filtered = (data as any[]).filter(z => {
-    const ok1 = filterStatus === "all" || (filterStatus === "active" ? z.isActive : !z.isActive);
-    const ok2 = !search || z.name.toLowerCase().includes(search.toLowerCase());
+  const zones = Array.isArray(data) ? data : [];
+  const getZoneActive = (zone: any) => zone.isActive ?? zone.is_active ?? false;
+  const getZoneName = (zone: any) => String(zone.name ?? zone.zone_name ?? "");
+  const getZoneServiceType = (zone: any) => String(zone.serviceType ?? zone.service_type ?? "both");
+
+  const filtered = zones.filter(z => {
+    const isActive = getZoneActive(z);
+    const ok1 = filterStatus === "all" || (filterStatus === "active" ? isActive : !isActive);
+    const name = getZoneName(z).toLowerCase();
+    const ok2 = !search || name.includes(search.toLowerCase());
     return ok1 && ok2;
   });
 
-  const zones = data as any[];
-  const activeCount = zones.filter(z => z.isActive).length;
+  const activeCount = zones.filter(z => getZoneActive(z)).length;
   const getServiceConfig = (type: string) => SERVICE_TYPES.find(s => s.value === type) || SERVICE_TYPES[0];
 
   // Calculate area from stored coordinates for display
@@ -596,7 +611,7 @@ export default function Zones() {
           { label: "Total Zones", val: zones.length, icon: "bi-map-fill", color: "#7c3aed", bg: "#f5f3ff" },
           { label: "Active", val: activeCount, icon: "bi-check-circle-fill", color: "#16a34a", bg: "#f0fdf4" },
           { label: "Inactive", val: zones.length - activeCount, icon: "bi-pause-circle-fill", color: "#64748b", bg: "#f8fafc" },
-          { label: "With Surge", val: zones.filter((z: any) => (z.surgeFactor || 1) > 1).length, icon: "bi-lightning-fill", color: "#d97706", bg: "#fefce8" },
+          { label: "With Surge", val: zones.filter((z: any) => Number((z.surgeFactor ?? z.surge_factor) || 1) > 1).length, icon: "bi-lightning-fill", color: "#d97706", bg: "#fefce8" },
         ].map((s, i) => (
           <div key={i} className="col-6 col-xl-3">
             <div className="card border-0 shadow-sm" style={{ borderRadius: 14 }}>
@@ -656,11 +671,13 @@ export default function Zones() {
                   ))
                 ) : filtered.length ? (
                   filtered.map((zone: any, idx: number) => {
-                    const sc = getServiceConfig(zone.serviceType || "both");
-                    const surge = Number(zone.surgeFactor) || 1;
+                    const zoneName = getZoneName(zone);
+                    const sc = getServiceConfig(getZoneServiceType(zone));
+                    const surge = Number(zone.surgeFactor ?? zone.surge_factor) || 1;
                     const area = getZoneArea(zone);
+                    const isActive = getZoneActive(zone);
                     return (
-                      <tr key={zone.id} data-testid={`zone-row-${zone.id}`}>
+                      <tr key={zone.id || idx} data-testid={`zone-row-${zone.id || idx}`}>
                         <td className="ps-4 text-muted small">{idx + 1}</td>
                         <td>
                           <div className="d-flex align-items-center gap-2">
@@ -669,7 +686,7 @@ export default function Zones() {
                               <i className="bi bi-map-fill"></i>
                             </div>
                             <div>
-                              <div className="fw-semibold" style={{ fontSize: 13 }}>{zone.name}</div>
+                              <div className="fw-semibold" style={{ fontSize: 13 }}>{zoneName || "Unnamed zone"}</div>
                               <div style={{ fontSize: 10.5, color: "#94a3b8", display: "flex", alignItems: "center", gap: 4 }}>
                                 {zone.coordinates ? "📍 Boundary set" : "⚠️ No boundary"}
                                 {surge > 1 && <span style={{ background: "#fef08a", color: "#92400e", borderRadius: 4, padding: "1px 5px", fontSize: 9, fontWeight: 700 }}>⚡ SURGE ACTIVE</span>}
@@ -697,27 +714,27 @@ export default function Zones() {
                           </span>
                         </td>
                         <td>
-                          <span className={`badge ${zone.isActive ? "bg-success" : "bg-secondary"}`} style={{ fontSize: 10 }}>
-                            {zone.isActive ? "Active" : "Inactive"}
+                          <span className={`badge ${isActive ? "bg-success" : "bg-secondary"}`} style={{ fontSize: 10 }}>
+                            {isActive ? "Active" : "Inactive"}
                           </span>
                         </td>
                         <td>
                           <label className="switcher">
-                            <input type="checkbox" className="switcher_input" checked={zone.isActive}
-                              onChange={() => toggle.mutate({ id: zone.id, isActive: !zone.isActive })}
-                              data-testid={`toggle-zone-${zone.id}`} />
+                            <input type="checkbox" className="switcher_input" checked={isActive}
+                              onChange={() => toggle.mutate({ id: zone.id, isActive: !isActive })}
+                              data-testid={`toggle-zone-${zone.id || idx}`} />
                             <span className="switcher_control"></span>
                           </label>
                         </td>
                         <td className="text-center pe-4">
                           <div className="d-flex justify-content-center gap-1">
                             <button className="btn btn-sm btn-outline-primary" style={{ borderRadius: 8 }}
-                              onClick={() => openEdit(zone)} data-testid={`btn-edit-zone-${zone.id}`}>
+                              onClick={() => openEdit(zone)} data-testid={`btn-edit-zone-${zone.id || idx}`}>
                               <i className="bi bi-pencil-fill"></i>
                             </button>
                             <button className="btn btn-sm btn-outline-danger" style={{ borderRadius: 8 }}
-                              onClick={() => { if (confirm(`Delete zone "${zone.name}"?`)) remove.mutate(zone.id); }}
-                              data-testid={`btn-delete-zone-${zone.id}`}>
+                              onClick={() => { if (confirm(`Delete zone "${zoneName}"?`)) remove.mutate(zone.id); }}
+                              data-testid={`btn-delete-zone-${zone.id || idx}`}>
                               <i className="bi bi-trash-fill"></i>
                             </button>
                           </div>

@@ -134,6 +134,7 @@ export default function SystemHealthPage() {
     }),
     refetchInterval: 5000,
   });
+  const vehicleRows = vehicleData?.vehicles ?? [];
 
   const [toggling, setToggling] = useState<string | null>(null);
   const [vehicleToggling, setVehicleToggling] = useState<string | null>(null);
@@ -302,13 +303,13 @@ export default function SystemHealthPage() {
                 )}
 
                 <div style={{ padding: 18, display: "grid", gap: 12 }}>
-                  {vehiclesLoading && !vehicleData?.vehicles?.length ? (
+                  {vehiclesLoading && !vehicleRows.length ? (
                     <div style={{ padding: 36, textAlign: "center", color: "#64748B" }}>
                       <span className="spinner-border spinner-border-sm me-2" />
                       Loading vehicle controls...
                     </div>
                   ) : (
-                    (vehicleData?.vehicles || []).map(vehicle => {
+                    vehicleRows.map(vehicle => {
                       const accent = VEHICLE_COLORS[vehicle.key] || "#2563EB";
                       const updated = vehicle.updatedAt
                         ? new Date(vehicle.updatedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })

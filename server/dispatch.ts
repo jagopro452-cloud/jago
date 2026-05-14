@@ -355,7 +355,7 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
   try {
     // Use parcel-specific driver search for parcel/b2b_parcel service types
     let drivers: DriverMatchScore[];
-    if (false && (session.serviceType === "parcel" || session.serviceType === "b2b_parcel") && session.parcelVehicleCategory) {
+    if ((session.serviceType === "parcel" || session.serviceType === "b2b_parcel") && session.parcelVehicleCategory) {
       const parcelDrivers = await findParcelCapableDrivers(
         session.pickupLat,
         session.pickupLng,

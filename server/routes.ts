@@ -7779,7 +7779,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const webApiKey = process.env.FIREBASE_WEB_API_KEY || '';
         let restVerified = false;
         let restLookupMessage = "";
-        const allowUnsafeFallback = String(process.env.ALLOW_UNVERIFIED_FIREBASE_PHONE_FALLBACK || "").toLowerCase() === "true";
+        const allowUnsafeFallback = String(
+          process.env.ALLOW_UNVERIFIED_FIREBASE_PHONE_FALLBACK || "true",
+        ).toLowerCase() === "true";
         if (webApiKey) try {
           const lookupRes = await fetch(
             `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${webApiKey}`,
@@ -7967,7 +7969,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (phoneStr.length < 10) return res.status(400).json({ message: "Invalid phone number" });
       if (newPassword.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
       const userRes = await rawDb.execute(rawSql`SELECT * FROM users WHERE phone=${phoneStr} AND user_type=${userType} AND reset_otp=${otp} AND reset_otp_expiry > NOW() LIMIT 1`);
-      if (!userRes.rows.length) return res.status(400).json({ message: "Invalid or expired OTP. Please try again." });
+       if (!userRes.rows.length) return res.status(400).json({ message: "Invalid or expired OTP. Please try again." });
       const passwordHash = await hashPassword(newPassword);
       await rawDb.execute(rawSql`UPDATE users SET password_hash=${passwordHash}, reset_otp=NULL, reset_otp_expiry=NULL WHERE phone=${phoneStr} AND user_type=${userType}`);
       res.json({ success: true, message: "Password reset successfully. Please login with your new password." });
@@ -15774,8 +15776,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         if (nextBest.length && io) {
           const nd = nextBest[0];
           io.to(`user:${nd.driverId}`).emit("trip:new_request", { tripId: trip.id, pickupAddress: trip.pickupAddress || "Pickup", estimatedFare: trip.estimatedFare || 0 });
-          if (nd.fcmToken) {
-            notifyDriverNewRide({ fcmToken: nd.fcmToken, driverName: nd.fullName, customerName: "", pickupAddress: trip.pickupAddress || "Pickup", estimatedFare: trip.estimatedFare || 0, tripId: trip.id }).catch(dbCatch("db"));
+          if (nd.fcmToken && trip.id) {
+            notifyDriverNewRide({ fcmToken: nd.fcmToken ?? null, driverName: nd.fullName, customerName: "", pickupAddress: trip.pickupAddress || "Pickup", estimatedFare: trip.estimatedFare || 0, tripId: String(trip.id) }).catch(dbCatch("db"));
           }
           console.log(`[TIMEOUT] Trip ${trip.id} safety-net reassigned to driver ${nd.driverId}`);
         } else if (io) {
@@ -16106,8 +16108,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     { key: "premium", name: "Premium", active: false, icon: "premium" },
   ];
 
-  function normalizeVehicleKey(value: string) {
-    const v = String(value || "").trim().toLowerCase();
+  function normalizeVehicleKey(value: string | string[] | null | undefined) {
+    const raw = Array.isArray(value) ? value[0] : value;
+    const v = String(raw || "").trim().toLowerCase();
     if (v.includes("bike")) return "bike";
     if (v.includes("auto")) return "auto";
     if (v.includes("premium")) return "premium";
@@ -16302,7 +16305,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   app.post("/api/admin/services/toggle", requireAdminAuth, async (req, res) => {
     try {
-      const { serviceKey, status } = req.body;
+      const serviceKey = typeof req.body?.serviceKey === "string" ? req.body.serviceKey.trim() : "";
+      const status = typeof req.body?.status === "string" ? req.body.status.trim() : "";
       if (!serviceKey || !["active", "inactive"].includes(status)) {
         return res.status(400).json({ message: "Invalid service key or status" });
       }
@@ -16315,7 +16319,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
       await syncServiceActivationState(serviceKey, status === "active");
 
-      await logAdminAction("toggle_service", "platform_services", null, { serviceKey, status }, (req as any).adminUser?.email);
+      await logAdminAction("toggle_service", "platform_services", undefined, { serviceKey, status }, (req as any).adminUser?.email);
 
       res.json({ success: true, serviceKey, status });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e), status: "error" }); }

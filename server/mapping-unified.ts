@@ -147,13 +147,33 @@ type ActiveZone = {
 
 const activeZonesCache = new SimpleCache<ActiveZone[]>(20, 2 * 60 * 1000);
 
+export async function ensureLocationIntelligenceSchema(): Promise<void> {
+  await rawDb.execute(rawSql`
+    CREATE TABLE IF NOT EXISTS landmark_aliases (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      alias TEXT NOT NULL UNIQUE,
+      normalized_alias TEXT NOT NULL,
+      canonical_name TEXT NOT NULL,
+      canonical_address TEXT,
+      city_name TEXT,
+      latitude DOUBLE PRECISION,
+      longitude DOUBLE PRECISION,
+      popularity_score INTEGER NOT NULL DEFAULT 0,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
 function pointInPolygon(lat: number, lng: number, ring: any[]): boolean {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xi = Number(ring[i]?.[1]);
-    const yi = Number(ring[i]?.[0]);
-    const xj = Number(ring[j]?.[1]);
-    const yj = Number(ring[j]?.[0]);
+    // GeoJSON coordinates are [lng, lat].
+    const xi = Number(ring[i]?.[0]);
+    const yi = Number(ring[i]?.[1]);
+    const xj = Number(ring[j]?.[0]);
+    const yj = Number(ring[j]?.[1]);
     const intersect = ((yi > lat) !== (yj > lat))
       && (lng < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12) + xi);
     if (intersect) inside = !inside;

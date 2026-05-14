@@ -244,4 +244,38 @@ describe("Surge Zone Detection (Ray-Cast)", () => {
   it("point at zone corner handled without crash", () => {
     expect(() => pointInPolygon(17.35, 78.45, testZone)).not.toThrow();
   });
+
+  function pointInPolygonGeoJSON(lat: number, lng: number, polygon: [number, number][]): boolean {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i][0];
+      const yi = polygon[i][1];
+      const xj = polygon[j][0];
+      const yj = polygon[j][1];
+      const intersect = ((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  it("GeoJSON [lng, lat] coordinates are checked correctly", () => {
+    const vijayawadaZone: [number, number][] = [
+      [80.43708792887628, 16.633425827870678],
+      [80.62110892497004, 16.674849437083],
+      [80.71861258707942, 16.59988587456712],
+      [80.89668268337847, 16.565682247847167],
+      [80.8987426199019, 16.48146284762622],
+      [80.8486174978316, 16.405765726645534],
+      [80.89393610134722, 16.354406559061584],
+      [80.62934867106378, 16.255600980356327],
+      [80.36155692301692, 16.19102113939313],
+      [80.3272246476263, 16.273389660692384],
+      [80.30891408678146, 16.381624220428492],
+      [80.32516475301237, 16.488095509162775],
+      [80.39657588582487, 16.572969813914984],
+      [80.43708792887628, 16.633425827870678],
+    ];
+    expect(pointInPolygonGeoJSON(16.452168, 80.589506, vijayawadaZone)).toBe(true);
+    expect(pointInPolygonGeoJSON(16.750000, 80.900000, vijayawadaZone)).toBe(false);
+  });
 });
