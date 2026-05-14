@@ -78,6 +78,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   bool _showSearch = false;
   Timer? _debounce;
   int _searchRequestId = 0;
+  String? _searchHelperText;
 
   // Session token for Places Autocomplete (reduces billing)
   String _sessionToken = DateTime.now().millisecondsSinceEpoch.toString();
@@ -264,7 +265,10 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
 
   Future<void> _searchPlaces(String query) async {
     if (query.length < 3) {
-      setState(() => _predictions = []);
+      setState(() {
+        _predictions = [];
+        _searchHelperText = null;
+      });
       return;
     }
     final normalizedQuery = query.trim();
@@ -296,24 +300,30 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
           serviceable: p['serviceable'] == true,
           zoneName: p['zoneName']?.toString() ?? '',
         )).toList();
-        final fallback = parsed.isEmpty
-            ? await _searchPlacesFallback(normalizedQuery)
-            : <_PlacePrediction>[];
         if (!mounted || requestId != _searchRequestId) return;
         if (mounted) {
           setState(() {
-            _predictions = parsed.isNotEmpty ? parsed : fallback;
+            _predictions = parsed.where((pred) => pred.serviceable).toList();
+            _searchHelperText = _predictions.isEmpty
+                ? data['message']?.toString()
+                : null;
           });
         }
       } else {
-        final fallback = await _searchPlacesFallback(normalizedQuery);
         if (!mounted || requestId != _searchRequestId) return;
-        setState(() => _predictions = fallback);
+        setState(() {
+          _predictions = [];
+          _searchHelperText =
+              'Only destinations inside active service zones are shown here.';
+        });
       }
     } catch (_) {
-      final fallback = await _searchPlacesFallback(normalizedQuery);
       if (!mounted || requestId != _searchRequestId) return;
-      setState(() => _predictions = fallback);
+      setState(() {
+        _predictions = [];
+        _searchHelperText =
+            'We could not load serviceable destinations right now. Try again in a moment.';
+      });
     }
     if (mounted && requestId == _searchRequestId) {
       setState(() => _searching = false);
@@ -360,10 +370,11 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
     if (pred.lat != null && pred.lng != null && pred.lat != 0.0 && pred.lng != 0.0) {
       if (!pred.serviceable) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('We are not serving this area yet. Please choose a location inside your active zone.'),
-            behavior: SnackBarBehavior.floating,
-          ));
+          setState(() {
+            _geocoding = false;
+            _searchHelperText =
+                'Choose a location inside an active service zone.';
+          });
         }
         return;
       }
@@ -402,13 +413,11 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         final newLng = (data['lng'] as num?)?.toDouble() ?? 0.0;
         final address = data['address']?.toString() ?? pred.description;
         if (data['serviceable'] != true) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('We are not serving this area yet. Please choose a location inside your active zone.'),
-              behavior: SnackBarBehavior.floating,
-            ));
-          }
-          setState(() => _geocoding = false);
+          setState(() {
+            _geocoding = false;
+            _searchHelperText =
+                'Choose a location inside an active service zone.';
+          });
           return;
         }
         if (newLat != 0.0 && newLng != 0.0 && mounted) {
@@ -427,26 +436,13 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         }
       }
     } catch (_) {}
-    if ((pred.lat == null || pred.lng == null || pred.lat == 0.0 || pred.lng == 0.0) &&
-        pred.description.isNotEmpty) {
-      final fallback = await _searchPlacesFallback(pred.description);
-      if (fallback.isNotEmpty) {
-        final first = fallback.first;
-        if (mounted && first.lat != null && first.lng != null && first.lat != 0.0 && first.lng != 0.0) {
-          setState(() {
-            _lat = first.lat!;
-            _lng = first.lng!;
-            _address = first.description;
-            _geocoding = false;
-          });
-          _mapController?.animateCamera(
-            CameraUpdate.newLatLngZoom(LatLng(first.lat!, first.lng!), 16),
-          );
-          return;
-        }
-      }
+    if (mounted) {
+      setState(() {
+        _geocoding = false;
+        _searchHelperText =
+            'Could not load that destination. Try another serviceable result or move the map.';
+      });
     }
-    if (mounted) setState(() => _geocoding = false);
   }
 
   // ─── Map callbacks ─────────────────────────────────────────────────────
@@ -467,10 +463,10 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   void _confirmLocation() {
     if (_lat != null && _lng != null) {
       if (!_serviceable) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('This location is outside the active service zone. Please choose a served area.'),
-          behavior: SnackBarBehavior.floating,
-        ));
+        setState(() {
+          _searchHelperText =
+              'This location is outside the active service zone. Move the map to a served area.';
+        });
         return;
       }
       Navigator.pop(
@@ -665,6 +661,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                 _showSearch = false;
                 _predictions = [];
                 _searchCtrl.clear();
+                _searchHelperText = null;
               });
               _searchFocus.unfocus();
             },
@@ -828,6 +825,17 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                         ),
                       ),
                     ),
+                    if (_searchHelperText != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _searchHelperText!,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: JT.textSecondary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

@@ -70,6 +70,7 @@ class _LocationScreenState extends State<LocationScreen>
   bool _searching = false;
   bool _activeField = true; // true = editing drop, false = editing stop
   String _activeQuery = '';
+  String? _searchHelperText;
   Timer? _debounce;
   String _sessionToken = ''; // Google Places Session Token for cost optimization
   int _searchRequestId = 0;
@@ -328,6 +329,54 @@ class _LocationScreenState extends State<LocationScreen>
     setState(() => _sessionToken = 'sess-$rnd-${_pickupLat.toInt()}');
   }
 
+  void _setSearchHelper(String? message) {
+    if (!mounted) return;
+    setState(() => _searchHelperText = message?.trim().isEmpty == true ? null : message);
+  }
+
+  Future<Map<String, dynamic>?> _validateServiceableLocation(
+    double lat,
+    double lng,
+  ) async {
+    if (lat == 0.0 || lng == 0.0) return null;
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(
+        Uri.parse('${ApiConfig.reverseGeocode}?lat=$lat&lng=$lng'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 6));
+      if (res.statusCode != 200) return null;
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> _selectValidatedLocation(
+    String name,
+    double lat,
+    double lng, {
+    required bool forDrop,
+  }) async {
+    final validation = await _validateServiceableLocation(lat, lng);
+    if (validation != null && validation['serviceable'] != true) {
+      _setSearchHelper(
+        validation['message']?.toString() ??
+            'Choose a destination inside an active service zone.',
+      );
+      return false;
+    }
+    _setSearchHelper(null);
+    final resolvedName =
+        validation?['formattedAddress']?.toString() ?? validation?['address']?.toString() ?? name;
+    if (forDrop) {
+      _selectDrop(resolvedName, lat, lng);
+    } else {
+      _selectStop(resolvedName, lat, lng);
+    }
+    return true;
+  }
+
   // ── Search ────────────────────────────────────────────────────────────────
   void _onDropChanged(String q) {
     setState(() {
@@ -339,6 +388,7 @@ class _LocationScreenState extends State<LocationScreen>
       setState(() {
         _searchResults = [];
         _searching = false;
+        _searchHelperText = null;
       });
       return;
     }
@@ -356,6 +406,7 @@ class _LocationScreenState extends State<LocationScreen>
       setState(() {
         _searchResults = [];
         _searching = false;
+        _searchHelperText = null;
       });
       return;
     }
@@ -405,29 +456,39 @@ class _LocationScreenState extends State<LocationScreen>
                   'placeId': p['placeId']?.toString() ?? '',
                   'lat': lat2,
                   'lng': lng2,
+                  'serviceable': p['serviceable'] == true,
+                  'zoneName': p['zoneName']?.toString() ?? '',
+                  'distanceMeters': (p['distanceMeters'] as num?)?.toDouble() ?? 0.0,
                 };
               })
-              .where((r) => (r['name'] as String).isNotEmpty)
+              .where((r) =>
+                  (r['name'] as String).isNotEmpty &&
+                  r['serviceable'] == true)
               .cast<Map<String, dynamic>>()
               .toList();
-        final fallback = parsed.isEmpty
-            ? await _localSearchFallback(normalizedQuery)
-            : <Map<String, dynamic>>[];
         if (!mounted || requestId != _searchRequestId) return;
         setState(() {
-          _searchResults = parsed.isNotEmpty ? parsed : fallback;
+          _searchResults = parsed;
+          _searchHelperText =
+              parsed.isEmpty ? data['message']?.toString() : null;
         });
         print('[PLACES] Found ${_searchResults.length} results');
       } else {
-        final fallback = await _localSearchFallback(normalizedQuery);
         if (!mounted || requestId != _searchRequestId) return;
-        setState(() => _searchResults = fallback);
+        setState(() {
+          _searchResults = [];
+          _searchHelperText =
+              'Only destinations inside active service zones are shown here.';
+        });
       }
     } catch (e) {
       print('[PLACES] Error: $e');
-      final fallback = await _localSearchFallback(normalizedQuery);
       if (!mounted || requestId != _searchRequestId) return;
-      setState(() => _searchResults = fallback);
+      setState(() {
+        _searchResults = [];
+        _searchHelperText =
+            'We could not load serviceable destinations right now. Try again or use Pick on Map.';
+      });
     }
     if (mounted && requestId == _searchRequestId) {
       setState(() => _searching = false);
@@ -516,6 +577,7 @@ class _LocationScreenState extends State<LocationScreen>
       _dropLng = lng;
       _dropCtrl.text = name;
       _searchResults = [];
+      _searchHelperText = null;
     });
     FocusScope.of(context).unfocus();
     _resetSessionToken(); // Reset token after a successful selection
@@ -530,6 +592,7 @@ class _LocationScreenState extends State<LocationScreen>
       _stopLng = lng;
       _stopCtrl.text = name;
       _searchResults = [];
+      _searchHelperText = null;
     });
     FocusScope.of(context).unfocus();
   }
@@ -542,6 +605,10 @@ class _LocationScreenState extends State<LocationScreen>
     var lat = (p['lat'] as num?)?.toDouble() ?? 0.0;
     var lng = (p['lng'] as num?)?.toDouble() ?? 0.0;
     final placeId = p['placeId']?.toString() ?? '';
+    if (p['serviceable'] != true) {
+      _setSearchHelper('Choose a destination inside an active service zone.');
+      return;
+    }
     if ((lat == 0.0 || lng == 0.0) &&
         placeId.isNotEmpty &&
         !placeId.startsWith('local:')) {
@@ -557,43 +624,37 @@ class _LocationScreenState extends State<LocationScreen>
             .timeout(const Duration(seconds: 6));
         if (r.statusCode == 200) {
           final d = jsonDecode(r.body) as Map<String, dynamic>;
+          if (d['serviceable'] != true) {
+            if (mounted) setState(() => _detectingLocation = false);
+            _setSearchHelper(
+              d['message']?.toString() ??
+                  'Choose a destination inside an active service zone.',
+            );
+            return;
+          }
           lat = (d['lat'] as num?)?.toDouble() ?? 0.0;
           lng = (d['lng'] as num?)?.toDouble() ?? 0.0;
           final resolvedName = d['address']?.toString() ?? name;
           if (!mounted) return;
           setState(() => _detectingLocation = false);
-          if (forDrop) {
-            _selectDrop(resolvedName, lat, lng);
-          } else {
-            _selectStop(resolvedName, lat, lng);
-          }
+          await _selectValidatedLocation(
+            resolvedName,
+            lat,
+            lng,
+            forDrop: forDrop,
+          );
           return;
         }
       } catch (_) {}
       if (mounted) setState(() => _detectingLocation = false);
     }
-    if ((lat == 0.0 || lng == 0.0) && name.isNotEmpty) {
-      final resolved = await _searchPlacesFallback(name);
-      if (resolved.isNotEmpty) {
-        final first = resolved.first;
-        lat = (first['lat'] as num?)?.toDouble() ?? lat;
-        lng = (first['lng'] as num?)?.toDouble() ?? lng;
-      }
-    }
     if (lat == 0.0 || lng == 0.0) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not load location details. Please try another suggestion or Pick on Map.'),
-          behavior: SnackBarBehavior.floating,
-        ));
-      }
+      _setSearchHelper(
+        'Could not load that destination. Try another suggestion or use Pick on Map.',
+      );
       return;
     }
-    if (forDrop) {
-      _selectDrop(name, lat, lng);
-    } else {
-      _selectStop(name, lat, lng);
-    }
+    await _selectValidatedLocation(name, lat, lng, forDrop: forDrop);
   }
 
   void _tryProceed() {
@@ -604,10 +665,7 @@ class _LocationScreenState extends State<LocationScreen>
 
   void _proceedToVehicles() {
     if (_dropLat == 0 && _dropLng == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Please select a valid destination from suggestions'),
-        behavior: SnackBarBehavior.floating,
-      ));
+      _setSearchHelper('Select a serviceable destination to continue.');
       return;
     }
     HapticFeedback.mediumImpact();
@@ -1148,6 +1206,28 @@ class _LocationScreenState extends State<LocationScreen>
             }),
           ] else if (!_searching)
             _buildNoResults(),
+          if (_searchHelperText != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8, left: 4, right: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline_rounded,
+                      size: 14, color: JT.textSecondary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _searchHelperText!,
+                      style: GoogleFonts.poppins(
+                        color: JT.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ]
 
         // Default state: recent + popular
@@ -1161,10 +1241,12 @@ class _LocationScreenState extends State<LocationScreen>
                   secondaryText: p['address']?.toString() ?? 'Recent search',
                   icon: Icons.history_rounded,
                   iconColor: JT.textSecondary,
-                  onTap: () => _selectDrop(
-                      p['name'] ?? '',
-                      (p['lat'] as num).toDouble(),
-                      (p['lng'] as num).toDouble()),
+                  onTap: () => _selectValidatedLocation(
+                    p['name'] ?? '',
+                    (p['lat'] as num).toDouble(),
+                    (p['lng'] as num).toDouble(),
+                    forDrop: true,
+                  ),
                 )),
             const SizedBox(height: 12),
           ],
@@ -1184,10 +1266,12 @@ class _LocationScreenState extends State<LocationScreen>
                     distanceKm: dist > 0 ? dist : null,
                     icon: Icons.place_rounded,
                     iconColor: const Color(0xFFF59E0B),
-                    onTap: () => _selectDrop(
-                        p['name'] ?? '',
-                        (p['lat'] as num).toDouble(),
-                        (p['lng'] as num).toDouble()),
+                    onTap: () => _selectValidatedLocation(
+                      p['name'] ?? '',
+                      (p['lat'] as num).toDouble(),
+                      (p['lng'] as num).toDouble(),
+                      forDrop: true,
+                    ),
                   );
                 }),
           ],
@@ -1366,6 +1450,14 @@ class _LocationScreenState extends State<LocationScreen>
         const SizedBox(height: 12),
         Text('No locations found',
             style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13)),
+        if (_searchHelperText != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _searchHelperText!,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 12),
+          ),
+        ],
       ]),
     );
   }

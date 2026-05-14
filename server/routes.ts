@@ -17360,7 +17360,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           .filter((name: any) => typeof name === "string" && name.trim().length > 0)
       ));
       res.json({
-        predictions,
+        predictions: serviceablePredictions,
         hasServiceableResults: serviceablePredictions.length > 0,
         serviceableZoneNames,
         message: serviceablePredictions.length > 0

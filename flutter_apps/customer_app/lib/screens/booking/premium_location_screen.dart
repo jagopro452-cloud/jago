@@ -73,14 +73,10 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
     final zoneSuffix = (zoneName != null && zoneName.trim().isNotEmpty)
         ? ' in $zoneName'
         : '';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'We are not serving this area$zoneSuffix yet. Please choose a location inside your active service zone.',
-        ),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    setState(() {
+      _zoneWarning =
+          'We are not serving this area$zoneSuffix yet. Choose a location inside an active service zone.';
+    });
   }
 
   @override
@@ -198,11 +194,14 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
                     'serviceable': p['serviceable'] == true,
                     'zoneName': p['zoneName']?.toString() ?? '',
                     'notServing': p['notServing'] == true,
+                    'distanceMeters': (p['distanceMeters'] as num?)?.toDouble() ?? 0.0,
                   })
-              .where((p) => (p['name'] as String).isNotEmpty)
+              .where((p) =>
+                  (p['name'] as String).isNotEmpty &&
+                  p['serviceable'] == true)
               .toList();
           setState(() {
-            _zoneWarning = zoneWarning;
+            _zoneWarning = predictions.isEmpty ? zoneWarning : null;
             _searchResults = predictions;
           });
         } else {
@@ -279,6 +278,7 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
             _dropLng = lng;
             _dropCtrl.text = addr;
           }
+          _zoneWarning = null;
           _searchResults = [];
           _searching = false;
           FocusScope.of(context).unfocus();
@@ -378,23 +378,24 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
       }, child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), decoration: BoxDecoration(color: const Color(0xFFF43F5E).withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: Text("Map", style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFFF43F5E)))))),
       if (_isTyping && _zoneWarning != null && _searchResults.every((item) => item['serviceable'] != true))
         Padding(
-          padding: const EdgeInsets.only(top: 14),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF43F5E).withOpacity(0.08),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFF43F5E).withOpacity(0.18)),
-            ),
-            child: Text(
-              _zoneWarning!,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFFBE123C),
+          padding: const EdgeInsets.only(top: 14, left: 4, right: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.info_outline_rounded,
+                  size: 14, color: Color(0xFF64748B)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _zoneWarning!,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
       AnimatedSwitcher(duration: const Duration(milliseconds: 300), child: (_isTyping && _searchResults.isNotEmpty) ? Column(children: [const SizedBox(height: 16), _buildSearchResults()]) : const SizedBox.shrink()),
@@ -426,13 +427,12 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
           ? p['mainText'].toString()
           : (p['name']?.toString().split(',').first ?? 'Location');
       final secText = p['secondaryText']?.toString() ?? '';
-      final serviceable = p['serviceable'] == true;
       final zoneName = p['zoneName']?.toString() ?? '';
       return ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Icon(
-          serviceable ? Icons.location_on_rounded : Icons.location_off_rounded,
-          color: serviceable ? const Color(0xFF6366F1) : const Color(0xFFF43F5E),
+        leading: const Icon(
+          Icons.location_on_rounded,
+          color: Color(0xFF6366F1),
           size: 20,
         ),
         title: Text(mainText, style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: const Color(0xFF1E293B))),
@@ -446,19 +446,15 @@ class _PremiumLocationScreenState extends State<PremiumLocationScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: serviceable
-                    ? const Color(0xFF6366F1).withOpacity(0.08)
-                    : const Color(0xFFF43F5E).withOpacity(0.08),
+                color: const Color(0xFF6366F1).withOpacity(0.08),
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
-                serviceable
-                    ? (zoneName.isNotEmpty ? 'Serving in $zoneName' : 'Serving area')
-                    : 'Not serving this area',
+                zoneName.isNotEmpty ? 'Serving in $zoneName' : 'Serving area',
                 style: GoogleFonts.poppins(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  color: serviceable ? const Color(0xFF4338CA) : const Color(0xFFBE123C),
+                  color: const Color(0xFF4338CA),
                 ),
               ),
             ),

@@ -3339,23 +3339,21 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
                   'placeId': p['placeId']?.toString() ?? '',
                   'lat': (p['lat'] as num?)?.toDouble() ?? 0.0,
                   'lng': (p['lng'] as num?)?.toDouble() ?? 0.0,
+                  'serviceable': p['serviceable'] == true,
                 })
-            .where((row) => (row['name'] as String).isNotEmpty)
+            .where((row) =>
+                (row['name'] as String).isNotEmpty &&
+                row['serviceable'] == true)
             .toList();
-        final fallback = parsed.isEmpty
-            ? await _searchPlacesFallback(normalizedQuery)
-            : <Map<String, dynamic>>[];
         if (!mounted || requestId != _searchRequestId) return;
-        setState(() => _results = parsed.isNotEmpty ? parsed : fallback);
+        setState(() => _results = parsed);
       } else {
-        final fallback = await _searchPlacesFallback(normalizedQuery);
         if (!mounted || requestId != _searchRequestId) return;
-        setState(() => _results = fallback);
+        setState(() => _results = []);
       }
     } catch (_) {
-      final fallback = await _searchPlacesFallback(normalizedQuery);
       if (!mounted || requestId != _searchRequestId) return;
-      setState(() => _results = fallback);
+      setState(() => _results = []);
     }
     if (mounted && requestId == _searchRequestId) {
       setState(() => _loading = false);
@@ -3431,6 +3429,15 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
     var lat = (p['lat'] as num?)?.toDouble() ?? 0.0;
     var lng = (p['lng'] as num?)?.toDouble() ?? 0.0;
     final placeId = p['placeId']?.toString() ?? '';
+    if (p['serviceable'] == false) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Choose a destination inside an active service zone.'),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+      return;
+    }
     if ((lat == 0.0 || lng == 0.0) &&
         placeId.isNotEmpty &&
         !placeId.startsWith('local:')) {
@@ -3446,9 +3453,42 @@ class _PlaceSearchSheetState extends State<_PlaceSearchSheet> {
         _sessionToken = DateTime.now().millisecondsSinceEpoch.toString();
         if (r.statusCode == 200) {
           final d = jsonDecode(r.body) as Map<String, dynamic>;
+          if (d['serviceable'] != true) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content:
+                    Text('Choose a destination inside an active service zone.'),
+                behavior: SnackBarBehavior.floating,
+              ));
+            }
+            return;
+          }
           lat = (d['lat'] as num?)?.toDouble() ?? 0.0;
           lng = (d['lng'] as num?)?.toDouble() ?? 0.0;
           name = d['address']?.toString() ?? name;
+        }
+      } catch (_) {}
+    }
+    if (lat != 0.0 && lng != 0.0 && p['serviceable'] != true) {
+      try {
+        final headers = await AuthService.getHeaders();
+        final res = await http.get(
+          Uri.parse('${ApiConfig.reverseGeocode}?lat=$lat&lng=$lng'),
+          headers: headers,
+        ).timeout(const Duration(seconds: 6));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body) as Map<String, dynamic>;
+          if (data['serviceable'] != true) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content:
+                    Text('Choose a destination inside an active service zone.'),
+                behavior: SnackBarBehavior.floating,
+              ));
+            }
+            return;
+          }
+          name = data['formattedAddress']?.toString() ?? name;
         }
       } catch (_) {}
     }

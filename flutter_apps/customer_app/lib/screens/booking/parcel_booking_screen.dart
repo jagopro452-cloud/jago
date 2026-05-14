@@ -311,7 +311,8 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
             'secondary_text': p['secondaryText'] ?? '',
             'lat': (p['lat'] ?? 0).toDouble(),
             'lng': (p['lng'] ?? 0).toDouble(),
-          }).toList();
+            'serviceable': p['serviceable'] == true,
+          }).where((p) => p['serviceable'] == true).toList();
           if (isPickup) {
             _pickupSuggestions = results;
           } else {
@@ -324,6 +325,10 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
   void _selectSuggestion(Map<String, dynamic> s, {required bool isPickup}) async {
     final desc = s['description'] as String;
+    if (s['serviceable'] == false) {
+      _showSnack('Choose a location inside an active service zone.', error: true);
+      return;
+    }
     setState(() {
       if (isPickup) {
         _pickupAddressCtrl.text = desc;
@@ -346,11 +351,15 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       try {
         final headers = await AuthService.getHeaders();
         final r = await http.get(
-          Uri.parse('${ApiConfig.baseUrl}/api/app/places/details?place_id=${s['place_id']}'),
+          Uri.parse('${ApiConfig.baseUrl}/api/app/places/details?placeId=${Uri.encodeComponent((s['place_id'] ?? '').toString())}'),
           headers: headers,
         ).timeout(const Duration(seconds: 5));
         if (r.statusCode == 200) {
           final d = jsonDecode(r.body);
+          if (d['serviceable'] != true) {
+            _showSnack('Choose a location inside an active service zone.', error: true);
+            return;
+          }
           if (mounted) setState(() {
             final lat = (d['lat'] ?? d['result']?['geometry']?['location']?['lat'] ?? 0).toDouble();
             final lng = (d['lng'] ?? d['result']?['geometry']?['location']?['lng'] ?? 0).toDouble();
@@ -362,6 +371,33 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
               _destLng = lng;
             }
           });
+        }
+      } catch (_) {}
+    } else {
+      try {
+        final headers = await AuthService.getHeaders();
+        final res = await http.get(
+          Uri.parse('${ApiConfig.reverseGeocode}?lat=${isPickup ? _pickupLat : _destLat}&lng=${isPickup ? _pickupLng : _destLng}'),
+          headers: headers,
+        ).timeout(const Duration(seconds: 6));
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body) as Map<String, dynamic>;
+          if (data['serviceable'] != true) {
+            _showSnack('Choose a location inside an active service zone.', error: true);
+            if (mounted) {
+              setState(() {
+                if (isPickup) {
+                  _pickupLat = 0;
+                  _pickupLng = 0;
+                  _pickupAddressCtrl.clear();
+                } else {
+                  _destLat = 0;
+                  _destLng = 0;
+                  _dropAddressCtrl.clear();
+                }
+              });
+            }
+          }
         }
       } catch (_) {}
     }

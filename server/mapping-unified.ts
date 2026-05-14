@@ -28,6 +28,7 @@ export interface PlacePrediction {
   types: string[];
   lat?: number;
   lng?: number;
+  distanceMeters?: number;
   serviceable?: boolean;
   zoneId?: string | null;
   zoneName?: string | null;
@@ -263,6 +264,34 @@ async function enrichPredictionsWithServiceability(
   return enriched;
 }
 
+function rankPredictionsByDistance(
+  predictions: PlacePrediction[],
+  originLat?: number,
+  originLng?: number
+): PlacePrediction[] {
+  const hasOrigin = Number.isFinite(originLat) && Number.isFinite(originLng);
+  const ranked = predictions.map((prediction, index) => {
+    const hasCoords = Number.isFinite(prediction.lat) && Number.isFinite(prediction.lng);
+    const distanceMeters = hasOrigin && hasCoords
+      ? Math.round(haversineKm(originLat!, originLng!, prediction.lat!, prediction.lng!) * 1000)
+      : undefined;
+    return {
+      ...prediction,
+      distanceMeters,
+      _index: index,
+    };
+  });
+
+  ranked.sort((a, b) => {
+    const aDistance = a.distanceMeters ?? Number.MAX_SAFE_INTEGER;
+    const bDistance = b.distanceMeters ?? Number.MAX_SAFE_INTEGER;
+    if (aDistance !== bDistance) return aDistance - bDistance;
+    return a._index - b._index;
+  });
+
+  return ranked.map(({ _index, ...prediction }) => prediction);
+}
+
 // ── 1. PLACES AUTOCOMPLETE ──────────────────────────────────────────────────
 
 /**
@@ -332,8 +361,9 @@ export async function searchPlaces(
       types: p.types || [],
     }));
     const filtered = await enrichPredictionsWithServiceability(results, sessionToken);
-    placesCache.set(cacheKey, filtered);
-    return filtered;
+    const ranked = rankPredictionsByDistance(filtered, lat, lng);
+    placesCache.set(cacheKey, ranked);
+    return ranked;
   } catch (e: any) {
     console.error(`[mapping-unified:searchPlaces] Failed:`, e.message || e);
     return searchNominatimFallback(query);
