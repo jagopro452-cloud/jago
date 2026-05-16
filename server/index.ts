@@ -61,6 +61,7 @@ app.use((_req, res, next) => {
     const allowedOrigins = [
       "https://jagopro.org",
       "https://www.jagopro.org",
+      "https://sea-lion-app-h5luj.ondigitalocean.app",
       "http://localhost:5173",
       "http://localhost:5000",
       "http://127.0.0.1:5173",
@@ -213,7 +214,6 @@ app.use((req, res, next) => {
           "twilio_account_sid",
           "twilio_auth_token",
           "twilio_phone_number",
-          "anthropic_api_key",
         ]]
       );
       const ENV_MAP: Record<string, string> = {
@@ -226,7 +226,6 @@ app.use((req, res, next) => {
         twilio_account_sid: "TWILIO_ACCOUNT_SID",
         twilio_auth_token: "TWILIO_AUTH_TOKEN",
         twilio_phone_number: "TWILIO_PHONE_NUMBER",
-        anthropic_api_key: "ANTHROPIC_API_KEY",
       };
       for (const row of settingsRes.rows as any[]) {
         const envKey = ENV_MAP[row.key_name];
