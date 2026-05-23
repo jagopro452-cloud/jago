@@ -459,6 +459,142 @@ function shortLocationName(value: any): string {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+type VehicleServiceScope = "ride" | "parcel" | "pool";
+
+function normalizeVehicleServiceScope(value: unknown): VehicleServiceScope {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "ride";
+  if (
+    ["parcel", "delivery", "cargo", "b2b", "b2b_parcel"].includes(raw) ||
+    raw.includes("parcel") ||
+    raw.includes("cargo") ||
+    raw.includes("truck") ||
+    raw.includes("tempo") ||
+    raw.includes("pickup") ||
+    raw.includes("tata") ||
+    raw.includes("bolero")
+  ) {
+    return "parcel";
+  }
+  if (
+    ["pool", "carpool", "city_pool", "local_pool", "outstation_pool", "intercity_pool"].includes(raw) ||
+    raw.includes("pool") ||
+    raw.includes("share")
+  ) {
+    return "pool";
+  }
+  return "ride";
+}
+
+function inferVehicleServiceScope(row: any): VehicleServiceScope {
+  const vehicleTypeScope = normalizeVehicleServiceScope(row?.vehicle_type ?? row?.vehicleType ?? "");
+  const nameScope = normalizeVehicleServiceScope(row?.name ?? "");
+  if (vehicleTypeScope === "parcel" || nameScope === "parcel") return "parcel";
+  if (row?.is_carpool === true || row?.isCarpool === true || vehicleTypeScope === "pool" || nameScope === "pool") return "pool";
+  return normalizeVehicleServiceScope(row?.service_type ?? row?.serviceType ?? row?.type ?? "ride");
+}
+
+function vehicleCategoryServicePredicate(scope: VehicleServiceScope): any {
+  const serviceExpr = rawSql`LOWER(COALESCE(vc.service_type, CASE WHEN LOWER(COALESCE(vc.type, '')) IN ('parcel','cargo') THEN 'parcel' ELSE 'ride' END))`;
+  const typeExpr = rawSql`LOWER(COALESCE(vc.type, ''))`;
+  const vehicleTypeExpr = rawSql`LOWER(COALESCE(vc.vehicle_type, ''))`;
+  const nameExpr = rawSql`LOWER(COALESCE(vc.name, ''))`;
+  const parcelShape = rawSql`(
+    ${serviceExpr} IN ('parcel','cargo')
+    OR ${typeExpr} IN ('parcel','cargo')
+    OR ${vehicleTypeExpr} IN ('bike_parcel','auto_parcel','tata_ace','pickup_truck','bolero_cargo','tempo_407','cargo_car')
+    OR ${nameExpr} LIKE '%parcel%'
+    OR ${nameExpr} LIKE '%cargo%'
+    OR ${nameExpr} LIKE '%truck%'
+    OR ${nameExpr} LIKE '%tempo%'
+    OR ${nameExpr} LIKE '%tata%'
+    OR ${nameExpr} LIKE '%bolero%'
+    OR ${nameExpr} LIKE '%pickup%'
+  )`;
+  const poolShape = rawSql`(
+    ${serviceExpr} IN ('pool','carpool')
+    OR COALESCE(vc.is_carpool, false) = true
+    OR ${vehicleTypeExpr} IN ('carpool','local_pool','outstation_pool')
+    OR ${nameExpr} LIKE '%pool%'
+    OR ${nameExpr} LIKE '%share%'
+  )`;
+  if (scope === "parcel") return parcelShape;
+  if (scope === "pool") return poolShape;
+  return rawSql`(
+    ${serviceExpr} = 'ride'
+    AND COALESCE(vc.is_carpool, false) = false
+    AND NOT ${parcelShape}
+    AND NOT ${poolShape}
+  )`;
+}
+
+function categoryPricingFromPayload(payload: any, fallback: any = {}) {
+  const merged = { ...fallback, ...payload };
+  return {
+    baseFare: Number(merged.baseFare ?? merged.base_fare ?? 0),
+    farePerKm: Number(merged.farePerKm ?? merged.fare_per_km ?? 0),
+    minimumFare: Number(merged.minimumFare ?? merged.minimum_fare ?? 0),
+  };
+}
+
+function validateActiveCategoryPricing(payload: any, fallback: any = {}) {
+  const active = payload.isActive ?? payload.is_active ?? fallback.is_active ?? fallback.isActive ?? true;
+  if (active === false) return;
+  const pricing = categoryPricingFromPayload(payload, fallback);
+  if (!Number.isFinite(pricing.baseFare) || pricing.baseFare <= 0 ||
+      !Number.isFinite(pricing.farePerKm) || pricing.farePerKm <= 0 ||
+      !Number.isFinite(pricing.minimumFare) || pricing.minimumFare <= 0) {
+    throw Object.assign(new Error("Vehicle category requires baseFare, farePerKm, and minimumFare before activation"), {
+      status: 400,
+      code: "INCOMPLETE_FARE_CONFIG",
+    });
+  }
+}
+
+async function guardLastActiveVehicleCategory(id: string, nextActive: boolean) {
+  if (nextActive) return;
+  const rowR = await rawDb.execute(rawSql`
+    SELECT id, name, type, vehicle_type, service_type, is_carpool, is_active
+    FROM vehicle_categories
+    WHERE id=${id}::uuid
+    LIMIT 1
+  `);
+  const row = rowR.rows[0] as any;
+  if (!row || row.is_active === false) return;
+  const scope = inferVehicleServiceScope(row);
+  const countR = await rawDb.execute(rawSql`
+    SELECT COUNT(*)::int AS remaining
+    FROM vehicle_categories vc
+    WHERE vc.id <> ${id}::uuid
+      AND vc.is_active = true
+      AND ${vehicleCategoryServicePredicate(scope)}
+  `);
+  const remaining = Number((countR.rows[0] as any)?.remaining || 0);
+  if (remaining <= 0) {
+    console.warn(`[ADMIN_CATEGORY_GUARD] blocked_last_active_category id=${id} scope=${scope}`);
+    throw Object.assign(new Error(`At least one active ${scope} vehicle category is required`), {
+      status: 409,
+      code: "LAST_ACTIVE_CATEGORY",
+    });
+  }
+}
+
+async function guardVehicleCategoryDelete(id: string) {
+  const refR = await rawDb.execute(rawSql`
+    SELECT
+      (SELECT COUNT(*)::int FROM trip_requests WHERE vehicle_category_id=${id}::uuid) AS trips,
+      (SELECT COUNT(*)::int FROM trip_fares WHERE vehicle_category_id=${id}::uuid) AS fares
+  `);
+  const refs = refR.rows[0] as any;
+  if (Number(refs?.trips || 0) > 0 || Number(refs?.fares || 0) > 0) {
+    console.warn(`[ADMIN_CATEGORY_GUARD] blocked_delete_mapped_category id=${id} trips=${refs?.trips || 0} fares=${refs?.fares || 0}`);
+    throw Object.assign(new Error("Vehicle category is mapped to trips or fares and cannot be deleted"), {
+      status: 409,
+      code: "CATEGORY_IN_USE",
+    });
+  }
+}
+
 async function validateBookingVehicleCategory(input: {
   vehicleCategoryId: unknown;
   requestedVehicleType?: unknown;
@@ -4207,30 +4343,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/vehicle-categories", async (req, res) => {
     try {
       const typeFilter = req.query.type?.toString() || '';
+      const serviceScope = normalizeVehicleServiceScope(typeFilter || "ride");
       const q = typeFilter
         ? rawSql`
             SELECT *
-            FROM vehicle_categories
-            WHERE is_active = true
-              AND (
-                LOWER(COALESCE(service_type, '')) = LOWER(${typeFilter})
-                OR LOWER(type) = LOWER(${typeFilter})
-                OR (
-                  LOWER(${typeFilter}) IN ('pool', 'carpool')
-                  AND (COALESCE(is_carpool, false) = true OR LOWER(COALESCE(service_type, '')) IN ('pool', 'carpool'))
-                )
-                OR (
-                  LOWER(${typeFilter}) = 'ride'
-                  AND COALESCE(service_type, 'ride') = 'ride'
-                  AND COALESCE(is_carpool, false) = false
-                )
-              )
+            FROM vehicle_categories vc
+            WHERE vc.is_active = true
+              AND ${vehicleCategoryServicePredicate(serviceScope)}
             ORDER BY COALESCE(service_type, 'ride'), name
           `
         : rawSql`
             SELECT *
-            FROM vehicle_categories
-            WHERE is_active = true
+            FROM vehicle_categories vc
+            WHERE vc.is_active = true
             ORDER BY
               CASE COALESCE(service_type, CASE WHEN type='parcel' THEN 'parcel' ELSE 'ride' END)
                 WHEN 'ride' THEN 1
@@ -4250,36 +4375,61 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/vehicle-categories", requireAdminAuth, async (req, res) => {
     try {
+      validateActiveCategoryPricing(req.body);
       const cat = await storage.createVehicleCategory(req.body);
       res.status(201).json(cat);
     } catch (e: any) {
-      res.status(500).json({ message: safeErrMsg(e) });
+      res.status(e.status || 500).json({ message: safeErrMsg(e), code: e.code });
     }
   });
 
   app.put("/api/vehicle-categories/:id", requireAdminAuth, async (req, res) => {
     try {
+      const existing = await rawDb.execute(rawSql`
+        SELECT base_fare, fare_per_km, minimum_fare, is_active
+        FROM vehicle_categories
+        WHERE id=${req.params.id}::uuid
+        LIMIT 1
+      `);
+      validateActiveCategoryPricing(req.body, existing.rows[0] || {});
+      if (req.body?.isActive === false || req.body?.is_active === false) {
+        await guardLastActiveVehicleCategory(String(req.params.id), false);
+      }
       const cat = await storage.updateVehicleCategory(String(req.params.id), req.body);
       res.json(cat);
     } catch (e: any) {
-      res.status(500).json({ message: safeErrMsg(e) });
+      res.status(e.status || 500).json({ message: safeErrMsg(e), code: e.code });
     }
   });
 
   app.patch("/api/vehicle-categories/:id", requireAdminAuth, async (req, res) => {
     try {
       const { isActive } = req.body;
+      if (typeof isActive !== "boolean") return res.status(400).json({ message: "isActive must be boolean", code: "INVALID_ACTIVE_FLAG" });
+      if (isActive) {
+        const existing = await rawDb.execute(rawSql`
+          SELECT base_fare, fare_per_km, minimum_fare, is_active
+          FROM vehicle_categories
+          WHERE id=${req.params.id}::uuid
+          LIMIT 1
+        `);
+        validateActiveCategoryPricing({ isActive }, existing.rows[0] || {});
+      } else {
+        await guardLastActiveVehicleCategory(String(req.params.id), false);
+      }
       const r = await rawDb.execute(rawSql`UPDATE vehicle_categories SET is_active=${isActive} WHERE id=${req.params.id}::uuid RETURNING *`);
       res.json(camelize(r.rows[0]));
-    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+    } catch (e: any) { res.status(e.status || 500).json({ message: safeErrMsg(e), code: e.code }); }
   });
 
   app.delete("/api/vehicle-categories/:id", requireAdminAuth, async (req, res) => {
     try {
+      await guardVehicleCategoryDelete(String(req.params.id));
+      await guardLastActiveVehicleCategory(String(req.params.id), false);
       await storage.deleteVehicleCategory(String(req.params.id));
       res.status(204).end();
     } catch (e: any) {
-      res.status(500).json({ message: safeErrMsg(e) });
+      res.status(e.status || 500).json({ message: safeErrMsg(e), code: e.code });
     }
   });
 
@@ -11694,6 +11844,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         userId, // optional ï¿½ if provided, include launch offer info
         category, // optional ï¿½ 'ride' | 'parcel' | 'pool' to filter vehicle types
       } = req.body;
+      const requestedService = normalizeVehicleServiceScope(category || "ride");
+      const requestedVehicleCategoryId = String(vehicleCategoryId || "").trim();
+      if (requestedVehicleCategoryId && !UUID_RE.test(requestedVehicleCategoryId)) {
+        console.warn(`[FARE_CATEGORY_INVALID] service=${requestedService} rawVehicleCategoryId=${requestedVehicleCategoryId}`);
+        return res.status(400).json({
+          success: false,
+          error: "INVALID_VEHICLE_CATEGORY",
+          fares: [],
+          message: "Selected ride option is unavailable. Please retry.",
+        });
+      }
       const destLat = _destLat ?? destinationLat;
       const destLng = _destLng ?? destinationLng;
 
@@ -11719,9 +11880,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Zone surge factor: use detectZoneId (polygon + radius fallback)
       let zoneSurge = 1.0;
       let activeZoneName = '';
+      let detectedZoneId: string | null = null;
       if (pickupLat && pickupLng) {
         try {
-          const detectedZoneId = await detectZoneId(parseFloat(pickupLat), parseFloat(pickupLng));
+          detectedZoneId = await detectZoneId(parseFloat(pickupLat), parseFloat(pickupLng));
           if (detectedZoneId) {
             const zr = await rawDb.execute(rawSql`SELECT name, surge_factor FROM zones WHERE id=${detectedZoneId}::uuid AND is_active=true LIMIT 1`);
             if (zr.rows.length) {
@@ -11732,11 +11894,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         } catch { }
       }
 
-      // DISTINCT ON ensures exactly one row per vehicle category, avoiding zone duplicates
+      // One row per active vehicle category. trip_fares is optional because
+      // vehicle_categories contains production fallback pricing; missing fare
+      // rows are logged and still fail closed on null category IDs.
       const fareR = await rawDb.execute(rawSql`
-        SELECT DISTINCT ON (f.vehicle_category_id)
-          f.*, vc.name as vehicle_name, vc.icon as vehicle_icon,
+        SELECT
+          vc.id as vehicle_category_id,
+          f.id as fare_id,
+          f.zone_id,
+          f.base_fare,
+          f.fare_per_km,
+          f.fare_per_min,
+          f.minimum_fare,
+          f.cancellation_fee,
+          f.waiting_charge_per_min,
+          f.helper_charge,
+          f.night_charge_multiplier,
+          vc.name as vehicle_name, vc.icon as vehicle_icon,
           vc.vehicle_type as vc_vehicle_type,
+          COALESCE(vc.service_type, vc.type, 'ride') as service_type,
+          vc.type as category_type,
           vc.base_fare     as vc_base_fare,
           vc.fare_per_km   as vc_fare_per_km,
           vc.minimum_fare  as vc_minimum_fare,
@@ -11744,15 +11921,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           COALESCE(vc.total_seats, 0) as vc_total_seats,
           COALESCE(vc.is_carpool, false) as vc_is_carpool,
           vc.is_active as is_active
-        FROM trip_fares f
-        JOIN vehicle_categories vc ON vc.id = f.vehicle_category_id
-        WHERE 1=1
-        ${vehicleCategoryId ? rawSql`AND f.vehicle_category_id = ${vehicleCategoryId}::uuid` : rawSql``}
-        ${category ? rawSql`AND vc.type = ${category}` : rawSql``}
-        ORDER BY f.vehicle_category_id, vc.name
+        FROM vehicle_categories vc
+        LEFT JOIN LATERAL (
+          SELECT tf.*
+          FROM trip_fares tf
+          WHERE tf.vehicle_category_id = vc.id
+            AND (
+              ${detectedZoneId ? rawSql`tf.zone_id = ${detectedZoneId}::uuid OR` : rawSql``}
+              tf.zone_id IS NULL
+            )
+          ORDER BY
+            ${detectedZoneId ? rawSql`(tf.zone_id = ${detectedZoneId}::uuid) DESC,` : rawSql``}
+            (tf.zone_id IS NULL) DESC,
+            tf.created_at DESC
+          LIMIT 1
+        ) f ON true
+        WHERE vc.is_active = true
+          AND ${vehicleCategoryServicePredicate(requestedService)}
+          ${requestedVehicleCategoryId ? rawSql`AND vc.id = ${requestedVehicleCategoryId}::uuid` : rawSql``}
+        ORDER BY vc.name
       `);
       const fareRows = camelize(fareR.rows);
+      if (!fareRows.length) {
+        console.warn(
+          `[FARE_CATEGORY_EMPTY] service=${requestedService} category=${String(category || "")} vehicleCategoryId=${requestedVehicleCategoryId || "none"} pickup=${pickupLat || ""},${pickupLng || ""}`,
+        );
+        return res.status(200).json({
+          success: false,
+          error: "NO_ACTIVE_VEHICLE_CATEGORY",
+          message: requestedService === "parcel"
+            ? "No parcel vehicles currently available nearby"
+            : "No rides currently available nearby",
+          fares: [],
+          distanceKm: Math.round(dist * 10) / 10,
+          durationMin: dur,
+          isNight,
+          retryAfterSeconds: 5,
+        });
+      }
       const fares = await Promise.all(fareRows.map(async (f: any) => {
+        if (!f.fareId) {
+          console.warn(
+            `[FARE_CONFIG_MISSING] category=${f.vehicleCategoryId} name=${f.vehicleName || ""} service=${requestedService}`,
+          );
+        }
         // Resolve vehicle name for smart defaults
         const vn = (f.vehicleName || '').toLowerCase();
         const isSuv = vn.includes('suv');
@@ -11815,6 +12027,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           vehicleCategoryId: f.vehicleCategoryId,
           vehicleName: f.vehicleName || "Ride",
           vehicleType: f.vcVehicleType || null,
+          serviceType: f.serviceType || requestedService,
           vehicleIcon: f.vehicleIcon,
           baseFare: +base.toFixed(2),
           farePerKm: +perKm.toFixed(2),
@@ -12197,7 +12410,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/app/configs", async (_req, res) => {
     try {
       const [cats, reasons, settings, brands, parcelCats, parcelWeights] = await Promise.all([
-        rawDb.execute(rawSql`SELECT id, name, icon, type, is_active FROM vehicle_categories WHERE is_active=true ORDER BY CASE type WHEN 'ride' THEN 1 WHEN 'parcel' THEN 2 WHEN 'cargo' THEN 3 ELSE 4 END, name`),
+        rawDb.execute(rawSql`
+          SELECT
+            vc.id,
+            vc.name,
+            vc.icon,
+            CASE
+              WHEN ${vehicleCategoryServicePredicate("parcel")} THEN 'parcel'
+              WHEN ${vehicleCategoryServicePredicate("pool")} THEN 'pool'
+              ELSE 'ride'
+            END AS type,
+            COALESCE(vc.service_type, vc.type, 'ride') AS service_type,
+            vc.vehicle_type,
+            vc.is_active
+          FROM vehicle_categories vc
+          WHERE vc.is_active=true
+          ORDER BY
+            CASE
+              WHEN ${vehicleCategoryServicePredicate("ride")} THEN 1
+              WHEN ${vehicleCategoryServicePredicate("pool")} THEN 2
+              WHEN ${vehicleCategoryServicePredicate("parcel")} THEN 3
+              ELSE 4
+            END,
+            vc.name
+        `),
         rawDb.execute(rawSql`SELECT * FROM cancellation_reasons WHERE is_active=true`),
         rawDb.execute(rawSql`SELECT key_name, value FROM business_settings WHERE key_name IN ('otp_on_pickup','max_ride_radius_km','driver_auto_accept','sos_number','support_phone','currency','currency_symbol')`),
         rawDb.execute(rawSql`SELECT * FROM vehicle_brands WHERE is_active=true ORDER BY category, name`),
@@ -14167,13 +14403,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           FROM trip_requests WHERE customer_id=${user.id}::uuid AND current_status='completed'
         `),
         rawDb.execute(rawSql`
-          SELECT vc.id, vc.name, vc.type, vc.icon, vc.is_active,
+          SELECT vc.id, vc.name,
+            CASE
+              WHEN ${vehicleCategoryServicePredicate("parcel")} THEN 'parcel'
+              WHEN ${vehicleCategoryServicePredicate("pool")} THEN 'pool'
+              ELSE 'ride'
+            END AS type,
+            COALESCE(vc.service_type, vc.type, 'ride') AS service_type,
+            vc.vehicle_type,
+            vc.icon, vc.is_active,
             MIN(tf.minimum_fare) as minimum_fare, MIN(tf.base_fare) as base_fare,
             MIN(tf.fare_per_km) as fare_per_km, MIN(tf.helper_charge) as helper_charge
           FROM vehicle_categories vc
           LEFT JOIN trip_fares tf ON tf.vehicle_category_id = vc.id
-          GROUP BY vc.id, vc.name, vc.type, vc.icon, vc.is_active
-          ORDER BY CASE vc.type WHEN 'ride' THEN 1 WHEN 'parcel' THEN 2 WHEN 'cargo' THEN 3 ELSE 4 END, vc.name
+          WHERE vc.is_active = true
+          GROUP BY vc.id, vc.name, vc.type, vc.service_type, vc.vehicle_type, vc.icon, vc.is_active, vc.is_carpool
+          ORDER BY
+            CASE
+              WHEN ${vehicleCategoryServicePredicate("ride")} THEN 1
+              WHEN ${vehicleCategoryServicePredicate("pool")} THEN 2
+              WHEN ${vehicleCategoryServicePredicate("parcel")} THEN 3
+              ELSE 4
+            END,
+            vc.name
         `),
         rawDb.execute(rawSql`SELECT * FROM banners WHERE is_active=true ORDER BY created_at DESC LIMIT 6`).catch(() => ({ rows: [] })),
       ]);
@@ -17363,6 +17615,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (typeof req.body?.active !== "boolean") return res.status(400).json({ message: "active must be boolean" });
 
       const active = Boolean(req.body.active);
+      if (!active) {
+        const rideKeys = new Set(["bike", "auto", "cab", "premium"]);
+        const parcelKeys = new Set(["bike_parcel", "auto_parcel", "tata_ace", "pickup_truck", "bolero_cargo", "tempo_407"]);
+        const targetSet = rideKeys.has(vehicleKey) ? rideKeys : parcelKeys.has(vehicleKey) ? parcelKeys : null;
+        if (targetSet) {
+          const statuses = await readVehicleStatuses();
+          const remaining = statuses.filter((v) => targetSet.has(v.key) && v.key !== vehicleKey && v.active).length;
+          if (remaining <= 0) {
+            console.warn(`[ADMIN_VEHICLE_STATUS_GUARD] blocked_last_active_runtime_vehicle key=${vehicleKey}`);
+            return res.status(409).json({
+              success: false,
+              code: "LAST_ACTIVE_VEHICLE_STATUS",
+              message: "At least one active vehicle option must remain available.",
+            });
+          }
+        }
+      }
       const adminUser = (req as any).adminUser;
       const updatedBy = adminUser?.email || adminUser?.name || "admin";
       const mirrorWarning = await mirrorVehicleStatusToFirestore({

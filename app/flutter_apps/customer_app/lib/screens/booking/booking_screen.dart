@@ -53,6 +53,10 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   bool _promoLoading = false;
   String? _promoError;
   Timer? _debounce;
+  Timer? _fareRetryTimer;
+  int _fareRetryAttempt = 0;
+  int _fareRequestSerial = 0;
+  late final Stream<Map<String, VehicleStatus>> _vehicleStatusStream;
 
   late Razorpay _razorpay;
 
@@ -77,7 +81,23 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     ? LatLng(widget.destLat, widget.destLng)
     : LatLng(widget.pickupLat + 0.02, widget.pickupLng + 0.02);
 
-  Map<String, dynamic>? get _fare => _allFares.isNotEmpty ? _allFares[_selectedFareIndex] : null;
+  Map<String, dynamic>? get _fare {
+    if (_allFares.isEmpty) return null;
+    final safeIndex = _selectedFareIndex.clamp(0, _allFares.length - 1).toInt();
+    return _allFares[safeIndex];
+  }
+
+  String get _requestedServiceType {
+    final raw = (widget.category ?? 'ride').trim().toLowerCase();
+    if (raw.contains('parcel') || raw.contains('cargo') || raw.contains('truck')) return 'parcel';
+    if (raw.contains('pool') || raw.contains('share')) return 'pool';
+    return 'ride';
+  }
+
+  bool _hasValidCategoryId(Map<String, dynamic> fare) {
+    final id = fare['vehicleCategoryId']?.toString() ?? fare['id']?.toString();
+    return id != null && id.trim().isNotEmpty && id.toLowerCase() != 'null';
+  }
 
   double get _autoDiscount {
     if (_appliedPromo != null) return 0;
@@ -104,7 +124,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   ) {
     return _allFares.asMap().entries.where((entry) {
       final name = _fareVehicleName(entry.value);
-      return VehicleStatusService.isActive(statuses, name);
+      return _hasValidCategoryId(entry.value) &&
+          VehicleStatusService.isActive(statuses, name);
     }).toList();
   }
 
@@ -153,6 +174,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     if (n.contains('cab')) return false;
     if (n.contains('premium')) return false;
     if (n.contains('sedan')) return false;
+    if (n.contains('suv')) return false;
     if (n.contains('car')) return false;
 
     // Hide everything else (Parcel, SUV, Pool, etc. if not requested)
@@ -403,6 +425,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   @override
   void initState() {
     super.initState();
+    _vehicleStatusStream = _vehicleStatusService.watchVehicleStatuses();
     _razorpay = Razorpay();
     _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handleRazorpaySuccess);
     _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handleRazorpayError);
@@ -418,6 +441,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   @override
   void dispose() {
     _debounce?.cancel();
+    _fareRetryTimer?.cancel();
     _promoCtrl.dispose();
     _razorpay.clear();
     _passengerNameCtrl.dispose();
@@ -485,54 +509,104 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     }
   }
 
-  Future<void> _estimateFare() async {
-    setState(() {
-      _estimating = true;
-      _fareLoadError = null;
+  void _scheduleFareRetry() {
+    if (!mounted || _fareRetryAttempt >= 3) return;
+    _fareRetryTimer?.cancel();
+    final delay = Duration(seconds: 4 + (_fareRetryAttempt * 3));
+    _fareRetryAttempt += 1;
+    _fareRetryTimer = Timer(delay, () {
+      if (mounted) _estimateFare(silent: true);
     });
+  }
+
+  String _friendlyFareError([String? backendMessage]) {
+    if (backendMessage != null && backendMessage.trim().isNotEmpty) {
+      return backendMessage.trim();
+    }
+    if (_requestedServiceType == 'parcel') {
+      return 'No parcel vehicles currently available nearby. We are refreshing options.';
+    }
+    return 'No rides currently available nearby. We are refreshing options.';
+  }
+
+  Future<void> _estimateFare({bool silent = false}) async {
+    final requestSerial = ++_fareRequestSerial;
+    _fareRetryTimer?.cancel();
+    if (!silent) {
+      setState(() {
+        _estimating = true;
+        _fareLoadError = null;
+      });
+    }
     try {
       final headers = await AuthService.getHeaders();
       final body = <String, dynamic>{
         'pickupLat': widget.pickupLat, 'pickupLng': widget.pickupLng,
         'destLat': widget.destLat, 'destLng': widget.destLng,
         'distanceKm': _distanceKm,
+        'category': _requestedServiceType,
       };
       if (widget.vehicleCategoryId != null) body['vehicleCategoryId'] = widget.vehicleCategoryId;
-      if (widget.category != null) body['category'] = widget.category;
+      if (widget.vehicleCategoryName != null) body['vehicleCategoryName'] = widget.vehicleCategoryName;
       final res = await http.post(Uri.parse(ApiConfig.estimateFare),
         headers: headers,
-        body: jsonEncode(body));
+        body: jsonEncode(body)).timeout(const Duration(seconds: 8));
+      if (!mounted || requestSerial != _fareRequestSerial) return;
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
+        final backendMessage = data is Map<String, dynamic>
+            ? data['message']?.toString()
+            : null;
         final rawFares = data['fares'];
         final fares = rawFares is List ? rawFares.whereType<Map<String, dynamic>>().toList() : null;
+        if (data is Map<String, dynamic> && data['success'] == false) {
+          setState(() {
+            _allFares = [];
+            _fareLoadError = _friendlyFareError(backendMessage);
+          });
+          _scheduleFareRetry();
+          return;
+        }
         if (fares != null && fares.isNotEmpty) {
           setState(() {
             // Rule 2: Strict service separation — filter by category, hide inactive
             var filtered = fares.toList();
-            final cat = widget.category ?? 'ride';
+            final cat = _requestedServiceType;
             if (cat == 'parcel') {
               filtered = filtered.where((f) {
                 final vname = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase();
                 final vtype = (f['type'] ?? f['vehicleType'] ?? '').toString().toLowerCase();
-                return vtype == 'parcel' || vname.contains('parcel') ||
+                final serviceType = (f['serviceType'] ?? f['service_type'] ?? '').toString().toLowerCase();
+                return (serviceType == 'parcel' || serviceType == 'cargo' ||
+                    vtype == 'parcel' || vtype.contains('parcel') || vname.contains('parcel') ||
                     vname.contains('truck') || vname.contains('van') ||
-                    vname.contains('tata') || vname.contains('mini');
+                    vname.contains('tata') || vname.contains('mini') || vname.contains('cargo')) &&
+                    _hasValidCategoryId(f);
+              }).toList();
+            } else if (cat == 'pool') {
+              filtered = filtered.where((f) {
+                final vname = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase();
+                final vtype = (f['type'] ?? f['vehicleType'] ?? '').toString().toLowerCase();
+                final serviceType = (f['serviceType'] ?? f['service_type'] ?? '').toString().toLowerCase();
+                return (serviceType == 'pool' || serviceType == 'carpool' ||
+                    vtype.contains('pool') || vname.contains('pool') || vname.contains('share')) &&
+                    _hasValidCategoryId(f);
               }).toList();
             } else {
               filtered = filtered.where((f) {
                 final vname = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase();
                 final vtype = (f['type'] ?? f['vehicleType'] ?? '').toString().toLowerCase();
-                // Exclude parcel/cargo vehicles from ride
-                if (vtype == 'parcel' || vname.contains('parcel') || vname.contains('truck') || vname.contains('cargo')) return false;
-                // Rule 4: Hide inactive services
+                final serviceType = (f['serviceType'] ?? f['service_type'] ?? '').toString().toLowerCase();
+                if (serviceType == 'parcel' || serviceType == 'cargo' || serviceType == 'pool' || serviceType == 'carpool') return false;
+                if (vtype.contains('parcel') || vtype.contains('cargo') || vtype.contains('pool')) return false;
+                if (vname.contains('parcel') || vname.contains('truck') || vname.contains('cargo') || vname.contains('pool')) return false;
                 if (_shouldHideVehicle(vname)) return false;
-                return true;
+                return _hasValidCategoryId(f);
               }).toList();
             }
             _allFares = filtered;
             if (_allFares.isEmpty) {
-              _fareLoadError = 'No active vehicle category is available for this service.';
+              _fareLoadError = _friendlyFareError();
             } else if (_selectedFareIndex >= _allFares.length) {
               _selectedFareIndex = 0;
             }
@@ -547,34 +621,42 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               if (idx >= 0) _selectedFareIndex = idx;
             }
           });
+          if (_allFares.isEmpty) {
+            _scheduleFareRetry();
+          } else {
+            _fareRetryAttempt = 0;
+          }
         } else {
           // Server returned 200 but body wasn't as expected — use fallbacks
           if (mounted) {
             setState(() {
               _allFares = [];
-              _fareLoadError = 'Live fares are unavailable. Please retry.';
+              _fareLoadError = _friendlyFareError(backendMessage);
             });
           }
+          _scheduleFareRetry();
         }
       } else {
         // Server returned error status — use fallbacks
         if (mounted) {
           setState(() {
             _allFares = [];
-            _fareLoadError = 'Live fares are unavailable. Please retry.';
+            _fareLoadError = 'We could not refresh ride options. Please retry.';
           });
         }
+        _scheduleFareRetry();
       }
     } catch (_) {
       // Network error — show client-side estimates only on connectivity failure
       if (mounted) {
         setState(() {
           _allFares = [];
-          _fareLoadError = 'Network error while loading live fares. Please retry.';
+          _fareLoadError = 'Network is unstable. We are retrying ride options.';
         });
       }
+      _scheduleFareRetry();
     }
-    if (mounted) setState(() => _estimating = false);
+    if (mounted && requestSerial == _fareRequestSerial) setState(() => _estimating = false);
   }
 
   /// Builds client-side fare estimates (Bike/Auto/Car) when the server returns
@@ -588,7 +670,8 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       final gst = double.parse((raw * 0.05).toStringAsFixed(2));
       final grandTotal = double.parse((raw + gst).toStringAsFixed(2));
       return {
-        'vehicleCategoryId': null,
+        'vehicleCategoryId': '',
+        'isUnavailableFallback': true,
         'vehicleCategoryName': name,
         'vehicleName': name,
         'baseFare': base,
@@ -1162,10 +1245,10 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                             boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 20, spreadRadius: 2)],
                           ),
                           child: StreamBuilder<Map<String, VehicleStatus>>(
-                            stream: _vehicleStatusService.watchVehicleStatuses(),
+                            stream: _vehicleStatusStream,
                             builder: (context, snapshot) {
                               final statuses = snapshot.data ?? {};
-                              final visibleFares = _allFares;
+                              final visibleFares = _visibleFareEntries(statuses);
                               final canBook = !_loading && !_estimating && _fareLoadError == null && visibleFares.isNotEmpty;
 
                               return Container(
@@ -1529,18 +1612,28 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     if (_fareLoadError != null && !_estimating) {
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 28),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFFBEB),
+          color: const Color(0xFFF8FAFC),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.35)),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
         ),
         child: Column(
           children: [
-            const Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706), size: 42),
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: JT.primary.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Icon(Icons.directions_car_filled_rounded, color: JT.primary, size: 30),
+            ),
             const SizedBox(height: 12),
             Text(
-              'Fare loading failed',
+              _requestedServiceType == 'parcel'
+                  ? 'No parcel vehicles currently available'
+                  : 'No rides currently available nearby',
               style: GoogleFonts.outfit(
                 color: const Color(0xFF0F172A),
                 fontSize: 17,
@@ -1554,10 +1647,23 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
             ),
             const SizedBox(height: 14),
+            Shimmer.fromColors(
+              baseColor: const Color(0xFFE2E8F0),
+              highlightColor: Colors.white,
+              child: Container(
+                height: 8,
+                width: 150,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
             OutlinedButton.icon(
               onPressed: _estimateFare,
               icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Retry live fares'),
+              label: const Text('Refresh options'),
             ),
           ],
         ),

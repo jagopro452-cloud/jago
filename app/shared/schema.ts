@@ -69,6 +69,7 @@ export const vehicleCategories = pgTable("vehicle_categories", {
   name: varchar("name", { length: 255 }).notNull(),
   icon: varchar("icon", { length: 255 }),
   type: varchar("type", { length: 50 }).default("ride"),
+  serviceType: varchar("service_type", { length: 30 }).notNull().default("ride"),
   vehicleType: varchar("vehicle_type", { length: 50 }),  // bike, auto, mini_car, sedan, suv, carpool
   // Pricing fields (zone-specific overrides live in trip_fares)
   baseFare: numeric("base_fare", { precision: 10, scale: 2 }).default("0"),
