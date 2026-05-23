@@ -66,6 +66,43 @@ class _TrackingScreenState extends State<TrackingScreen>
   Color _bannerColor = JT.primary;
   Timer? _bannerTimer;
 
+  static const Map<String, int> _tripStatusRank = {
+    'searching': 0,
+    'driver_assigned': 1,
+    'accepted': 2,
+    'arrived': 3,
+    'in_progress': 4,
+    'on_the_way': 4,
+    'payment_pending': 5,
+    'completed': 6,
+    'cancelled': 6,
+  };
+
+  String _normalizeTripStatus(dynamic value) {
+    final status = value?.toString().trim();
+    if (status == null || status.isEmpty) return _status;
+    if (status == 'payment_pending') return 'completed';
+    return status;
+  }
+
+  int _rankOf(String status) => _tripStatusRank[status] ?? 0;
+
+  bool _isSameTripEvent(Map<String, dynamic> data) {
+    final id = data['tripId'] ?? data['trip_id'] ?? data['id'];
+    return id == null || id.toString().isEmpty || id.toString() == widget.tripId;
+  }
+
+  bool _canApplyStatus(String incoming) {
+    final currentRank = _rankOf(_status);
+    final incomingRank = _rankOf(incoming);
+    if (incoming == 'cancelled' || incoming == 'completed') return true;
+    return incomingRank >= currentRank;
+  }
+
+  bool _isLiveTripStatus(String status) {
+    return status == 'in_progress' || status == 'on_the_way';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -125,24 +162,17 @@ class _TrackingScreenState extends State<TrackingScreen>
 
     _subs.add(_socket.onTripStatus.listen((data) {
       try {
-        final newStatus = data['status']?.toString();
-        if (newStatus == null) return;
+        final newStatus = _normalizeTripStatus(data['status']);
 
-        // Status rank guard: ensure we only move forward in the lifecycle
-        const statusRank = {
-          'searching': 0,
-          'driver_assigned': 1,
-          'accepted': 2,
-          'arrived': 3,
-          'in_progress': 4,
-          'on_the_way': 4,
-          'completed': 5,
-          'cancelled': 5
-        };
-        final incomingRank = statusRank[newStatus] ?? 0;
-        final currentRank = statusRank[_status] ?? 0;
+        if ((newStatus == 'cancelled' || newStatus == 'searching') &&
+            _isLiveTripStatus(_status)) {
+          debugPrint(
+              '[SOCKET] Ignoring stale $newStatus event after trip start');
+          _pollStatus();
+          return;
+        }
 
-        if (incomingRank < currentRank) {
+        if (!_canApplyStatus(newStatus)) {
           debugPrint(
               '[SOCKET] Ignoring stale status update: $newStatus (current: $_status)');
           return;
@@ -316,8 +346,14 @@ class _TrackingScreenState extends State<TrackingScreen>
       if (_driverLatLng != null) _fetchRouteForStatus();
     }));
 
-    _subs.add(_socket.onTripCancelled.listen((_) {
+    _subs.add(_socket.onTripCancelled.listen((data) {
       if (!mounted) return;
+      if (!_isSameTripEvent(data)) return;
+      if (_isLiveTripStatus(_status)) {
+        debugPrint('[SOCKET] Verifying late cancel event after trip start');
+        _pollStatus();
+        return;
+      }
       setState(() => _status = 'cancelled');
       _pollTimer?.cancel();
       _showStatusBanner('Trip was cancelled', Colors.red);
@@ -341,7 +377,13 @@ class _TrackingScreenState extends State<TrackingScreen>
     // No drivers available — trip auto-cancelled
     _subs.add(_socket.onNoDrivers.listen((data) {
       if (!mounted) return;
-      setState(() => _status = 'cancelled');
+      if (!_isSameTripEvent(data)) return;
+      if (_rankOf(_status) > _rankOf('searching')) {
+        debugPrint(
+            '[SOCKET] Ignoring stale no-drivers event for active trip ${widget.tripId}');
+        _pollStatus();
+        return;
+      }
       _pollTimer?.cancel();
       _showNoDriversDialog();
     }));
@@ -350,6 +392,7 @@ class _TrackingScreenState extends State<TrackingScreen>
   // No drivers available → set cancelled state (UI handled by _buildCancelledCard)
   void _showNoDriversDialog() {
     if (!mounted) return;
+    if (_status != 'searching') return;
     setState(() => _status = 'cancelled');
     _showStatusBanner('No pilots nearby. Try again!', const Color(0xFFDC2626));
   }
@@ -1250,9 +1293,7 @@ class _TrackingScreenState extends State<TrackingScreen>
         final data = jsonDecode(res.body);
         final trip = data['trip'];
         if (trip != null) {
-          final rawStatus = trip['currentStatus']?.toString() ?? _status;
-          final resolvedStatus =
-              rawStatus == 'payment_pending' ? 'completed' : rawStatus;
+          final resolvedStatus = _normalizeTripStatus(trip['currentStatus']);
 
           const statusRank = {
             'searching': 0,
@@ -1267,6 +1308,13 @@ class _TrackingScreenState extends State<TrackingScreen>
 
           final currentRank = statusRank[_status] ?? 0;
           final incomingRank = statusRank[resolvedStatus] ?? 0;
+
+          if ((resolvedStatus == 'cancelled' || resolvedStatus == 'searching') &&
+              _isLiveTripStatus(_status)) {
+            debugPrint(
+                '[POLL] Ignoring stale $resolvedStatus while trip is $_status');
+            return;
+          }
 
           if (incomingRank >= currentRank) {
             setState(() {

@@ -369,6 +369,29 @@ class _TripScreenState extends State<TripScreen>
   void _listenForCancel() {
     _cancelSub = _socket.onTripCancelled.listen((data) {
       if (!mounted) return;
+      final incomingTrip = data['trip'];
+      final incomingTripId = data['tripId']?.toString() ??
+          data['trip_id']?.toString() ??
+          data['id']?.toString() ??
+          (incomingTrip is Map
+              ? (incomingTrip['tripId'] ??
+                      incomingTrip['trip_id'] ??
+                      incomingTrip['id'])
+                  ?.toString()
+              : null) ??
+          '';
+      final activeTripId =
+          _trip?['id']?.toString() ?? _trip?['tripId']?.toString() ?? '';
+      if (incomingTripId.isNotEmpty &&
+          activeTripId.isNotEmpty &&
+          incomingTripId != activeTripId) {
+        return;
+      }
+      if (_status == 'in_progress' || _status == 'on_the_way') {
+        debugPrint('[TRIP] Verifying late cancel event after ride start');
+        _syncTripState();
+        return;
+      }
       _locationTimer?.cancel();
       _stopTripTimer();
       showDialog(

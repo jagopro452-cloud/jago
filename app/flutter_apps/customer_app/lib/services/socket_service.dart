@@ -59,6 +59,34 @@ class SocketService {
   Stream<Map<String, dynamic>> get onCallError => _callErrorController.stream;
   bool get isConnected => _isConnected;
 
+  String _eventTripId(Map<String, dynamic> data) {
+    final direct = data['tripId'] ?? data['trip_id'] ?? data['id'];
+    if (direct != null && direct.toString().isNotEmpty) {
+      return direct.toString();
+    }
+    final trip = data['trip'];
+    if (trip is Map) {
+      final nested = trip['tripId'] ?? trip['trip_id'] ?? trip['id'];
+      if (nested != null && nested.toString().isNotEmpty) {
+        return nested.toString();
+      }
+    }
+    return '';
+  }
+
+  bool _matchesActiveTrip(Map<String, dynamic> data) {
+    final activeTripId = _activeTripId;
+    if (activeTripId == null || activeTripId.isEmpty) return true;
+    final eventTripId = _eventTripId(data);
+    return eventTripId.isNotEmpty && eventTripId == activeTripId;
+  }
+
+  void _emitTrackTrip(String tripId) {
+    if (_socket != null && (_isConnected || _socket!.connected)) {
+      _socket!.emit('customer:track_trip', {'tripId': tripId});
+    }
+  }
+
   Future<void> connect(String baseUrl) async {
     // If already connected, no need to create a new socket — but caller may
     // still call trackTrip() after this, which will work because _isConnected=true.
@@ -105,14 +133,14 @@ class SocketService {
       _connectedController.add(true);
       // Re-join trip room on every connect (first connect + reconnect after restart)
       if (_activeTripId != null) {
-        _socket!.emit('customer:track_trip', {'tripId': _activeTripId});
+        _emitTrackTrip(_activeTripId!);
       }
     });
 
     // On reconnect after server restart: re-join active trip room so events resume
     _socket!.on('reconnect', (_) {
       if (_activeTripId != null) {
-        _socket!.emit('customer:track_trip', {'tripId': _activeTripId});
+        _emitTrackTrip(_activeTripId!);
       }
     });
 
@@ -148,6 +176,7 @@ class SocketService {
     // Driver accepted my trip (HTTP acceptance path)
     _socket!.on('trip:accepted', (data) {
       final payload = Map<String, dynamic>.from(data);
+      if (!_matchesActiveTrip(payload)) return;
       payload['driver'] = payload['driver'] is Map<String, dynamic>
           ? Map<String, dynamic>.from(payload['driver'])
           : {
@@ -181,7 +210,14 @@ class SocketService {
     _socket!.on('trip:status_update', (data) {
       if (data == null) return;
       try {
-        _tripStatusController.add(Map<String, dynamic>.from(data));
+        final payload = Map<String, dynamic>.from(data);
+        if (!_matchesActiveTrip(payload)) return;
+        final status =
+            (payload['status'] ?? payload['currentStatus'] ?? '').toString();
+        if (status == 'completed' || status == 'cancelled') {
+          _activeTripId = null;
+        }
+        _tripStatusController.add(payload);
       } catch (e) {
         print('[SOCKET] Error processing trip:status_update: $e');
       }
@@ -193,6 +229,8 @@ class SocketService {
       try {
         _activeTripId = null;
         final payload = Map<String, dynamic>.from(data);
+        if (!_matchesActiveTrip(payload)) return;
+        _activeTripId = null;
         _tripStatusController.add({
           'tripId': payload['tripId'],
           'status': 'completed',
@@ -210,8 +248,10 @@ class SocketService {
 
     // Trip cancelled by driver
     _socket!.on('trip:cancelled', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      if (!_matchesActiveTrip(payload)) return;
       _activeTripId = null;
-      _tripCancelledController.add(Map<String, dynamic>.from(data));
+      _tripCancelledController.add(payload);
     });
 
     // In-app chat message received (live)
@@ -226,22 +266,25 @@ class SocketService {
 
     // No drivers found — trip auto-cancelled
     _socket!.on('trip:no_drivers', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      if (!_matchesActiveTrip(payload)) return;
       _activeTripId = null;
-      _noDriversController.add(Map<String, dynamic>.from(data));
-      // Also push as cancelled so tracking screen updates
-      _tripCancelledController.add({...Map<String, dynamic>.from(data), 'reason': 'no_drivers'});
+      _noDriversController.add(payload);
     });
 
     // Trip re-searching after driver rejected
     _socket!.on('trip:searching', (data) {
-      _tripSearchingController.add(Map<String, dynamic>.from(data));
+      final payload = Map<String, dynamic>.from(data);
+      if (!_matchesActiveTrip(payload)) return;
+      _tripSearchingController.add(payload);
     });
 
     // Trip timeout — server gave up finding driver
     _socket!.on('trip:timeout', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      if (!_matchesActiveTrip(payload)) return;
       _activeTripId = null;
-      _noDriversController.add(Map<String, dynamic>.from(data));
-      _tripCancelledController.add({...Map<String, dynamic>.from(data), 'reason': 'timeout'});
+      _noDriversController.add(payload);
     });
 
     // Payment not yet verified — trip held at payment_pending
@@ -294,10 +337,7 @@ class SocketService {
   // Emits immediately if connected; the stored ID ensures re-join on reconnect.
   void trackTrip(String tripId) {
     _activeTripId = tripId;
-    // Always emit if socket exists (even if _isConnected flag not yet set)
-    if (_socket != null && (_isConnected || _socket!.connected)) {
-      _socket!.emit('customer:track_trip', {'tripId': tripId});
-    }
+    _emitTrackTrip(tripId);
     // If socket not ready yet, the connect handler will pick it up via _activeTripId
   }
 

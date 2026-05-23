@@ -73,6 +73,35 @@ class SocketService {
     _appInBackground = value;
   }
 
+  String _eventTripId(Map<String, dynamic> data) {
+    final direct = data['tripId'] ?? data['trip_id'] ?? data['id'];
+    if (direct != null && direct.toString().isNotEmpty) {
+      return direct.toString();
+    }
+    final trip = data['trip'];
+    if (trip is Map) {
+      final nested = trip['tripId'] ?? trip['trip_id'] ?? trip['id'];
+      if (nested != null && nested.toString().isNotEmpty) {
+        return nested.toString();
+      }
+    }
+    return '';
+  }
+
+  bool _matchesActiveTrip(Map<String, dynamic> data) {
+    final activeTripId = _activeTripId;
+    if (activeTripId == null || activeTripId.isEmpty) return true;
+    final eventTripId = _eventTripId(data);
+    return eventTripId.isNotEmpty && eventTripId == activeTripId;
+  }
+
+  void _emitActiveTripRejoin() {
+    final tripId = _activeTripId;
+    if (tripId != null && _isConnected && _socket != null) {
+      _socket!.emit('driver:rejoin_trip', {'tripId': tripId});
+    }
+  }
+
   Future<void> connect(String baseUrl) async {
     if (_socket?.connected == true) return;
 
@@ -128,7 +157,7 @@ class SocketService {
       }
       // Rejoin active trip room so server routes trip events to this socket again
       if (_activeTripId != null) {
-        _socket!.emit('driver:rejoin_trip', {'tripId': _activeTripId});
+        _emitActiveTripRejoin();
         // Also re-emit last location so server has fresh data for this trip
         if (_lastLat != null && _lastLng != null) {
           _socket!.emit('driver:location', {'lat': _lastLat, 'lng': _lastLng, 'heading': 0, 'speed': 0});
@@ -146,17 +175,21 @@ class SocketService {
     });
 
     _socket!.on('trip:cancelled', (data) {
-      _activeTripId = null;
-      _tripCancelledController.add(Map<String, dynamic>.from(data));
+      final payload = Map<String, dynamic>.from(data);
+      if (!_matchesActiveTrip(payload)) return;
+      setActiveTrip(null);
+      _tripCancelledController.add(payload);
     });
 
     _socket!.on('trip:status_update', (data) {
-      final map = Map<String, dynamic>.from(data);
-      final status = (map['status'] ?? map['currentStatus'] ?? '').toString();
+      final payload = Map<String, dynamic>.from(data);
+      if (!_matchesActiveTrip(payload)) return;
+      final status =
+          (payload['status'] ?? payload['currentStatus'] ?? '').toString();
       if (status == 'completed' || status == 'cancelled') {
-        _activeTripId = null;
+        setActiveTrip(null);
       }
-      _tripStatusController.add(map);
+      _tripStatusController.add(payload);
     });
 
     _socket!.on('trip:request_taken', (data) {
@@ -283,9 +316,11 @@ class SocketService {
   /// Call when driver enters/exits a trip so socket can rejoin room on reconnect.
   /// Also joins the room immediately if connected.
   void setActiveTrip(String? tripId) {
-    _activeTripId = tripId;
-    if (tripId != null && _isConnected && _socket != null) {
-      _socket!.emit('driver:rejoin_trip', {'tripId': tripId});
+    final normalized = tripId?.trim();
+    final previousTripId = _activeTripId;
+    _activeTripId = (normalized == null || normalized.isEmpty) ? null : normalized;
+    if (_activeTripId != null && previousTripId != _activeTripId) {
+      _emitActiveTripRejoin();
     }
   }
 
