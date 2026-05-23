@@ -16830,6 +16830,134 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     return admin.firestore().collection("vehicle_status");
   }
 
+  let vehicleStatusTableReady = false;
+
+  async function ensureVehicleStatusTable() {
+    if (vehicleStatusTableReady) return;
+
+    await rawDb.execute(rawSql`
+      CREATE TABLE IF NOT EXISTS vehicle_runtime_status (
+        key VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        active BOOLEAN NOT NULL DEFAULT true,
+        icon VARCHAR(50) NOT NULL DEFAULT '',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by TEXT,
+        sync_warning TEXT
+      )
+    `);
+
+    for (const vehicle of vehicleControlDefaults) {
+      await rawDb.execute(rawSql`
+        INSERT INTO vehicle_runtime_status (key, name, active, icon, updated_by)
+        VALUES (${vehicle.key}, ${vehicle.name}, ${vehicle.active}, ${vehicle.icon}, 'system')
+        ON CONFLICT (key) DO NOTHING
+      `);
+    }
+
+    vehicleStatusTableReady = true;
+  }
+
+  async function readDbVehicleStatuses() {
+    await ensureVehicleStatusTable();
+    const result = await rawDb.execute(rawSql`
+      SELECT key, name, active, icon, updated_at, updated_by, sync_warning
+      FROM vehicle_runtime_status
+      ORDER BY CASE key
+        WHEN 'bike' THEN 1
+        WHEN 'auto' THEN 2
+        WHEN 'cab' THEN 3
+        WHEN 'premium' THEN 4
+        ELSE 100
+      END, name ASC
+    `);
+
+    const rows = Array.isArray(result.rows) ? result.rows as any[] : [];
+    const byKey = new Map(rows.map((row) => [String(row.key), row]));
+
+    return vehicleControlDefaults.map((vehicle) => {
+      const row = byKey.get(vehicle.key) || {};
+      const updatedAt = row.updated_at || row.updatedAt || null;
+      return {
+        key: vehicle.key,
+        name: String(row.name || vehicle.name),
+        active: typeof row.active === "boolean" ? row.active : vehicle.active,
+        icon: String(row.icon || vehicle.icon),
+        updatedAt: updatedAt ? new Date(updatedAt).toISOString() : null,
+        updatedBy: row.updated_by || row.updatedBy || null,
+        syncWarning: row.sync_warning || row.syncWarning || null,
+      };
+    });
+  }
+
+  async function upsertDbVehicleStatus(input: {
+    key: string;
+    name: string;
+    active: boolean;
+    icon: string;
+    updatedBy: string;
+    syncWarning?: string | null;
+  }) {
+    await ensureVehicleStatusTable();
+    const result = await rawDb.execute(rawSql`
+      INSERT INTO vehicle_runtime_status (key, name, active, icon, updated_by, sync_warning, updated_at)
+      VALUES (${input.key}, ${input.name}, ${input.active}, ${input.icon}, ${input.updatedBy}, ${input.syncWarning || null}, NOW())
+      ON CONFLICT (key) DO UPDATE SET
+        name = EXCLUDED.name,
+        active = EXCLUDED.active,
+        icon = EXCLUDED.icon,
+        updated_by = EXCLUDED.updated_by,
+        sync_warning = EXCLUDED.sync_warning,
+        updated_at = NOW()
+      RETURNING key, name, active, icon, updated_at, updated_by, sync_warning
+    `);
+    const row = (result.rows[0] as any) || {};
+    return {
+      key: String(row.key || input.key),
+      name: String(row.name || input.name),
+      active: typeof row.active === "boolean" ? row.active : input.active,
+      icon: String(row.icon || input.icon),
+      updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString(),
+      updatedBy: row.updated_by || input.updatedBy,
+      syncWarning: row.sync_warning || null,
+    };
+  }
+
+  async function mirrorVehicleStatusToFirestore(vehicle: {
+    key: string;
+    name: string;
+    active: boolean;
+    icon: string;
+  }, adminUser: any) {
+    try {
+      const collection = await getVehicleControlCollection();
+      if (!collection) return "Firebase Admin is not configured";
+
+      await collection.doc(vehicle.key).set({
+        active: vehicle.active,
+        name: vehicle.name,
+        icon: vehicle.icon,
+        updatedAt: new Date(),
+        updatedBy: adminUser?.email || adminUser?.name || "admin",
+      }, { merge: true });
+
+      await collection.doc(vehicle.key).collection("activity_logs").add({
+        message: `Admin changed ${vehicle.name} to ${vehicle.active ? "Active" : "Inactive"}`,
+        active: vehicle.active,
+        vehicleKey: vehicle.key,
+        vehicleName: vehicle.name,
+        adminId: adminUser?.id || null,
+        adminEmail: adminUser?.email || null,
+        createdAt: new Date(),
+      });
+
+      return null;
+    } catch (e: any) {
+      console.warn(`[vehicle-status] Firestore mirror failed for ${vehicle.key}: ${safeErrMsg(e)}`);
+      return safeErrMsg(e);
+    }
+  }
+
   async function ensureVehicleStatusDocs() {
     const collection = await getVehicleControlCollection();
     if (!collection) return null;
@@ -16850,22 +16978,40 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   }
 
   async function readVehicleStatuses() {
-    const collection = await ensureVehicleStatusDocs();
-    if (!collection) throw new Error("Firebase Admin is not configured. Set FIREBASE_SERVICE_ACCOUNT_KEY or firebase_service_account.");
-    const snap = await collection.get();
-    const docs = new Map(snap.docs.map((doc: any) => [doc.id, doc.data() || {}]));
-    return vehicleControlDefaults.map((vehicle) => {
-      const data: any = docs.get(vehicle.key) || {};
-      const updatedAt = data.updatedAt?.toDate?.() || data.updated_at?.toDate?.() || data.updatedAt || data.updated_at || null;
-      return {
-        key: vehicle.key,
-        name: String(data.name || vehicle.name),
-        active: typeof data.active === "boolean" ? data.active : vehicle.active,
-        icon: String(data.icon || vehicle.icon),
-        updatedAt: updatedAt ? new Date(updatedAt).toISOString() : null,
-        updatedBy: data.updatedBy || data.updated_by || null,
-      };
-    });
+    try {
+      return await readDbVehicleStatuses();
+    } catch (dbError: any) {
+      console.warn(`[vehicle-status] DB read failed, falling back to Firebase/defaults: ${safeErrMsg(dbError)}`);
+    }
+
+    try {
+      const collection = await ensureVehicleStatusDocs();
+      if (!collection) throw new Error("Firebase Admin is not configured");
+      const snap = await collection.get();
+      const docs = new Map(snap.docs.map((doc: any) => [doc.id, doc.data() || {}]));
+      return vehicleControlDefaults.map((vehicle) => {
+        const data: any = docs.get(vehicle.key) || {};
+        const updatedAt = data.updatedAt?.toDate?.() || data.updated_at?.toDate?.() || data.updatedAt || data.updated_at || null;
+        return {
+          key: vehicle.key,
+          name: String(data.name || vehicle.name),
+          active: typeof data.active === "boolean" ? data.active : vehicle.active,
+          icon: String(data.icon || vehicle.icon),
+          updatedAt: updatedAt ? new Date(updatedAt).toISOString() : null,
+          updatedBy: data.updatedBy || data.updated_by || null,
+          syncWarning: "DB unavailable; serving Firebase/default fallback",
+        };
+      });
+    } catch (firebaseError: any) {
+      console.warn(`[vehicle-status] Firebase fallback failed: ${safeErrMsg(firebaseError)}`);
+    }
+
+    return vehicleControlDefaults.map((vehicle) => ({
+      ...vehicle,
+      updatedAt: null,
+      updatedBy: "fallback",
+      syncWarning: "DB and Firebase unavailable; serving defaults",
+    }));
   }
 
   const platformServiceDefaults = [
@@ -16927,7 +17073,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   app.get("/api/admin/vehicle-status", requireAdminAuth, async (_req, res) => {
     try {
-      res.json({ vehicles: await readVehicleStatuses() });
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ vehicles: await readVehicleStatuses(), source: "database" });
     } catch (e: any) {
       res.json({
         vehicles: vehicleControlDefaults.map((v) => ({
@@ -16937,7 +17084,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           icon: v.icon,
           updatedAt: null,
           updatedBy: "fallback",
+          syncWarning: safeErrMsg(e),
         })),
+        source: "fallback",
         warning: safeErrMsg(e),
       });
     }
@@ -16946,8 +17095,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   app.get("/api/app/vehicle-status", async (_req, res) => {
     try {
       res.setHeader("Cache-Control", "no-store");
-      res.json({ vehicles: await readVehicleStatuses() });
-    } catch (_e: any) {
+      res.json({ vehicles: await readVehicleStatuses(), source: "database" });
+    } catch (e: any) {
       res.json({
         vehicles: vehicleControlDefaults.map((v) => ({
           key: v.key,
@@ -16955,7 +17104,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           active: v.active,
           icon: v.icon,
           updatedAt: null,
+          syncWarning: safeErrMsg(e),
         })),
+        source: "fallback",
       });
     }
   });
@@ -16967,33 +17118,37 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (!allowed) return res.status(400).json({ message: "Invalid vehicle type" });
       if (typeof req.body?.active !== "boolean") return res.status(400).json({ message: "active must be boolean" });
 
-      const collection = await ensureVehicleStatusDocs();
-      if (!collection) return res.status(503).json({ message: "Firebase Admin is not configured" });
-
       const active = Boolean(req.body.active);
       const adminUser = (req as any).adminUser;
-      await collection.doc(vehicleKey).set({
-        active,
+      const updatedBy = adminUser?.email || adminUser?.name || "admin";
+      const mirrorWarning = await mirrorVehicleStatusToFirestore({
+        key: vehicleKey,
         name: allowed.name,
-        icon: allowed.icon,
-        updatedAt: new Date(),
-        updatedBy: adminUser?.email || adminUser?.name || "admin",
-      }, { merge: true });
-      await collection.doc(vehicleKey).collection("activity_logs").add({
-        message: `Admin changed ${allowed.name} to ${active ? "Active" : "Inactive"}`,
         active,
-        vehicleKey,
-        vehicleName: allowed.name,
-        adminId: adminUser?.id || null,
-        adminEmail: adminUser?.email || null,
-        createdAt: new Date(),
+        icon: allowed.icon,
+      }, adminUser);
+
+      const vehicle = await upsertDbVehicleStatus({
+        key: vehicleKey,
+        name: allowed.name,
+        active,
+        icon: allowed.icon,
+        updatedBy,
+        syncWarning: mirrorWarning,
       });
+
       await logAdminAction("vehicle_status_change", "vehicle_status", vehicleKey, {
         message: `Admin changed ${allowed.name} to ${active ? "Active" : "Inactive"}`,
         active,
+        mirrorWarning,
       }, adminUser?.email);
 
-      res.json({ success: true, vehicle: (await readVehicleStatuses()).find((v) => v.key === vehicleKey) });
+      res.json({
+        success: true,
+        vehicle,
+        source: "database",
+        syncWarning: mirrorWarning,
+      });
     } catch (e: any) {
       res.status(500).json({ message: safeErrMsg(e) });
     }

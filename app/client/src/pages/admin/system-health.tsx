@@ -46,6 +46,7 @@ interface VehicleStatus {
   icon: string;
   updatedAt: string | null;
   updatedBy?: string | null;
+  syncWarning?: string | null;
 }
 
 const SERVICE_ICONS: Record<string, string> = {
@@ -190,6 +191,7 @@ export default function SystemHealthPage() {
     refetchInterval: 5000,
   });
   const vehicles = Array.isArray(vehicleData?.vehicles) ? vehicleData.vehicles : [];
+  const hasVehicleSyncWarning = vehicles.some(vehicle => Boolean(vehicle.syncWarning));
 
   const [toggling, setToggling] = useState<string | null>(null);
   const [vehicleToggling, setVehicleToggling] = useState<string | null>(null);
@@ -222,11 +224,17 @@ export default function SystemHealthPage() {
     const active = !vehicle.active;
     setVehicleToggling(vehicle.key);
     try {
-      await apiRequest("PATCH", `/api/admin/vehicle-status/${vehicle.key}`, { active });
+      const response = await apiRequest("PATCH", `/api/admin/vehicle-status/${vehicle.key}`, { active });
+      const payload = await response.json().catch(() => ({}));
+      const syncWarning = typeof payload?.syncWarning === "string" && payload.syncWarning
+        ? payload.syncWarning
+        : null;
       await refetchVehicles();
       toast({
-        title: "Vehicle availability updated",
-        description: `${vehicle.name} is now ${active ? "Active" : "Inactive"}. Customer and driver apps sync live.`,
+        title: syncWarning ? "Vehicle updated; Firebase mirror degraded" : "Vehicle availability updated",
+        description: syncWarning
+          ? `${vehicle.name} is now ${active ? "Active" : "Inactive"} from database source. Mobile apps sync from backend; rotate Firebase service key to restore Firestore mirror.`
+          : `${vehicle.name} is now ${active ? "Active" : "Inactive"}. Customer and driver apps sync live.`,
       });
     } catch (e: any) {
       toast({
@@ -356,13 +364,23 @@ export default function SystemHealthPage() {
                       Firestore live controls for Customer Booking and Driver ride eligibility.
                     </p>
                   </div>
-                  <StatusPill ok={!vehiclesError} label={vehiclesError ? "Firebase Offline" : "Realtime Sync"} />
+                  <StatusPill
+                    ok={!vehiclesError && !hasVehicleSyncWarning}
+                    label={vehiclesError ? "Backend Offline" : hasVehicleSyncWarning ? "Firebase Mirror Degraded" : "Backend Sync"}
+                  />
                 </div>
 
                 {vehiclesError && (
                   <div style={{ margin: 18, padding: 14, borderRadius: 14, background: "#FEF2F2", color: "#B91C1C", border: "1px solid #FECACA", fontWeight: 700 }}>
                     <i className="bi bi-exclamation-triangle-fill me-2" />
                     {(vehiclesError as Error).message}
+                  </div>
+                )}
+
+                {!vehiclesError && hasVehicleSyncWarning && (
+                  <div style={{ margin: 18, padding: 14, borderRadius: 14, background: "#FFFBEB", color: "#92400E", border: "1px solid #FDE68A", fontWeight: 700 }}>
+                    <i className="bi bi-exclamation-triangle-fill me-2" />
+                    Vehicle status is saved in database and apps continue working. Firebase/Firestore mirror is degraded; rotate the Firebase service account key.
                   </div>
                 )}
 
