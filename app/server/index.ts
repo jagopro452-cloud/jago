@@ -503,7 +503,12 @@ const port = parseInt(process.env.PORT || "5000", 10);
     bootstrapError = `firebase_validation_failed:${e.message}`;
     console.error("[startup] Firebase validation failed:", e.message);
     sendAlert({ level: "critical", source: "firebase", message: "Firebase validation failed", details: String(e.message || e) }).catch(() => {});
-    if (process.env.NODE_ENV === "production") return;
+    const requireFirebaseAdmin = /^(1|true|yes|on)$/i.test(process.env.REQUIRE_FIREBASE_ADMIN || "");
+    if (process.env.NODE_ENV === "production" && requireFirebaseAdmin) return;
+    log(
+      "[startup] Continuing with FCM degraded because REQUIRE_FIREBASE_ADMIN is not enabled; push delivery remains disabled until Firebase service-account credentials are rotated.",
+      "fcm",
+    );
   }
 
   // ─── STEP 6: Mark server ready — health probe passes from here ───
