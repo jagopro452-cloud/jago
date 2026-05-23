@@ -224,23 +224,49 @@ export async function getDriverDispatchProfile(driverId: string): Promise<Driver
   const vehicleCategoryKey = normalizeVehicleKey(row.vehicle_type_key || row.vehicle_category_name);
   const categoryMeta = row.vehicle_category_id ? await getVehicleCategoryMeta(row.vehicle_category_id) : null;
   const serviceEligibility = normalizeTextArray(row.service_eligibility);
-  if (!serviceEligibility.length) {
-    const inferredService = inferPlatformServiceKey("", vehicleCategoryKey, categoryMeta?.serviceType || null);
-    if (inferredService) serviceEligibility.push(inferredService);
-    if (categoryMeta?.serviceType === "parcel" || categoryMeta?.serviceType === "cargo") serviceEligibility.push("parcel_delivery");
-    if (categoryMeta?.serviceType === "pool" || categoryMeta?.serviceType === "carpool" || categoryMeta?.isCarpool) serviceEligibility.push("city_pool");
+  const inferredService = inferPlatformServiceKey("", vehicleCategoryKey, categoryMeta?.serviceType || null);
+  const isParcelCategory =
+    categoryMeta?.serviceType === "parcel" ||
+    categoryMeta?.serviceType === "cargo";
+
+  const isPoolCategory =
+    categoryMeta?.serviceType === "pool" ||
+    categoryMeta?.serviceType === "carpool" ||
+    categoryMeta?.isCarpool === true;
+
+  const isRideCategory =
+    !isParcelCategory &&
+    !isPoolCategory;
+
+  if (inferredService) {
+    serviceEligibility.push(inferredService);
+  }
+
+  if (isParcelCategory) {
+    serviceEligibility.push("parcel_delivery");
+  }
+
+  if (isPoolCategory) {
+    serviceEligibility.push("city_pool");
   }
   if (serviceEligibility.includes("intercity")) serviceEligibility.push("intercity_pool");
   if (serviceEligibility.includes("outstation")) serviceEligibility.push("outstation_pool");
   if (serviceEligibility.includes("intercity_pool")) serviceEligibility.push("intercity");
   if (serviceEligibility.includes("outstation_pool")) serviceEligibility.push("outstation");
 
-  const parcelEligibility = row.parcel_eligibility === null || row.parcel_eligibility === undefined
-    ? categoryMeta?.serviceType === "parcel" || categoryMeta?.serviceType === "cargo" || serviceEligibility.includes("parcel_delivery")
-    : row.parcel_eligibility === true;
-  const poolEligibility = row.pool_eligibility === null || row.pool_eligibility === undefined
-    ? categoryMeta?.serviceType === "pool" || categoryMeta?.serviceType === "carpool" || categoryMeta?.isCarpool || serviceEligibility.includes("city_pool")
-    : row.pool_eligibility === true;
+  const parcelEligibility =
+    row.parcel_eligibility === null ||
+    row.parcel_eligibility === undefined
+      ? isParcelCategory ||
+        serviceEligibility.includes("parcel_delivery")
+      : row.parcel_eligibility === true;
+
+  const poolEligibility =
+    row.pool_eligibility === null ||
+    row.pool_eligibility === undefined
+      ? isPoolCategory ||
+        serviceEligibility.includes("city_pool")
+      : row.pool_eligibility === true;
   const outstationEligibility = row.outstation_eligibility === true
     || serviceEligibility.includes("outstation")
     || serviceEligibility.includes("outstation_pool");
