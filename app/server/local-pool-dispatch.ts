@@ -11,6 +11,11 @@
 import { io } from "./socket";
 import { rawDb, rawSql } from "./db";
 import { sendFcmNotification } from "./fcm";
+import {
+  buildDispatchRequirementsFromTripInput,
+  findEligibleDriversForDispatch,
+} from "./dispatch-eligibility";
+import { getVehicleCategoryMeta, normalizeVehicleKey } from "./vehicle-matching";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -212,38 +217,45 @@ async function findNearbyDrivers(
   vehicleCategoryId: string | null,
   excludeIds: Set<string>,
 ): Promise<{ id: string; fcm_token: string | null }[]> {
-  const r = await rawDb.execute(rawSql`
-    SELECT u.id, ud.fcm_token
-    FROM users u
-    JOIN driver_details dd ON dd.user_id = u.id
-    LEFT JOIN user_devices ud ON ud.user_id = u.id
-    WHERE u.is_active = true
-      AND u.is_locked = false
-      AND u.current_trip_id IS NULL
-      AND COALESCE(dd.availability_status, 'offline') = 'online'
-      AND u.current_lat IS NOT NULL
-      AND u.current_lng IS NOT NULL
-      AND (
-        6371 * 2 * ASIN(SQRT(
-          POWER(SIN((${lat} - u.current_lat::float) * PI()/360), 2) +
-          COS(${lat} * PI()/180) * COS(u.current_lat::float * PI()/180) *
-          POWER(SIN((${lng} - u.current_lng::float) * PI()/360), 2)
-        ))
-      ) <= ${radiusKm}
-      ${vehicleCategoryId
-        ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
-        : rawSql``}
-    ORDER BY (
-      6371 * 2 * ASIN(SQRT(
-        POWER(SIN((${lat} - u.current_lat::float) * PI()/360), 2) +
-        COS(${lat} * PI()/180) * COS(u.current_lat::float * PI()/180) *
-        POWER(SIN((${lng} - u.current_lng::float) * PI()/360), 2)
-      ))
-    ) ASC
-    LIMIT 30
-  `).catch(() => ({ rows: [] as any[] }));
+  if (!vehicleCategoryId) {
+    console.error("[POOL-DISPATCH] blocked dispatch without vehicle_category_id");
+    return [];
+  }
 
-  return (r.rows as any[]).filter(d => !excludeIds.has(d.id));
+  const meta = await getVehicleCategoryMeta(vehicleCategoryId);
+  const categoryKey = normalizeVehicleKey(meta?.vehicleType || meta?.name || "");
+  const isPoolCategory =
+    meta?.serviceType === "pool" ||
+    meta?.serviceType === "carpool" ||
+    meta?.isCarpool === true ||
+    categoryKey.includes("pool") ||
+    categoryKey.includes("share");
+  if (!meta || !isPoolCategory) {
+    console.error(
+      `[POOL-DISPATCH] blocked non-pool category vehicleCategoryId=${vehicleCategoryId} categoryKey=${categoryKey || "unknown"}`,
+    );
+    return [];
+  }
+
+  const requirements = await buildDispatchRequirementsFromTripInput({
+    tripType: "carpool",
+    vehicleCategoryId,
+  });
+  const drivers = await findEligibleDriversForDispatch({
+    pickupLat: lat,
+    pickupLng: lng,
+    radiusKm,
+    excludeDriverIds: Array.from(excludeIds),
+    limit: 30,
+    requirements,
+  });
+
+  return drivers
+    .filter((driver: any) => !excludeIds.has(String(driver.driverId)))
+    .map((driver: any) => ({
+      id: String(driver.driverId),
+      fcm_token: driver.fcmToken || null,
+    }));
 }
 
 // ── Reaper ────────────────────────────────────────────────────────────────────

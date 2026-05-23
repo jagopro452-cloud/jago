@@ -227,8 +227,8 @@ export async function getDriverDispatchProfile(driverId: string): Promise<Driver
   if (!serviceEligibility.length) {
     const inferredService = inferPlatformServiceKey("", vehicleCategoryKey, categoryMeta?.serviceType || null);
     if (inferredService) serviceEligibility.push(inferredService);
-    if (categoryMeta?.serviceType === "parcel") serviceEligibility.push("parcel_delivery");
-    if (categoryMeta?.serviceType === "pool" || categoryMeta?.isCarpool) serviceEligibility.push("city_pool");
+    if (categoryMeta?.serviceType === "parcel" || categoryMeta?.serviceType === "cargo") serviceEligibility.push("parcel_delivery");
+    if (categoryMeta?.serviceType === "pool" || categoryMeta?.serviceType === "carpool" || categoryMeta?.isCarpool) serviceEligibility.push("city_pool");
   }
   if (serviceEligibility.includes("intercity")) serviceEligibility.push("intercity_pool");
   if (serviceEligibility.includes("outstation")) serviceEligibility.push("outstation_pool");
@@ -236,10 +236,10 @@ export async function getDriverDispatchProfile(driverId: string): Promise<Driver
   if (serviceEligibility.includes("outstation_pool")) serviceEligibility.push("outstation");
 
   const parcelEligibility = row.parcel_eligibility === null || row.parcel_eligibility === undefined
-    ? categoryMeta?.serviceType === "parcel" || serviceEligibility.includes("parcel_delivery")
+    ? categoryMeta?.serviceType === "parcel" || categoryMeta?.serviceType === "cargo" || serviceEligibility.includes("parcel_delivery")
     : row.parcel_eligibility === true;
   const poolEligibility = row.pool_eligibility === null || row.pool_eligibility === undefined
-    ? categoryMeta?.serviceType === "pool" || categoryMeta?.isCarpool || serviceEligibility.includes("city_pool")
+    ? categoryMeta?.serviceType === "pool" || categoryMeta?.serviceType === "carpool" || categoryMeta?.isCarpool || serviceEligibility.includes("city_pool")
     : row.pool_eligibility === true;
   const outstationEligibility = row.outstation_eligibility === true
     || serviceEligibility.includes("outstation")

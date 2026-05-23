@@ -288,7 +288,7 @@ function allowedVehicleKeys(meta: VehicleCategoryMeta): string[] {
   const key = normalizeVehicleKey(meta.vehicleType || meta.name);
   const serviceType = normalizeVehicleKey(meta.serviceType);
 
-  if (serviceType === "parcel" || key.includes("parcel") || key.includes("truck") || key.includes("pickup") || key.includes("tempo")) {
+  if (serviceType === "parcel" || serviceType === "cargo" || key.includes("parcel") || key.includes("truck") || key.includes("pickup") || key.includes("tempo")) {
     // Strict separation: parcel bookings must NEVER reach ride-only drivers.
     // Previously bike_parcel fell back to plain "bike" and auto_parcel fell
     // back to plain "auto", which meant a parcel booking would notify regular
@@ -313,7 +313,7 @@ function allowedVehicleKeys(meta: VehicleCategoryMeta): string[] {
     }
   }
 
-  if (serviceType === "pool" || meta.isCarpool || key.includes("pool") || key.includes("carpool") || key.includes("share")) {
+  if (serviceType === "pool" || serviceType === "carpool" || meta.isCarpool || key.includes("pool") || key.includes("carpool") || key.includes("share")) {
     switch (key) {
       case "car_pool_4":
       case "car_pool_6":
@@ -448,8 +448,8 @@ export function getPlatformServiceKeyForCategory(meta: VehicleCategoryMeta | nul
   if (!meta) return null;
   const key = normalizeVehicleKey(meta.vehicleType || meta.name);
 
-  if (meta.serviceType === "parcel") return "parcel_delivery";
-  if (meta.serviceType === "pool" || meta.isCarpool || key.includes("pool") || key.includes("share")) {
+  if (meta.serviceType === "parcel" || meta.serviceType === "cargo") return "parcel_delivery";
+  if (meta.serviceType === "pool" || meta.serviceType === "carpool" || meta.isCarpool || key.includes("pool") || key.includes("share")) {
     return "city_pool";
   }
   if (key === "bike") return "bike_ride";

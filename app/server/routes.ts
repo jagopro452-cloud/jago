@@ -514,7 +514,7 @@ function vehicleCategoryServicePredicate(scope: VehicleServiceScope): any {
   const poolShape = rawSql`(
     ${serviceExpr} IN ('pool','carpool')
     OR COALESCE(vc.is_carpool, false) = true
-    OR ${vehicleTypeExpr} IN ('carpool','local_pool','outstation_pool')
+    OR ${vehicleTypeExpr} IN ('carpool','city_pool','local_pool','intercity_pool','outstation_pool','car_pool_4','car_pool_6','pool_mini','pool_sedan','pool_suv')
     OR ${nameExpr} LIKE '%pool%'
     OR ${nameExpr} LIKE '%share%'
   )`;
@@ -627,10 +627,14 @@ async function validateBookingVehicleCategory(input: {
   const requestedType = normalizeBookingVehicleType(
     String(input.requestedVehicleType || input.requestedVehicleName || ""),
   );
-  const tripType = String(input.tripType || "normal").toLowerCase();
-  const parcelTrip = ["parcel", "delivery", "cargo", "b2b"].includes(tripType);
+  const tripType = normalizeVehicleServiceScope(input.tripType || "ride");
+  const rawTripType = String(input.tripType || "normal").trim().toLowerCase();
+  const parcelTrip = tripType === "parcel";
+  const poolTrip = tripType === "pool";
+  const expectedScope: VehicleServiceScope = parcelTrip ? "parcel" : poolTrip ? "pool" : "ride";
   const parcelSubtypeMatch = parcelTrip && requestedType && categoryType && requestedType.startsWith(categoryType);
-  if (requestedType && categoryType && requestedType !== categoryType && !parcelSubtypeMatch) {
+  const poolSubtypeMatch = poolTrip && inferVehicleServiceScope(row) === "pool";
+  if (requestedType && categoryType && requestedType !== categoryType && !parcelSubtypeMatch && !poolSubtypeMatch) {
     console.warn(
       `[BOOKING_CATEGORY_REJECTED] category=${id} categoryType=${categoryType} requestedType=${requestedType}`,
     );
@@ -639,17 +643,10 @@ async function validateBookingVehicleCategory(input: {
 
   const serviceType = String(row.service_type || row.type || "").toLowerCase();
   const categoryName = String(row.name || "");
-  const categoryNameLower = categoryName.toLowerCase();
-  const parcelCategory = serviceType.includes("parcel") || serviceType.includes("cargo") || categoryNameLower.includes("parcel") || categoryNameLower.includes("cargo") || categoryNameLower.includes("truck");
-  if (parcelTrip !== parcelCategory && tripType !== "normal") {
+  const categoryScope = inferVehicleServiceScope(row);
+  if (categoryScope !== expectedScope) {
     console.warn(
-      `[BOOKING_CATEGORY_REJECTED] category=${id} tripType=${tripType} serviceType=${serviceType} name=${categoryName}`,
-    );
-    throw Object.assign(new Error("INVALID_VEHICLE_CATEGORY"), { status: 400, code: "INVALID_VEHICLE_CATEGORY" });
-  }
-  if (!parcelTrip && parcelCategory) {
-    console.warn(
-      `[BOOKING_CATEGORY_REJECTED] ride requested parcel category=${id} serviceType=${serviceType} name=${categoryName}`,
+      `[BOOKING_CATEGORY_REJECTED] category=${id} tripType=${rawTripType} expectedScope=${expectedScope} categoryScope=${categoryScope} serviceType=${serviceType} name=${categoryName}`,
     );
     throw Object.assign(new Error("INVALID_VEHICLE_CATEGORY"), { status: 400, code: "INVALID_VEHICLE_CATEGORY" });
   }
@@ -14468,6 +14465,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!scheduledAt) return res.status(400).json({ message: "scheduledAt is required" });
       const scheduledTime = new Date(scheduledAt);
       if (scheduledTime <= new Date()) return res.status(400).json({ message: "Schedule time must be in the future" });
+      let validatedVehicleCategory!: { id: string };
+      try {
+        validatedVehicleCategory = await validateBookingVehicleCategory({
+          vehicleCategoryId,
+          requestedVehicleType: req.body.vehicleType,
+          requestedVehicleName: req.body.vehicleCategoryName || req.body.vehicleName,
+          tripType: "normal",
+        });
+      } catch {
+        console.warn(`[SCHEDULE_BOOKING_REJECTED] customer=${user.id} reason=INVALID_VEHICLE_CATEGORY raw=${String(vehicleCategoryId || "")}`);
+        return res.status(400).json({
+          success: false,
+          error: "INVALID_VEHICLE_CATEGORY",
+          message: "Selected ride option is unavailable. Please refresh and choose again.",
+        });
+      }
       const refId = generateRefId();
       const r = await rawDb.execute(rawSql`
         INSERT INTO trip_requests (
@@ -14480,7 +14493,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ) VALUES (
           ${refId}, ${user.id}::uuid, ${pickupAddress}, ${parseFloat(pickupLat)}, ${parseFloat(pickupLng)},
           ${destinationAddress}, ${parseFloat(destinationLat)}, ${parseFloat(destinationLng)},
-          ${vehicleCategoryId}::uuid, ${parseFloat(estimatedFare)}, ${parseFloat(estimatedDistance)},
+          ${validatedVehicleCategory.id}::uuid, ${parseFloat(estimatedFare)}, ${parseFloat(estimatedDistance)},
           ${paymentMethod || 'cash'}, 'normal', 'scheduled', true, ${scheduledAt},
           ${shortLocationName(pickupAddress)}, ${shortLocationName(destinationAddress)},
           now(), now()
@@ -14516,6 +14529,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const route = await rawDb.execute(rawSql`SELECT * FROM intercity_routes WHERE id=${routeId}::uuid AND is_active=true`);
       if (!route.rows.length) return res.status(404).json({ message: 'Route not found or inactive' });
       const r = route.rows[0] as any;
+      const selectedVehicleCategoryId = vehicleCategoryId || r.vehicle_category_id;
+      let validatedVehicleCategory!: { id: string };
+      try {
+        validatedVehicleCategory = await validateBookingVehicleCategory({
+          vehicleCategoryId: selectedVehicleCategoryId,
+          requestedVehicleType: req.body.vehicleType,
+          requestedVehicleName: req.body.vehicleCategoryName || req.body.vehicleName,
+          tripType: "intercity",
+        });
+      } catch {
+        console.warn(`[INTERCITY_BOOKING_REJECTED] customer=${user.id} route=${routeId} reason=INVALID_VEHICLE_CATEGORY raw=${String(selectedVehicleCategoryId || "")}`);
+        return res.status(400).json({
+          success: false,
+          error: "INVALID_VEHICLE_CATEGORY",
+          message: "Selected intercity vehicle is unavailable. Please refresh and choose again.",
+        });
+      }
 
       const farePerPassenger = parseFloat(r.base_fare || 0) + (parseFloat(r.estimated_km || 0) * parseFloat(r.fare_per_km || 0)) + parseFloat(r.toll_charges || 0);
       const totalFare = parseFloat((farePerPassenger * pax).toFixed(2));
@@ -14530,7 +14560,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           trip_type, current_status, is_scheduled, scheduled_at,
           pickup_short_name, destination_short_name
         ) VALUES (
-          ${refId}, ${user.id}::uuid, ${vehicleCategoryId ? rawSql`${vehicleCategoryId}::uuid` : rawSql`NULL`},
+          ${refId}, ${user.id}::uuid, ${validatedVehicleCategory.id}::uuid,
           ${pickupAddress || r.from_city}, 0, 0,
           ${destinationAddress || r.to_city}, 0, 0,
           ${totalFare}, ${parseFloat(r.estimated_km || 0)}, ${paymentMethod || 'cash'},

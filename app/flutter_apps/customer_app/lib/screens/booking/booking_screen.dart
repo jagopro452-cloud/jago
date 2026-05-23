@@ -110,13 +110,29 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
     return name != null && name.isNotEmpty ? name : null;
   }
 
-  String get _vehicleName => _fare?['vehicleCategoryName']?.toString() ?? _fare?['name']?.toString() ?? widget.vehicleCategoryName ?? 'Bike';
+  String get _vehicleName {
+    final fare = _fare;
+    if (fare != null) {
+      final name = _fareVehicleName(fare);
+      if (name.trim().isNotEmpty) return name;
+    }
+    return widget.vehicleCategoryName ?? 'Bike';
+  }
 
   String _fareVehicleName(Map<String, dynamic> fare) {
     return fare['vehicleCategoryName']?.toString() ??
         fare['vehicleName']?.toString() ??
         fare['name']?.toString() ??
         'Bike';
+  }
+
+  String _fareVehicleNameForFilter(Map<String, dynamic> fare) {
+    return (fare['vehicleCategoryName'] ??
+            fare['vehicleName'] ??
+            fare['name'] ??
+            '')
+        .toString()
+        .toLowerCase();
   }
 
   List<MapEntry<int, Map<String, dynamic>>> _visibleFareEntries(
@@ -574,7 +590,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             final cat = _requestedServiceType;
             if (cat == 'parcel') {
               filtered = filtered.where((f) {
-                final vname = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase();
+                final vname = _fareVehicleNameForFilter(f);
                 final vtype = (f['type'] ?? f['vehicleType'] ?? '').toString().toLowerCase();
                 final serviceType = (f['serviceType'] ?? f['service_type'] ?? '').toString().toLowerCase();
                 return (serviceType == 'parcel' || serviceType == 'cargo' ||
@@ -585,7 +601,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               }).toList();
             } else if (cat == 'pool') {
               filtered = filtered.where((f) {
-                final vname = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase();
+                final vname = _fareVehicleNameForFilter(f);
                 final vtype = (f['type'] ?? f['vehicleType'] ?? '').toString().toLowerCase();
                 final serviceType = (f['serviceType'] ?? f['service_type'] ?? '').toString().toLowerCase();
                 return (serviceType == 'pool' || serviceType == 'carpool' ||
@@ -594,7 +610,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               }).toList();
             } else {
               filtered = filtered.where((f) {
-                final vname = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase();
+                final vname = _fareVehicleNameForFilter(f);
                 final vtype = (f['type'] ?? f['vehicleType'] ?? '').toString().toLowerCase();
                 final serviceType = (f['serviceType'] ?? f['service_type'] ?? '').toString().toLowerCase();
                 if (serviceType == 'parcel' || serviceType == 'cargo' || serviceType == 'pool' || serviceType == 'carpool') return false;
@@ -613,7 +629,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
             if (widget.vehicleCategoryId != null || widget.vehicleCategoryName != null) {
               final targetName = (widget.vehicleCategoryName ?? '').toLowerCase();
               final idx = _allFares.indexWhere((f) {
-                final fName = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase();
+                final fName = _fareVehicleNameForFilter(f);
                 final fId = f['vehicleCategoryId']?.toString() ?? f['id']?.toString();
                 return fId == widget.vehicleCategoryId || 
                        (targetName.isNotEmpty && fName.contains(targetName));

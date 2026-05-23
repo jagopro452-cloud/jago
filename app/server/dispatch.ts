@@ -240,7 +240,7 @@ async function startDispatchLocked(
   parcelVehicleCategory?: string,
   seedRejectedDriverIds: string[] = []
 ): Promise<void> {
-  if (!vehicleCategoryId && serviceType !== "parcel" && serviceType !== "b2b_parcel") {
+  if (!vehicleCategoryId) {
     console.error(`[DISPATCH_REJECTED] trip=${tripId} reason=missing_vehicle_category`);
     throw new Error("INVALID_VEHICLE_CATEGORY");
   }
