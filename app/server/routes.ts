@@ -11897,51 +11897,63 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // One row per active vehicle category. trip_fares is optional because
       // vehicle_categories contains production fallback pricing; missing fare
       // rows are logged and still fail closed on null category IDs.
-      const fareR = await rawDb.execute(rawSql`
-        SELECT
-          vc.id as vehicle_category_id,
-          f.id as fare_id,
-          f.zone_id,
-          f.base_fare,
-          f.fare_per_km,
-          f.fare_per_min,
-          f.minimum_fare,
-          f.cancellation_fee,
-          f.waiting_charge_per_min,
-          f.helper_charge,
-          f.night_charge_multiplier,
-          vc.name as vehicle_name, vc.icon as vehicle_icon,
-          vc.vehicle_type as vc_vehicle_type,
-          COALESCE(vc.service_type, vc.type, 'ride') as service_type,
-          vc.type as category_type,
-          vc.base_fare     as vc_base_fare,
-          vc.fare_per_km   as vc_fare_per_km,
-          vc.minimum_fare  as vc_minimum_fare,
-          vc.waiting_charge_per_min as vc_waiting_charge,
-          COALESCE(vc.total_seats, 0) as vc_total_seats,
-          COALESCE(vc.is_carpool, false) as vc_is_carpool,
-          vc.is_active as is_active
-        FROM vehicle_categories vc
-        LEFT JOIN LATERAL (
-          SELECT tf.*
-          FROM trip_fares tf
-          WHERE tf.vehicle_category_id = vc.id
-            AND (
-              ${detectedZoneId ? rawSql`tf.zone_id = ${detectedZoneId}::uuid OR` : rawSql``}
-              tf.zone_id IS NULL
-            )
-          ORDER BY
-            ${detectedZoneId ? rawSql`(tf.zone_id = ${detectedZoneId}::uuid) DESC,` : rawSql``}
-            (tf.zone_id IS NULL) DESC,
-            tf.created_at DESC
-          LIMIT 1
-        ) f ON true
-        WHERE vc.is_active = true
-          AND ${vehicleCategoryServicePredicate(requestedService)}
-          ${requestedVehicleCategoryId ? rawSql`AND vc.id = ${requestedVehicleCategoryId}::uuid` : rawSql``}
-        ORDER BY vc.name
-      `);
-      const fareRows = camelize(fareR.rows);
+      const fetchFareRows = async (strictVehicleCategoryId: string | null) => {
+        const fareR = await rawDb.execute(rawSql`
+          SELECT
+            vc.id as vehicle_category_id,
+            f.id as fare_id,
+            f.zone_id,
+            f.base_fare,
+            f.fare_per_km,
+            f.fare_per_min,
+            f.minimum_fare,
+            f.cancellation_fee,
+            f.waiting_charge_per_min,
+            f.helper_charge,
+            f.night_charge_multiplier,
+            vc.name as vehicle_name, vc.icon as vehicle_icon,
+            vc.vehicle_type as vc_vehicle_type,
+            COALESCE(vc.service_type, vc.type, 'ride') as service_type,
+            vc.type as category_type,
+            vc.base_fare     as vc_base_fare,
+            vc.fare_per_km   as vc_fare_per_km,
+            vc.minimum_fare  as vc_minimum_fare,
+            vc.waiting_charge_per_min as vc_waiting_charge,
+            COALESCE(vc.total_seats, 0) as vc_total_seats,
+            COALESCE(vc.is_carpool, false) as vc_is_carpool,
+            vc.is_active as is_active
+          FROM vehicle_categories vc
+          LEFT JOIN LATERAL (
+            SELECT tf.*
+            FROM trip_fares tf
+            WHERE tf.vehicle_category_id = vc.id
+              AND (
+                ${detectedZoneId ? rawSql`tf.zone_id = ${detectedZoneId}::uuid OR` : rawSql``}
+                tf.zone_id IS NULL
+              )
+            ORDER BY
+              ${detectedZoneId ? rawSql`(tf.zone_id = ${detectedZoneId}::uuid) DESC,` : rawSql``}
+              (tf.zone_id IS NULL) DESC,
+              tf.created_at DESC
+            LIMIT 1
+          ) f ON true
+          WHERE vc.is_active = true
+            AND ${vehicleCategoryServicePredicate(requestedService)}
+            ${strictVehicleCategoryId ? rawSql`AND vc.id = ${strictVehicleCategoryId}::uuid` : rawSql``}
+          ORDER BY vc.name
+        `);
+        return camelize(fareR.rows);
+      };
+
+      let fareRows = await fetchFareRows(requestedVehicleCategoryId || null);
+      let requestedCategoryUnavailable = false;
+      if (!fareRows.length && requestedVehicleCategoryId) {
+        requestedCategoryUnavailable = true;
+        console.warn(
+          `[FARE_CATEGORY_FALLBACK] service=${requestedService} staleVehicleCategoryId=${requestedVehicleCategoryId} pickup=${pickupLat || ""},${pickupLng || ""}`,
+        );
+        fareRows = await fetchFareRows(null);
+      }
       if (!fareRows.length) {
         console.warn(
           `[FARE_CATEGORY_EMPTY] service=${requestedService} category=${String(category || "")} vehicleCategoryId=${requestedVehicleCategoryId || "none"} pickup=${pickupLat || ""},${pickupLng || ""}`,
@@ -12079,7 +12091,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      res.json({ fares, distanceKm: Math.round(dist * 10) / 10, durationMin: dur, isNight, launchOffer });
+      res.json({
+        fares,
+        distanceKm: Math.round(dist * 10) / 10,
+        durationMin: dur,
+        isNight,
+        launchOffer,
+        requestedCategoryUnavailable,
+      });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
