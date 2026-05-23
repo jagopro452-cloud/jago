@@ -1781,8 +1781,8 @@ async function ensureOperationalSchema() {
     // Inserts each vehicle type if no category with that name exists yet (case-insensitive).
     await rawDb.execute(rawSql`
       INSERT INTO vehicle_categories
-        (name, vehicle_type, type, icon, is_active, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, total_seats, is_carpool)
-      SELECT v.vname, v.vtype, v.svc_type, v.icon, true,
+        (name, vehicle_type, type, service_type, icon, is_active, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, total_seats, is_carpool)
+      SELECT v.vname, v.vtype, v.svc_type, CASE WHEN v.is_carpool THEN 'pool' ELSE 'ride' END, v.icon, true,
              v.base_fare::numeric, v.fare_per_km::numeric, v.minimum_fare::numeric,
              v.wait_charge::numeric, v.total_seats::int, v.is_carpool::boolean
       FROM (VALUES
@@ -1802,8 +1802,8 @@ async function ensureOperationalSchema() {
     // weight_rate is per-kg surcharge added on top of base + distance fare.
     await rawDb.execute(rawSql`
       INSERT INTO vehicle_categories
-        (name, vehicle_type, type, icon, is_active, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, weight_rate, total_seats, is_carpool)
-      SELECT v.vname, v.vtype, 'parcel', v.icon, true,
+        (name, vehicle_type, type, service_type, icon, is_active, base_fare, fare_per_km, minimum_fare, waiting_charge_per_min, weight_rate, total_seats, is_carpool)
+      SELECT v.vname, v.vtype, 'parcel', 'parcel', v.icon, true,
              v.base_fare::numeric, v.fare_per_km::numeric, v.minimum_fare::numeric,
              0::numeric, v.weight_rate::numeric, 0::int, false
       FROM (VALUES
