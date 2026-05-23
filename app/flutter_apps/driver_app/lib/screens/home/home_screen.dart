@@ -80,6 +80,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   bool _showHeatmap = true;
   HeatmapZone? _nearestHighZone;
   Timer? _idleTimer;
+  Timer? _parcelRecoveryTimer;
   int _idleSeconds = 0;
   bool _idleSuggestionShown = false;
 
@@ -112,6 +113,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       await _recoverActiveTrip();
       await _consumeQueuedAlertAction();
       await _checkPendingFcmTrip();
+      _startParcelRecoveryPolling();
     });
   }
 
@@ -232,6 +234,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
     _subs.add(_socket.onConnectionChanged.listen((connected) {
       if (mounted) setState(() => _socketConnected = connected);
+      if (connected) _fetchPendingParcelOffer();
     }));
 
     _subs.add(_socket.onNewTrip.listen((trip) {
@@ -339,6 +342,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     }));
   }
 
+  void _startParcelRecoveryPolling() {
+    _parcelRecoveryTimer?.cancel();
+    _parcelRecoveryTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      _fetchPendingParcelOffer();
+    });
+  }
+
+  Future<void> _fetchPendingParcelOffer() async {
+    if (!mounted || !_isOnline) return;
+    if (_incomingTrip != null || _incomingParcel != null) return;
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http
+          .get(Uri.parse(ApiConfig.driverParcelPending), headers: headers)
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode != 200 || !mounted) return;
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final orders = data['orders'];
+      if (orders is! List || orders.isEmpty) return;
+      final first = Map<String, dynamic>.from(orders.first as Map);
+      setState(() => _incomingParcel = first);
+      _showIncomingParcel();
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -347,6 +375,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     _locationTimer?.cancel();
     _posStream?.cancel();
     _idleTimer?.cancel();
+    _parcelRecoveryTimer?.cancel();
     _heatmap.stopRefresh();
     _pulseCtrl.dispose();
     _socket.disconnect();
@@ -361,6 +390,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     if (state == AppLifecycleState.resumed) {
       _consumeQueuedAlertAction();
       _checkPendingFcmTrip();
+      _fetchPendingParcelOffer();
     }
     if (state == AppLifecycleState.paused) {
       // App backgrounded — suspend GPS stream + server poll to save battery
@@ -1091,6 +1121,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       _startLocationStreaming();
       _startHeatmapRefresh();
       _startIdleTimer();
+      _fetchPendingParcelOffer();
       _showSnack('Online forced for Testing! ✓');
     } else {
       _stopLocationStreaming();

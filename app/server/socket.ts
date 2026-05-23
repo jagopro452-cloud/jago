@@ -23,6 +23,7 @@ import {
 import { parseEnv } from "./config/env";
 import { authenticateAppAccessToken } from "./auth/app-session";
 import { authenticateAdminAccessToken } from "./auth/admin-session";
+import { cancelTrip, CancelTripError } from "./services/cancel-trip";
 import {
   findEligibleDriversForDispatch,
   isDriverEligibleForDispatch,
@@ -990,30 +991,27 @@ export function setupSocket(httpServer: HttpServer) {
       socket.on("customer:cancel_trip", async (data: { tripId: string }) => {
         try {
           const { tripId } = data;
-          const tripR = await rawDb.execute(rawSql`
-            SELECT driver_id FROM trip_requests
-            WHERE id=${tripId}::uuid AND customer_id=${userId}::uuid AND current_status NOT IN ('completed','cancelled')
-          `);
-          if (!tripR.rows.length) {
-            socket.emit("error", { message: "Trip not found or already ended" });
-            return;
-          }
-          const driverId = (tripR.rows[0] as any).driver_id;
-          await rawDb.execute(rawSql`
-            UPDATE trip_requests SET current_status='cancelled', updated_at=NOW() WHERE id=${tripId}::uuid
-          `);
-          await appendTripStatus(tripId, "cancelled", "customer", "Customer cancelled via socket");
-          await logRideLifecycleEvent(tripId, "trip_cancelled", userId, "customer", {
-            via: "socket",
+          const outcome = await cancelTrip({
+            tripId,
+            actor: { id: userId, type: "customer" },
+            reason: "Customer cancelled via socket",
+            source: "socket",
           });
-          // Cancel active dispatch session
-          dispatchCancelTrip(tripId);
+          const driverId = (outcome.trip as any)?.driver_id || (outcome.existingTrip as any)?.driver_id;
           if (driverId) {
-            await rawDb.execute(rawSql`UPDATE users SET current_trip_id=NULL WHERE id=${driverId}::uuid`);
             io.to(`user:${driverId}`).emit("trip:cancelled", { tripId, cancelledBy: "customer" });
           }
           socket.emit("trip:cancelled", { tripId, cancelledBy: "customer" });
         } catch (e: any) {
+          if (e instanceof CancelTripError) {
+            socket.emit("trip:cancel_rejected", {
+              tripId: data?.tripId,
+              code: e.code,
+              message: e.message,
+              currentStatus: e.currentStatus,
+            });
+            return;
+          }
           console.error("[SOCKET] customer:cancel_trip error:", e.message);
         }
       });

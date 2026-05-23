@@ -1,12 +1,47 @@
 import { log } from "./index";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import crypto from "crypto";
 const rawDb = db;
 const rawSql = sql;
 
 let admin: any = null;
 let fcmInitialized = false;
 let lastFcmError: string | null = null;
+
+function tokenHash(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex").slice(0, 12);
+}
+
+function isInvalidTokenError(error: any): boolean {
+  const text = `${error?.code || ""} ${error?.message || ""}`;
+  return /registration-token-not-registered|invalid-registration-token|invalid-argument|Requested entity was not found/i.test(text);
+}
+
+function isAuthError(error: any): boolean {
+  const text = `${error?.code || ""} ${error?.message || ""}`;
+  return /invalid_grant|Invalid JWT Signature|certificate key file has been revoked|invalid-credential|permission/i.test(text);
+}
+
+function isRetryableFcmError(error: any): boolean {
+  const text = `${error?.code || ""} ${error?.message || ""}`;
+  return /unavailable|internal|deadline|timeout|ECONNRESET|ETIMEDOUT/i.test(text);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function markFcmTokenInvalid(token: string, reason: string): Promise<void> {
+  if (!token) return;
+  await rawDb.execute(rawSql`
+    DELETE FROM user_devices
+    WHERE fcm_token = ${token}
+  `).catch((error: any) => {
+    log(`[FCM_TOKEN_INVALID_MARK_FAILED] tokenHash=${tokenHash(token)} error=${error?.message || error}`, "fcm");
+  });
+  log(`[FCM_TOKEN_INVALID] tokenHash=${tokenHash(token)} reason=${reason}`, "fcm");
+}
 
 // ── Initialize Firebase Admin (env var only, no SMS fallback) ────────────────
 async function initFirebaseAsync() {
@@ -34,6 +69,13 @@ async function initFirebaseAsync() {
     // Avoid re-initializing if already done
     if (firebaseAdmin.apps.length === 0) {
       const serviceAccount = JSON.parse(serviceAccountJson);
+      if (!serviceAccount.project_id || !serviceAccount.client_email || !serviceAccount.private_key) {
+        throw new Error("Malformed Firebase service account");
+      }
+      const expectedProject = (process.env.FIREBASE_PROJECT_ID || "").trim();
+      if (expectedProject && serviceAccount.project_id !== expectedProject) {
+        throw new Error(`Firebase project mismatch: env=${expectedProject} serviceAccount=${serviceAccount.project_id}`);
+      }
       if (typeof serviceAccount.private_key === "string") {
         serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
       }
@@ -48,6 +90,36 @@ async function initFirebaseAsync() {
     admin = null;
     lastFcmError = e?.message || "Firebase Admin initialization failed";
     log(`[FCM] Init failed: ${e.message}`, "fcm");
+  }
+}
+
+export async function validateFirebaseAdminStartup(): Promise<void> {
+  await initFirebaseAsync();
+  if (!admin) {
+    const message = lastFcmError || "Firebase Admin not initialized";
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(message);
+    }
+    log(`[FCM_STARTUP_WARNING] ${message}`, "fcm");
+    return;
+  }
+
+  try {
+    await admin.messaging().send({
+      token: "fcm_startup_validation_token",
+      data: { type: "startup_validation" },
+      android: { priority: "high" },
+    }, true);
+    log("[FCM_STARTUP_VALIDATED] dryRun=true", "fcm");
+  } catch (error: any) {
+    if (isAuthError(error)) {
+      admin = null;
+      fcmInitialized = false;
+      lastFcmError = error?.message || "Firebase auth validation failed";
+      throw new Error(lastFcmError || "Firebase auth validation failed");
+    }
+    lastFcmError = null;
+    log(`[FCM_STARTUP_VALIDATED] credentials accepted dryRunNonAuthError=${error?.code || error?.message || "unknown"}`, "fcm");
   }
 }
 
@@ -130,17 +202,48 @@ export async function sendFcmNotification(opts: {
       message.notification = { title: opts.title, body: opts.body };
     }
 
-    await admin.messaging().send(message);
-    lastFcmError = null;
-    log(`[FCM] Sent notification title=${opts.title}${opts.dataOnly ? " dataOnly=true" : ""}`, "fcm");
-    return true;
+    let attempt = 0;
+    while (attempt < 3) {
+      try {
+        const messageId = await admin.messaging().send(message);
+        lastFcmError = null;
+        log(
+          `[FCM_SEND_SUCCESS] tokenHash=${tokenHash(opts.fcmToken)} messageId=${messageId} title=${opts.title}${opts.dataOnly ? " dataOnly=true" : ""}`,
+          "fcm",
+        );
+        return true;
+      } catch (error: any) {
+        attempt++;
+        lastFcmError = error?.message || "FCM send failed";
+        if (isInvalidTokenError(error)) {
+          await markFcmTokenInvalid(opts.fcmToken, error?.code || error?.message || "invalid_token");
+          return false;
+        }
+        if (isAuthError(error)) {
+          admin = null;
+          fcmInitialized = false;
+          log(
+            `[FCM_SEND_FAILURE] tokenHash=${tokenHash(opts.fcmToken)} authError=true error=${error?.message || error}`,
+            "fcm",
+          );
+          return false;
+        }
+        log(
+          `[FCM_SEND_FAILURE] tokenHash=${tokenHash(opts.fcmToken)} attempt=${attempt} retryable=${isRetryableFcmError(error)} error=${error?.message || error}`,
+          "fcm",
+        );
+        if (attempt >= 3 || !isRetryableFcmError(error)) return false;
+        await sleep(250 * attempt + Math.floor(Math.random() * 250));
+      }
+    }
+    return false;
   } catch (e: any) {
     lastFcmError = e?.message || "FCM send failed";
-    if (/invalid_grant|Invalid JWT Signature|certificate key file has been revoked/i.test(lastFcmError || "")) {
+    if (isAuthError(e)) {
       admin = null;
       fcmInitialized = false;
     }
-    log(`[FCM] Send failed: ${e.message}`, "fcm");
+    log(`[FCM_SEND_FAILURE] tokenHash=${tokenHash(opts.fcmToken)} error=${e.message}`, "fcm");
     return false;
   }
 }

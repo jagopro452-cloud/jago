@@ -495,10 +495,23 @@ const port = parseInt(process.env.PORT || "5000", 10);
     }
   }
 
+  try {
+    const { validateFirebaseAdminStartup } = await import("./fcm");
+    await validateFirebaseAdminStartup();
+    log("[startup] Firebase Admin validated");
+  } catch (e: any) {
+    bootstrapError = `firebase_validation_failed:${e.message}`;
+    console.error("[startup] Firebase validation failed:", e.message);
+    sendAlert({ level: "critical", source: "firebase", message: "Firebase validation failed", details: String(e.message || e) }).catch(() => {});
+    if (process.env.NODE_ENV === "production") return;
+  }
+
   // ─── STEP 6: Mark server ready — health probe passes from here ───
   try {
     setupSocket(httpServer);
     await setupSocketRedisAdapter();
+    const { recoverActiveDispatchesFromRedis } = await import("./dispatch");
+    await recoverActiveDispatchesFromRedis();
   } catch (e: any) {
     bootstrapError = `socket_init_failed:${e.message}`;
     console.error("[socket] Failed to initialize Socket.IO:", e.message);

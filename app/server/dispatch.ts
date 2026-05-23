@@ -21,6 +21,17 @@ import {
   resolveDispatchRequirementsFromTrip,
   type DispatchRequirements,
 } from "./dispatch-eligibility";
+import {
+  clearDispatchOffer as clearRedisDispatchOffer,
+  clearDispatchSession as clearRedisDispatchSession,
+  getActiveDispatchTripIds,
+  getDispatchSession as getRedisDispatchSession,
+  markDispatchOffer,
+  runWithDispatchLock,
+  saveDispatchOffer,
+  saveDispatchSession,
+  type RedisDispatchSession,
+} from "./dispatch-store";
 
 // ── Service-specific dispatch configuration ──────────────────────────────────
 
@@ -97,6 +108,33 @@ export interface TripMeta {
 
 const activeDispatches = new Map<string, DispatchSession>();
 
+function toRedisSession(session: DispatchSession): RedisDispatchSession {
+  return {
+    tripId: session.tripId,
+    customerId: session.customerId,
+    pickupLat: session.pickupLat,
+    pickupLng: session.pickupLng,
+    vehicleCategoryId: session.vehicleCategoryId || null,
+    parcelVehicleCategory: session.parcelVehicleCategory || null,
+    serviceType: session.serviceType,
+    phase: session.status,
+    radiusIndex: session.radiusIndex,
+    queueIndex: session.queueIndex,
+    currentOfferedDriverId: session.currentOfferedDriverId,
+    notifiedDriverIds: Array.from(session.notifiedDriverIds),
+    rejectedDriverIds: Array.from(session.rejectedDriverIds),
+    retryCount: session.retryCount,
+    createdAt: session.createdAt,
+    updatedAt: Date.now(),
+    expiresAt: session.createdAt + session.config.maxTotalTimeMs + 300_000,
+    tripMeta: session.tripMeta as unknown as Record<string, unknown>,
+  };
+}
+
+async function persistDispatchState(session: DispatchSession): Promise<void> {
+  await saveDispatchSession(toRedisSession(session));
+}
+
 async function persistDriverOffer(
   session: DispatchSession,
   driver: DriverMatchScore,
@@ -113,6 +151,15 @@ async function persistDriverOffer(
       AND current_status='searching'
       AND driver_id IS NULL
   `);
+  await saveDispatchOffer({
+    tripId: session.tripId,
+    driverId: driver.driverId,
+    payload,
+    status: "offered",
+    createdAt: Date.now(),
+    expiresAt: Date.now() + session.config.driverTimeoutMs,
+  });
+  await persistDispatchState(session);
 }
 
 async function clearPersistedOffer(tripId: string, driverId?: string): Promise<void> {
@@ -125,6 +172,7 @@ async function clearPersistedOffer(tripId: string, driverId?: string): Promise<v
     WHERE id=${tripId}::uuid
       ${driverId ? rawSql`AND offered_driver_id=${driverId}::uuid` : rawSql``}
   `);
+  await clearRedisDispatchOffer(tripId, driverId);
 }
 
 /**
@@ -166,6 +214,37 @@ export async function startDispatch(
   parcelVehicleCategory?: string,
   seedRejectedDriverIds: string[] = []
 ): Promise<void> {
+  await runWithDispatchLock(tripId, async () => {
+    await startDispatchLocked(
+      tripId,
+      customerId,
+      pickupLat,
+      pickupLng,
+      vehicleCategoryId,
+      serviceType,
+      tripMeta,
+      parcelVehicleCategory,
+      seedRejectedDriverIds,
+    );
+  });
+}
+
+async function startDispatchLocked(
+  tripId: string,
+  customerId: string,
+  pickupLat: number,
+  pickupLng: number,
+  vehicleCategoryId: string | undefined,
+  serviceType: string,
+  tripMeta: TripMeta,
+  parcelVehicleCategory?: string,
+  seedRejectedDriverIds: string[] = []
+): Promise<void> {
+  if (!vehicleCategoryId && serviceType !== "parcel" && serviceType !== "b2b_parcel") {
+    console.error(`[DISPATCH_REJECTED] trip=${tripId} reason=missing_vehicle_category`);
+    throw new Error("INVALID_VEHICLE_CATEGORY");
+  }
+
   // Cancel any existing dispatch for this trip (defensive)
   cancelDispatch(tripId);
 
@@ -205,6 +284,7 @@ export async function startDispatch(
   };
 
   activeDispatches.set(tripId, session);
+  await persistDispatchState(session);
 
   // Set max total timeout — auto-cancel if no driver found in time
   session.totalTimer = setTimeout(() => {
@@ -229,6 +309,7 @@ export async function onDriverAccepted(tripId: string, driverId: string): Promis
 
   session.status = "accepted";
   clearTimers(session);
+  await markDispatchOffer(tripId, driverId, "accepted").catch(() => undefined);
   await clearPersistedOffer(tripId).catch(() => {});
 
   // Notify all previously-notified (but not accepted) drivers that trip is taken
@@ -241,6 +322,7 @@ export async function onDriverAccepted(tripId: string, driverId: string): Promis
   }
 
   activeDispatches.delete(tripId);
+  await clearRedisDispatchSession(tripId).catch(() => undefined);
   console.log(`[DISPATCH] ✅ DRIVER ACCEPTED — trip=${tripId} driver=${driverId}`);
   
   // ─────────────────────────────────────────────────────────────────────────────
@@ -281,6 +363,9 @@ export async function onDriverRejected(tripId: string, driverId: string): Promis
 
   session.rejectedDriverIds.add(driverId);
   session.currentOfferedDriverId = null;
+  session.status = "searching";
+  await markDispatchOffer(tripId, driverId, "rejected").catch(() => undefined);
+  await persistDispatchState(session).catch(() => undefined);
   await clearPersistedOffer(tripId, driverId).catch(() => {});
 
   // Emit timeout/rejection to driver
@@ -302,7 +387,10 @@ export async function onDriverRejected(tripId: string, driverId: string): Promis
  */
 export function cancelDispatch(tripId: string): void {
   const session = activeDispatches.get(tripId);
-  if (!session) return;
+  if (!session) {
+    clearRedisDispatchSession(tripId).catch(() => undefined);
+    return;
+  }
 
   session.status = "cancelled";
   clearTimers(session);
@@ -317,6 +405,7 @@ export function cancelDispatch(tripId: string): void {
 
   activeDispatches.delete(tripId);
   clearPersistedOffer(tripId).catch(() => {});
+  clearRedisDispatchSession(tripId).catch(() => undefined);
   console.log(`[DISPATCH] Cancelled for trip ${tripId}`);
 }
 
@@ -511,6 +600,7 @@ async function dispatchNextDriver(session: DispatchSession): Promise<void> {
       session.status = "cancelled";
       clearTimers(session);
       activeDispatches.delete(session.tripId);
+      await clearRedisDispatchSession(session.tripId).catch(() => undefined);
       return;
     }
   } catch {
@@ -519,6 +609,7 @@ async function dispatchNextDriver(session: DispatchSession): Promise<void> {
 
   session.status = "searching";
   session.currentOfferedDriverId = null;
+  await persistDispatchState(session).catch(() => undefined);
 
   // Find next un-notified, un-rejected driver in queue
   while (session.queueIndex < session.driverQueue.length) {
@@ -552,6 +643,7 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
   session.status = "offered";
   session.currentOfferedDriverId = driver.driverId;
   session.notifiedDriverIds.add(driver.driverId);
+  await persistDispatchState(session).catch(() => undefined);
 
   const payload = {
     tripId: session.tripId,
@@ -619,6 +711,9 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
     // Record this driver as timed out (equivalent to soft rejection)
     session.rejectedDriverIds.add(driver.driverId);
     session.currentOfferedDriverId = null;
+    session.status = "searching";
+    await markDispatchOffer(session.tripId, driver.driverId, "expired").catch(() => undefined);
+    await persistDispatchState(session).catch(() => undefined);
     await clearPersistedOffer(session.tripId, driver.driverId).catch(() => {});
 
     // Notify driver their time expired
@@ -741,6 +836,7 @@ async function expireDispatch(session: DispatchSession, message: string): Promis
   }
 
   activeDispatches.delete(session.tripId);
+  await clearRedisDispatchSession(session.tripId).catch(() => undefined);
   console.log(`[DISPATCH] Trip ${session.tripId} expired — ${message}`);
 }
 
@@ -1131,6 +1227,7 @@ export function startDispatchCleanup(): void {
         session.status = "expired";
         clearTimers(session);
         activeDispatches.delete(tripId);
+        clearRedisDispatchSession(tripId).catch(() => undefined);
       }
     }
   }, 60000);
@@ -1194,4 +1291,34 @@ export async function restartDispatchForTrip(
     requirements?.parcelVehicleCategory || undefined,
     seedRejectedDriverIds
   );
+}
+
+export async function recoverActiveDispatchesFromRedis(): Promise<void> {
+  const redisTripIds = await getActiveDispatchTripIds().catch(() => []);
+  const dbActive = await rawDb.execute(rawSql`
+    SELECT id
+    FROM trip_requests
+    WHERE current_status='searching'
+      AND driver_id IS NULL
+      AND updated_at > NOW() - INTERVAL '30 minutes'
+    ORDER BY created_at ASC
+    LIMIT 100
+  `).catch(() => ({ rows: [] as any[] }));
+
+  const tripIds = Array.from(new Set([
+    ...redisTripIds,
+    ...((dbActive.rows as any[]) || []).map((row) => String(row.id)).filter(Boolean),
+  ]));
+
+  for (const tripId of tripIds) {
+    if (activeDispatches.has(tripId)) continue;
+    const recovered = await getRedisDispatchSession(tripId).catch(() => null);
+    const rejected = recovered?.rejectedDriverIds || [];
+    try {
+      await restartDispatchForTrip(tripId, rejected);
+      console.log(`[DISPATCH_RECOVERED] trip=${tripId} rejectedSeed=${rejected.length}`);
+    } catch (error: any) {
+      console.error(`[DISPATCH_RECOVERY_FAILED] trip=${tripId} error=${error?.message || error}`);
+    }
+  }
 }

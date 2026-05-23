@@ -376,7 +376,7 @@ export async function findEligibleDriversForDispatch(input: {
       AND dl.is_online = true
       AND u.current_trip_id IS NULL
       AND dl.lat != 0 AND dl.lng != 0
-      AND dl.updated_at > NOW() - INTERVAL '90 seconds'
+      AND dl.updated_at > NOW() - (${Math.max(180, Number(process.env.DISPATCH_RIDE_LOCATION_TTL_SECONDS || 240))} * INTERVAL '1 second')
       ${categoryClause}
       ${excludeClause}
       AND SQRT(

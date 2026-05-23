@@ -42,6 +42,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   bool _loading = false;
   bool _estimating = true;
   List<Map<String, dynamic>> _allFares = [];
+  String? _fareLoadError;
   int _selectedFareIndex = 0;
   String _paymentMethod = 'cash';
   double _walletBalance = 0;
@@ -485,7 +486,10 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   }
 
   Future<void> _estimateFare() async {
-    setState(() => _estimating = true);
+    setState(() {
+      _estimating = true;
+      _fareLoadError = null;
+    });
     try {
       final headers = await AuthService.getHeaders();
       final body = <String, dynamic>{
@@ -527,24 +531,11 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
               }).toList();
             }
             _allFares = filtered;
-            
-            // Ensure we have at least the core categories (Bike, Auto, Cab)
-            if (widget.category != 'parcel') {
-              final fallbacks = _buildFallbackFares();
-              for (var fb in fallbacks) {
-                final fbName = fb['vehicleCategoryName'].toString();
-                // Add fallback if no similar category exists in server result
-                if (!_allFares.any((f) {
-                  final name = (f['vehicleCategoryName'] ?? f['name'] ?? '').toString().toLowerCase();
-                  return name.contains(fbName.split(' ').first.toLowerCase());
-                })) {
-                  _allFares.add(fb);
-                }
-              }
+            if (_allFares.isEmpty) {
+              _fareLoadError = 'No active vehicle category is available for this service.';
+            } else if (_selectedFareIndex >= _allFares.length) {
+              _selectedFareIndex = 0;
             }
-            
-            // Final safety check: if still empty (shouldn't happen with fallbacks), use all fallbacks
-            if (_allFares.isEmpty) _allFares = _buildFallbackFares();
             if (widget.vehicleCategoryId != null || widget.vehicleCategoryName != null) {
               final targetName = (widget.vehicleCategoryName ?? '').toLowerCase();
               final idx = _allFares.indexWhere((f) {
@@ -558,21 +549,37 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
           });
         } else {
           // Server returned 200 but body wasn't as expected — use fallbacks
-          if (mounted) setState(() => _allFares = _buildFallbackFares());
+          if (mounted) {
+            setState(() {
+              _allFares = [];
+              _fareLoadError = 'Live fares are unavailable. Please retry.';
+            });
+          }
         }
       } else {
         // Server returned error status — use fallbacks
-        if (mounted) setState(() => _allFares = _buildFallbackFares());
+        if (mounted) {
+          setState(() {
+            _allFares = [];
+            _fareLoadError = 'Live fares are unavailable. Please retry.';
+          });
+        }
       }
     } catch (_) {
       // Network error — show client-side estimates only on connectivity failure
-      if (mounted) setState(() => _allFares = _buildFallbackFares());
+      if (mounted) {
+        setState(() {
+          _allFares = [];
+          _fareLoadError = 'Network error while loading live fares. Please retry.';
+        });
+      }
     }
     if (mounted) setState(() => _estimating = false);
   }
 
   /// Builds client-side fare estimates (Bike/Auto/Car) when the server returns
   /// no fares. Formula: Total = Base + (Distance × Per-KM Rate) + 5% GST.
+  // ignore: unused_element
   List<Map<String, dynamic>> _buildFallbackFares() {
     final dist = _distanceKm;
     Map<String, dynamic> make(
@@ -622,6 +629,11 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
   }
 
   Future<void> _confirmBooking({String? razorpayPaymentId}) async {
+    final vcId = _fare?['vehicleCategoryId']?.toString() ?? _fare?['id']?.toString() ?? widget.vehicleCategoryId;
+    if (vcId == null || vcId.isEmpty || vcId.toLowerCase() == 'null') {
+      _showSnack('Vehicle category unavailable. Please retry fare loading.', error: true);
+      return;
+    }
     setState(() => _loading = true);
     try {
       final headers = await AuthService.getHeaders();
@@ -655,8 +667,9 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
         if (_bookForSomeone && _noteCtrl.text.trim().isNotEmpty)
           'note': _noteCtrl.text.trim(),
       };
-      final vcId = _fare?['vehicleCategoryId']?.toString() ?? _fare?['id']?.toString() ?? widget.vehicleCategoryId;
-      if (vcId != null && vcId.isNotEmpty) body['vehicleCategoryId'] = vcId;
+      body['vehicleCategoryId'] = vcId;
+      body['vehicleCategoryName'] = _vehicleName;
+      body['vehicleType'] = _vehicleName;
       final res = await http.post(Uri.parse(ApiConfig.bookRide),
         headers: headers,
         body: jsonEncode(body));
@@ -1153,7 +1166,7 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
                             builder: (context, snapshot) {
                               final statuses = snapshot.data ?? {};
                               final visibleFares = _allFares;
-                              final canBook = !_loading && !_estimating && visibleFares.isNotEmpty;
+                              final canBook = !_loading && !_estimating && _fareLoadError == null && visibleFares.isNotEmpty;
 
                               return Container(
                                 decoration: BoxDecoration(
@@ -1513,6 +1526,43 @@ class _BookingScreenState extends State<BookingScreen> with TickerProviderStateM
       );
     }
     final visibleFares = _visibleFareEntries(statuses);
+    if (_fareLoadError != null && !_estimating) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 28),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFBEB),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.35)),
+        ),
+        child: Column(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706), size: 42),
+            const SizedBox(height: 12),
+            Text(
+              'Fare loading failed',
+              style: GoogleFonts.outfit(
+                color: const Color(0xFF0F172A),
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _fareLoadError!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: _estimateFare,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry live fares'),
+            ),
+          ],
+        ),
+      );
+    }
     if (visibleFares.isEmpty && !_estimating) {
       return Container(
         width: double.infinity,

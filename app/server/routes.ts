@@ -68,7 +68,9 @@ import {
   type TripMeta,
 } from "./dispatch";
 import { diagnoseDispatch, TripNotFoundError } from "./dispatch-diag";
-import { getPlatformServiceKeyForCategory, getVehicleCategoryMeta } from "./vehicle-matching";
+import { getPlatformServiceKeyForCategory, getVehicleCategoryMeta, normalizeBookingVehicleType } from "./vehicle-matching";
+import { cancelTrip, CancelTripError } from "./services/cancel-trip";
+import { getRedisClient } from "./redis";
 import {
   computeDemandHeatmap,
   calculateSurgeMultiplier,
@@ -165,6 +167,7 @@ import {
   addParcelVehicle,
 } from "./dynamic-services";
 import {
+  getDriverEligibleServiceSnapshot,
   isDriverEligibleForDispatch,
   resolveDispatchRequirementsFromTrip,
 } from "./dispatch-eligibility";
@@ -452,6 +455,75 @@ function shortLocationName(value: any): string {
   const raw = String(value || "").trim();
   if (!raw) return "";
   return raw.split(",")[0].trim();
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function validateBookingVehicleCategory(input: {
+  vehicleCategoryId: unknown;
+  requestedVehicleType?: unknown;
+  requestedVehicleName?: unknown;
+  tripType?: unknown;
+}): Promise<{ id: string; name: string; vehicleType: string; serviceType: string }> {
+  const id = String(input.vehicleCategoryId || "").trim();
+  if (!id || !UUID_RE.test(id)) {
+    throw Object.assign(new Error("INVALID_VEHICLE_CATEGORY"), { status: 400, code: "INVALID_VEHICLE_CATEGORY" });
+  }
+
+  const categoryR = await rawDb.execute(rawSql`
+    SELECT id, name, vehicle_type, service_type, type, is_active
+    FROM vehicle_categories
+    WHERE id=${id}::uuid
+    LIMIT 1
+  `);
+  if (!categoryR.rows.length) {
+    throw Object.assign(new Error("INVALID_VEHICLE_CATEGORY"), { status: 400, code: "INVALID_VEHICLE_CATEGORY" });
+  }
+
+  const row = categoryR.rows[0] as any;
+  if (row.is_active === false) {
+    throw Object.assign(new Error("INVALID_VEHICLE_CATEGORY"), { status: 400, code: "INVALID_VEHICLE_CATEGORY" });
+  }
+
+  const categoryType = normalizeBookingVehicleType(
+    String(row.vehicle_type || row.type || row.name || ""),
+  );
+  const requestedType = normalizeBookingVehicleType(
+    String(input.requestedVehicleType || input.requestedVehicleName || ""),
+  );
+  const tripType = String(input.tripType || "normal").toLowerCase();
+  const parcelTrip = ["parcel", "delivery", "cargo", "b2b"].includes(tripType);
+  const parcelSubtypeMatch = parcelTrip && requestedType && categoryType && requestedType.startsWith(categoryType);
+  if (requestedType && categoryType && requestedType !== categoryType && !parcelSubtypeMatch) {
+    console.warn(
+      `[BOOKING_CATEGORY_REJECTED] category=${id} categoryType=${categoryType} requestedType=${requestedType}`,
+    );
+    throw Object.assign(new Error("INVALID_VEHICLE_CATEGORY"), { status: 400, code: "INVALID_VEHICLE_CATEGORY" });
+  }
+
+  const serviceType = String(row.service_type || row.type || "").toLowerCase();
+  const categoryName = String(row.name || "");
+  const categoryNameLower = categoryName.toLowerCase();
+  const parcelCategory = serviceType.includes("parcel") || serviceType.includes("cargo") || categoryNameLower.includes("parcel") || categoryNameLower.includes("cargo") || categoryNameLower.includes("truck");
+  if (parcelTrip !== parcelCategory && tripType !== "normal") {
+    console.warn(
+      `[BOOKING_CATEGORY_REJECTED] category=${id} tripType=${tripType} serviceType=${serviceType} name=${categoryName}`,
+    );
+    throw Object.assign(new Error("INVALID_VEHICLE_CATEGORY"), { status: 400, code: "INVALID_VEHICLE_CATEGORY" });
+  }
+  if (!parcelTrip && parcelCategory) {
+    console.warn(
+      `[BOOKING_CATEGORY_REJECTED] ride requested parcel category=${id} serviceType=${serviceType} name=${categoryName}`,
+    );
+    throw Object.assign(new Error("INVALID_VEHICLE_CATEGORY"), { status: 400, code: "INVALID_VEHICLE_CATEGORY" });
+  }
+
+  return {
+    id,
+    name: categoryName,
+    vehicleType: String(row.vehicle_type || row.type || ""),
+    serviceType,
+  };
 }
 
 type GeocodeHit = { lat: number; lng: number; address: string };
@@ -2193,6 +2265,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         AI_MOBILITY_BRAIN_ENABLED,
       },
     });
+  });
+
+  app.post("/internal/test-fcm", async (req, res) => {
+    try {
+      const opsKey = (process.env.OPS_API_KEY || process.env.INTERNAL_API_KEY || "").trim();
+      const suppliedKey = String(req.headers["x-ops-key"] || req.headers["x-internal-key"] || "").trim();
+      if (!opsKey || suppliedKey !== opsKey) {
+        return res.status(403).json({ success: false, error: "FORBIDDEN" });
+      }
+      const token = String(req.body?.token || "").trim();
+      if (!token) return res.status(400).json({ success: false, error: "FCM_TOKEN_REQUIRED" });
+      const ok = await sendFcmNotification({
+        fcmToken: token,
+        title: "Jago FCM test",
+        body: "Production FCM validation",
+        dataOnly: true,
+        data: {
+          type: "ops_fcm_test",
+          ts: new Date().toISOString(),
+        },
+      });
+      return res.status(ok ? 200 : 502).json({ success: ok });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: safeErrMsg(e) });
+    }
   });
 
   // Live Google Maps API probe.
@@ -9841,45 +9938,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const driver = (req as any).currentUser;
       const { tripId, reason } = req.body;
-      const cancelOutcome = await rawDb.transaction(async (tx) => {
-        const tripDetails = await tx.execute(rawSql`
-          SELECT *
-          FROM trip_requests
-          WHERE id=${tripId}::uuid
-            AND driver_id=${driver.id}::uuid
-          FOR UPDATE
-        `);
-        if (!tripDetails.rows.length) {
-          return { ok: false as const, status: 400, message: "Cannot cancel this trip" };
+      let cancelOutcome;
+      try {
+        cancelOutcome = await cancelTrip({
+          tripId,
+          actor: { id: driver.id, type: "driver" },
+          reason: reason || "Driver cancelled",
+          source: "rest",
+        });
+      } catch (error: any) {
+        if (error instanceof CancelTripError) {
+          return res.status(error.status).json({ message: error.message, code: error.code, currentStatus: error.currentStatus });
         }
-        const trip = tripDetails.rows[0] as any;
-        if (!["driver_assigned", "accepted", "arrived"].includes(String(trip.current_status || ""))) {
-          return { ok: false as const, status: 409, message: `Cannot cancel trip in status: ${trip.current_status}` };
-        }
-        await tx.execute(rawSql`
-          UPDATE trip_requests
-          SET current_status='searching',
-              driver_id=NULL,
-              pickup_otp=NULL,
-              driver_accepted_at=NULL,
-              driver_arriving_at=NULL,
-              cancel_reason=${reason || "Driver cancelled"},
-              cancelled_by='driver',
-              rejected_driver_ids = array_append(COALESCE(rejected_driver_ids,'{}'), ${driver.id}::uuid),
-              updated_at=NOW()
-          WHERE id=${tripId}::uuid
-        `);
-        await tx.execute(rawSql`
-          UPDATE users
-          SET current_trip_id=NULL
-          WHERE id=${driver.id}::uuid
-        `);
-        return { ok: true as const, trip: camelize(trip) as any };
-      });
-      if (!cancelOutcome.ok) return res.status(cancelOutcome.status).json({ message: cancelOutcome.message });
-      const trip = cancelOutcome.trip;
-      await appendTripStatus(tripId, 'requested', 'driver', reason || 'Driver cancelled, reassigned');
-      await logRideLifecycleEvent(tripId, 'driver_reassigned', driver.id, 'driver', { reason: reason || 'Driver cancelled' });
+        throw error;
+      }
+      const trip = camelize(cancelOutcome.existingTrip) as any;
 
       // -- Cancel penalty: ?10 fine after 3rd cancel in 24 hours -------------
       try {
@@ -10598,7 +10671,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         pickupShortName,
         destinationAddress, destAddress, destinationLat, destLat, destinationLng, destLng,
         destinationShortName,
-        vehicleCategoryId, estimatedFare, estimatedDistance, distanceKm,
+        vehicleCategoryId, vehicleType, vehicleCategoryName, vehicleName, estimatedFare, estimatedDistance, distanceKm,
         paymentMethod, paymentMode, tripType = "normal", isScheduled = false, scheduledAt,
         // Book for someone else
         isForSomeoneElse = false, passengerName, passengerPhone,
@@ -10623,6 +10696,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const finalDestLng = validDestCoords.lng;
       const finalPayment = paymentMethod || paymentMode || "cash";
       const finalDistance = estimatedDistance || distanceKm || 0;
+      let validatedVehicleCategory!: { id: string; name: string; vehicleType: string; serviceType: string };
+      try {
+        validatedVehicleCategory = await validateBookingVehicleCategory({
+          vehicleCategoryId,
+          requestedVehicleType: vehicleType,
+          requestedVehicleName: vehicleCategoryName || vehicleName,
+          tripType,
+        });
+      } catch (categoryErr: any) {
+        console.warn(`[BOOKING_REJECTED] customer=${customer.id} reason=INVALID_VEHICLE_CATEGORY raw=${String(vehicleCategoryId || "")}`);
+        return res.status(400).json({
+          success: false,
+          error: "INVALID_VEHICLE_CATEGORY",
+        });
+      }
+      const safeVehicleCategoryId = validatedVehicleCategory.id;
 
       // -- Service activation gate -------------------------------------------
       const rideGate = await rawDb.execute(rawSql`
@@ -10635,14 +10724,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // -- Server-side fare calculation (fallback when client sends 0 or missing) --
       let computedFare = Number(estimatedFare) || 0;
-      if ((computedFare === 0 || isNaN(computedFare)) && vehicleCategoryId) {
+      if ((computedFare === 0 || isNaN(computedFare)) && safeVehicleCategoryId) {
         try {
           // Detect zone from pickup location for accurate zone-specific fares
           const detectedZoneId = await detectZoneId(validPickupCoords.lat, validPickupCoords.lng);
           const fareConfig = await rawDb.execute(rawSql`
             SELECT base_fare, fare_per_km, fare_per_min, minimum_fare, night_charge_multiplier
             FROM trip_fares
-            WHERE vehicle_category_id = ${vehicleCategoryId}::uuid
+            WHERE vehicle_category_id = ${safeVehicleCategoryId}::uuid
               AND (
                 ${detectedZoneId ? rawSql`zone_id = ${detectedZoneId}::uuid` : rawSql`zone_id IS NULL`}
                 OR zone_id IS NULL
@@ -10763,7 +10852,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           computedFare,
           {
             serviceType: tripType,
-            vehicleCategoryId: vehicleCategoryId || null,
+            vehicleCategoryId: safeVehicleCategoryId,
           },
         ).catch(() => null);
         if (automaticDiscount && automaticDiscount.amount > 0) {
@@ -10792,6 +10881,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ? "Searching for a pilot. Please wait or cancel your current trip."
           : "You already have an active trip in progress.";
         return res.status(400).json({ message: msg, tripId: (active.rows[0] as any).id, status: st });
+      }
+      const activeParcel = await rawDb.execute(rawSql`
+        SELECT id, current_status
+        FROM parcel_orders
+        WHERE customer_id=${customer.id}::uuid
+          AND current_status IN ('pending','searching','driver_assigned','accepted','picked_up','in_transit')
+          AND updated_at > NOW() - INTERVAL '12 hours'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      if (activeParcel.rows.length) {
+        const p = activeParcel.rows[0] as any;
+        return res.status(409).json({
+          success: false,
+          error: "ACTIVE_BOOKING_EXISTS",
+          message: "You already have an active parcel booking.",
+          orderId: p.id,
+          status: p.current_status,
+        });
       }
 
       // Generate ref_id
@@ -10843,7 +10951,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ) VALUES (
           ${refId}, ${customer.id}::uuid,
           NULL,
-          ${vehicleCategoryId ? rawSql`${vehicleCategoryId}::uuid` : rawSql`NULL`},
+          ${safeVehicleCategoryId}::uuid,
           ${pickupAddress || ""}, ${validPickupCoords.lat}, ${validPickupCoords.lng},
           ${finalDestAddress}, ${finalDestLat}, ${finalDestLng},
           ${finalFareAfterDiscount}, ${Number(finalDistance) || 0}, ${finalPayment},
@@ -10907,11 +11015,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // -- Smart Dispatch Engine ----------------------------------------------
       // Resolve vehicle category name for service type detection
-      let vcName = '';
-      if (vehicleCategoryId) {
-        const vcR = await rawDb.execute(rawSql`SELECT name FROM vehicle_categories WHERE id=${vehicleCategoryId}::uuid LIMIT 1`).catch(() => ({ rows: [] as any[] }));
-        vcName = (vcR.rows[0] as any)?.name || '';
-      }
+      const vcName = validatedVehicleCategory.name;
       const serviceType = resolveServiceType(tripType, vcName);
 
       const dispatchMeta: TripMeta = {
@@ -10936,13 +11040,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         customer.id,
         Number(pickupLat),
         Number(pickupLng),
-        vehicleCategoryId || undefined,
+        safeVehicleCategoryId,
         serviceType,
         dispatchMeta
       ).catch((err: any) => {
         console.error('[DISPATCH] startDispatch error:', err.message);
-        // Fallback to legacy broadcast if dispatch engine fails
-        notifyNearbyDriversNewTrip(tripRow.id, Number(pickupLat), Number(pickupLng), vehicleCategoryId).catch(dbCatch("db"));
+        rawDb.execute(rawSql`
+          UPDATE trip_requests
+          SET current_status='cancelled',
+              cancel_reason='Dispatch could not start safely',
+              cancelled_by='system',
+              updated_at=NOW()
+          WHERE id=${tripRow.id}::uuid
+            AND current_status='searching'
+        `).catch(dbCatch("db"));
+        io.to(`user:${customer.id}`).emit("trip:no_drivers", {
+          tripId: tripRow.id,
+          message: "No pilots available right now. Please try again.",
+        });
       });
 
       res.json({
@@ -11074,6 +11189,70 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
+  // -- CUSTOMER: Active booking contract used by Flutter recovery -------------
+  app.get("/api/app/customer/active-booking", authApp, requireCustomer, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const rideR = await rawDb.execute(rawSql`
+        SELECT t.*,
+          d.full_name as driver_name, d.phone as driver_phone, d.rating as driver_rating,
+          d.profile_photo as driver_photo,
+          COALESCE(dd.vehicle_number, d.vehicle_number) as driver_vehicle_number,
+          COALESCE(dd.vehicle_model, d.vehicle_model) as driver_vehicle_model,
+          COALESCE(dl.lat, d.current_lat) as driver_lat,
+          COALESCE(dl.lng, d.current_lng) as driver_lng,
+          dl.heading as driver_heading,
+          vc.name as vehicle_name
+        FROM trip_requests t
+        LEFT JOIN users d ON d.id = t.driver_id
+        LEFT JOIN driver_locations dl ON dl.driver_id = t.driver_id
+        LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
+        LEFT JOIN driver_details dd ON dd.user_id = t.driver_id
+        WHERE t.customer_id=${customer.id}::uuid
+          AND t.current_status IN ('searching','driver_assigned','accepted','arrived','on_the_way')
+          AND t.updated_at > NOW() - INTERVAL '12 hours'
+        ORDER BY t.created_at DESC
+        LIMIT 1
+      `);
+      const parcelR = await rawDb.execute(rawSql`
+        SELECT po.*,
+          d.full_name as driver_name,
+          d.phone as driver_phone,
+          COALESCE(dl.lat, d.current_lat) as driver_lat,
+          COALESCE(dl.lng, d.current_lng) as driver_lng,
+          dl.heading as driver_heading
+        FROM parcel_orders po
+        LEFT JOIN users d ON d.id = po.driver_id
+        LEFT JOIN driver_locations dl ON dl.driver_id = po.driver_id
+        WHERE po.customer_id=${customer.id}::uuid
+          AND po.current_status IN ('pending','searching','driver_assigned','accepted','picked_up','in_transit')
+          AND po.updated_at > NOW() - INTERVAL '12 hours'
+        ORDER BY po.created_at DESC
+        LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+
+      const ride = rideR.rows.length ? camelize(rideR.rows[0]) as any : null;
+      const parcel = parcelR.rows.length ? camelize(parcelR.rows[0]) as any : null;
+      if (ride) {
+        ride.uiState = toUiTripState(ride);
+        ride.dispatchState = getDispatchStatus(String(ride.id));
+      }
+
+      const booking = ride || parcel;
+      return res.json({
+        success: true,
+        bookingType: ride ? "ride" : parcel ? "parcel" : null,
+        booking,
+        ride,
+        parcel,
+        dispatchState: ride ? ride.dispatchState : null,
+        canCreateNewBooking: !booking,
+      });
+    } catch (e: any) {
+      return res.status(500).json({ message: safeErrMsg(e) });
+    }
+  });
+
   // -- TRIP: Get chat message history ---------------------------------------
   app.get("/api/app/trip/:tripId/messages", authApp, async (req, res) => {
     try {
@@ -11120,50 +11299,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ORDER BY created_at DESC LIMIT 1
       `).then(r2 => (r2.rows[0] as any)?.id).catch(() => null);
       if (!effectiveTripId) return res.status(404).json({ message: "No active trip to cancel" });
-      const cancelOutcome = await rawDb.transaction(async (tx) => {
-        const existingTripR = await tx.execute(rawSql`
-          SELECT *
-          FROM trip_requests
-          WHERE id=${effectiveTripId}::uuid
-            AND customer_id=${customer.id}::uuid
-          FOR UPDATE
-        `);
-        if (!existingTripR.rows.length) {
-          return { ok: false as const, status: 400, message: "Cannot cancel - trip already in progress or completed" };
+      let cancelOutcome;
+      try {
+        cancelOutcome = await cancelTrip({
+          tripId: effectiveTripId,
+          actor: { id: customer.id, type: "customer" },
+          reason: reason || "Customer cancelled",
+          source: "rest",
+        });
+      } catch (error: any) {
+        if (error instanceof CancelTripError) {
+          return res.status(error.status).json({ message: error.message, code: error.code, currentStatus: error.currentStatus });
         }
-        const existingTrip = existingTripR.rows[0] as any;
-        const previousStatus = String(existingTrip.current_status || "");
-        if (["completed", "cancelled", "on_the_way"].includes(previousStatus)) {
-          return { ok: false as const, status: 400, message: "Cannot cancel - trip already in progress or completed" };
-        }
-        const r = await tx.execute(rawSql`
-          UPDATE trip_requests
-          SET current_status='cancelled',
-              cancelled_by='customer',
-              cancel_reason=${reason || 'Customer cancelled'},
-              updated_at=NOW()
-          WHERE id=${effectiveTripId}::uuid
-          RETURNING *
-        `);
-        const trip = r.rows[0] as any;
-        if (trip?.driver_id) {
-          await tx.execute(rawSql`
-            UPDATE users
-            SET current_trip_id=NULL
-            WHERE id=${trip.driver_id}::uuid
-              AND current_trip_id=${effectiveTripId}::uuid
-          `);
-        }
-        return { ok: true as const, trip, previousStatus, existingTrip };
-      });
-      if (!cancelOutcome.ok) return res.status(cancelOutcome.status).json({ message: cancelOutcome.message });
+        throw error;
+      }
       const { trip, previousStatus, existingTrip } = cancelOutcome;
 
-      // Cancel active dispatch session if one exists
-      cancelDispatch(effectiveTripId);
-
-      await appendTripStatus(effectiveTripId, 'trip_cancelled', 'customer', reason || 'Customer cancelled');
-      await logRideLifecycleEvent(effectiveTripId, 'trip_cancelled', customer.id, 'customer', { reason: reason || 'Customer cancelled' });
       clearTripWaypoints(effectiveTripId);
       // ?? Heatmap: log cancellation demand signal (location still valuable for supply/demand)
       if (trip.pickup_lat && trip.pickup_lng) {
@@ -15543,7 +15694,38 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
             isFragile: isFragile === true,
             insuranceEnabled: insuranceEnabled === true,
           };
+          const parcelRedis = await getRedisClient().catch(() => null);
+          if (parcelRedis) {
+            await parcelRedis.set(
+              `parcel_dispatch:${order.id}`,
+              JSON.stringify({
+                orderId: order.id,
+                vehicleCategory,
+                phase: "offered",
+                offeredDrivers: parcelDrivers.map((d: any) => d.id),
+                createdAt: Date.now(),
+                expiresAt: Date.now() + 5 * 60 * 1000,
+              }),
+              "EX",
+              30 * 60,
+            ).catch(() => undefined);
+          }
           for (const driver of parcelDrivers) {
+            if (parcelRedis) {
+              await parcelRedis.set(
+                `parcel_dispatch_offer:${order.id}:${driver.id}`,
+                JSON.stringify({
+                  orderId: order.id,
+                  driverId: driver.id,
+                  status: "offered",
+                  payload,
+                  createdAt: Date.now(),
+                  expiresAt: Date.now() + 5 * 60 * 1000,
+                }),
+                "EX",
+                30 * 60,
+              ).catch(() => undefined);
+            }
             io.to(`user:${driver.id}`).emit('parcel:new_request', payload);
             // FCM: wake driver if app is in background
             if (driver.fcm_token) {
@@ -15647,14 +15829,65 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   });
 
   // Driver: get pending parcel requests nearby
-  app.get("/api/app/driver/parcel/pending", authApp, async (req, res) => {
+  app.get("/api/app/driver/parcel/pending", authApp, requireDriver, async (req, res) => {
     try {
+      const driver = (req as any).currentUser;
+      const activeRide = await rawDb.execute(rawSql`
+        SELECT id
+        FROM trip_requests
+        WHERE driver_id=${driver.id}::uuid
+          AND current_status IN ('driver_assigned','accepted','arrived','on_the_way')
+          AND updated_at > NOW() - INTERVAL '12 hours'
+        LIMIT 1
+      `);
+      if (activeRide.rows.length) return res.json({ orders: [] });
+
+      const activeParcel = await rawDb.execute(rawSql`
+        SELECT id
+        FROM parcel_orders
+        WHERE driver_id=${driver.id}::uuid
+          AND current_status IN ('driver_assigned','accepted','picked_up','in_transit')
+        LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      if (activeParcel.rows.length) return res.json({ orders: [] });
+
+      const snapshot = await getDriverEligibleServiceSnapshot(driver.id);
+      if (!snapshot.profile || !snapshot.parcelVehicleKeys.length) {
+        console.log(`[PARCEL_PENDING] driver=${driver.id} orders=0 reason=not_parcel_eligible`);
+        return res.json({ orders: [] });
+      }
+
+      const driverLoc = await rawDb.execute(rawSql`
+        SELECT lat, lng, updated_at, is_online
+        FROM driver_locations
+        WHERE driver_id=${driver.id}::uuid
+        LIMIT 1
+      `);
+      const loc = driverLoc.rows[0] as any;
+      if (!loc?.is_online || !loc.lat || !loc.lng) {
+        console.log(`[PARCEL_PENDING] driver=${driver.id} orders=0 reason=offline_or_no_location`);
+        return res.json({ orders: [] });
+      }
+
       const r = await rawDb.execute(rawSql`
-        SELECT * FROM parcel_orders
+        SELECT *,
+          SQRT(
+            POW((pickup_lat::numeric - ${Number(loc.lat)}) * 111.32, 2) +
+            POW((pickup_lng::numeric - ${Number(loc.lng)}) * 111.32 * COS(RADIANS(${Number(loc.lat)})), 2)
+          ) as distance_km
+        FROM parcel_orders
         WHERE current_status = 'searching'
+          AND driver_id IS NULL
+          AND vehicle_category = ANY(${snapshot.parcelVehicleKeys})
+          AND updated_at > NOW() - INTERVAL '30 minutes'
+          AND SQRT(
+            POW((pickup_lat::numeric - ${Number(loc.lat)}) * 111.32, 2) +
+            POW((pickup_lng::numeric - ${Number(loc.lng)}) * 111.32 * COS(RADIANS(${Number(loc.lat)})), 2)
+          ) <= 15
         ORDER BY created_at ASC
         LIMIT 20
       `);
+      console.log(`[PARCEL_PENDING] driver=${driver.id} orders=${r.rows.length}`);
       res.json({ orders: r.rows });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
@@ -15694,6 +15927,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       `);
       if (!(r.rows as any[]).length) return res.status(409).json({ message: 'Already assigned' });
       const order = (r.rows as any[])[0];
+      const parcelRedis = await getRedisClient().catch(() => null);
+      if (parcelRedis) {
+        const offerKeys = await parcelRedis.keys(`parcel_dispatch_offer:${order.id}:*`).catch(() => []);
+        if (offerKeys.length) await parcelRedis.del(...offerKeys).catch(() => undefined);
+        await parcelRedis.set(
+          `parcel_dispatch:${order.id}`,
+          JSON.stringify({ orderId: order.id, driverId, phase: "accepted", acceptedAt: Date.now() }),
+          "EX",
+          30 * 60,
+        ).catch(() => undefined);
+      }
       if (io) io.to(`user:${order.customer_id}`).emit('parcel:driver_assigned', { orderId: order.id, driverId });
       // B2B webhook: driver_assigned
       if (order.is_b2b && order.b2b_company_id) {

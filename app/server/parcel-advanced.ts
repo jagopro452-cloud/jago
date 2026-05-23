@@ -602,7 +602,7 @@ export async function findParcelCapableDriversDetailed(
       AND dl.is_online = true
       AND u.current_trip_id IS NULL
       AND dl.lat != 0 AND dl.lng != 0
-      AND dl.updated_at > NOW() - INTERVAL '30 seconds'
+      AND dl.updated_at > NOW() - (${Math.max(120, Number(process.env.DISPATCH_PARCEL_LOCATION_TTL_SECONDS || 150))} * INTERVAL '1 second')
       AND dd.vehicle_category_id = ANY(${uuidArraySql(categoryIds)})
       ${excludeClause}
       AND SQRT(
