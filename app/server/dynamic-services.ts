@@ -347,6 +347,20 @@ export interface DriverServiceConfig {
   parcelVehicles: ParcelVehicleType[];
 }
 
+function normalizeEligibilityKey(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function normalizeTextArray(value: any): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((entry) => normalizeEligibilityKey(entry)).filter(Boolean);
+}
+
 /**
  * Get services a driver is eligible for based on their vehicle type.
  */
@@ -355,7 +369,18 @@ export async function getDriverEligibleServices(
 ): Promise<DriverServiceConfig> {
   // Determine driver's vehicle type
   const driverR = await rawDb.execute(rawSql`
-    SELECT dd.vehicle_type, vc.name as vehicle_name, vc.vehicle_type as vehicle_type_code
+    SELECT
+      dd.vehicle_type,
+      dd.service_eligibility,
+      dd.parcel_eligibility,
+      dd.pool_eligibility,
+      dd.outstation_eligibility,
+      dd.intercity_eligibility,
+      vc.name as vehicle_name,
+      vc.vehicle_type as vehicle_type_code,
+      vc.service_type as category_service_type,
+      vc.type as category_type,
+      vc.is_carpool as category_is_carpool
     FROM users u
     LEFT JOIN driver_details dd ON dd.user_id = u.id
     LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
@@ -367,6 +392,50 @@ export async function getDriverEligibleServices(
 
   const vehicleName = (driver.vehicle_name || driver.vehicle_type || '').toLowerCase();
   const vehicleCode = (driver.vehicle_type_code || '').toLowerCase();
+  const normalizedVehicleName = normalizeEligibilityKey(vehicleName);
+  const normalizedVehicleCode = normalizeEligibilityKey(vehicleCode);
+  const categoryServiceType = normalizeEligibilityKey(driver.category_service_type || driver.category_type);
+  const serviceEligibility = normalizeTextArray(driver.service_eligibility);
+  const hasService = (key: string) => serviceEligibility.includes(key);
+  const isParcelCategory =
+    categoryServiceType === "parcel" ||
+    categoryServiceType === "cargo" ||
+    normalizedVehicleCode.includes("parcel") ||
+    normalizedVehicleName.includes("parcel") ||
+    normalizedVehicleCode.includes("cargo") ||
+    normalizedVehicleName.includes("cargo");
+  const isCityPoolCategory =
+    (driver.category_is_carpool === true || driver.category_is_carpool === "true") &&
+    normalizedVehicleCode !== "outstation_pool" &&
+    normalizedVehicleCode !== "intercity_pool" &&
+    !normalizedVehicleName.includes("outstation") &&
+    !normalizedVehicleName.includes("intercity") ||
+    ["city_pool", "local_pool", "carpool", "car_pool_4", "car_pool_6", "pool_mini", "pool_sedan", "pool_suv"].includes(normalizedVehicleCode) ||
+    ["city_pool", "local_pool"].includes(categoryServiceType);
+  const isOutstationPoolCategory =
+    normalizedVehicleCode === "outstation_pool" ||
+    categoryServiceType === "outstation_pool" ||
+    (normalizedVehicleName.includes("outstation") && normalizedVehicleName.includes("pool"));
+  const isIntercityPoolCategory =
+    normalizedVehicleCode === "intercity_pool" ||
+    categoryServiceType === "intercity_pool" ||
+    (normalizedVehicleName.includes("intercity") && normalizedVehicleName.includes("pool"));
+  const parcelEnabled =
+    driver.parcel_eligibility === true ||
+    hasService("parcel_delivery") ||
+    isParcelCategory;
+  const cityPoolEnabled =
+    driver.pool_eligibility === true ||
+    hasService("city_pool") ||
+    isCityPoolCategory;
+  const outstationPoolEnabled =
+    driver.outstation_eligibility === true ||
+    hasService("outstation_pool") ||
+    isOutstationPoolCategory;
+  const intercityPoolEnabled =
+    driver.intercity_eligibility === true ||
+    hasService("intercity_pool") ||
+    isIntercityPoolCategory;
 
   // Get all active services
   const svcR = await rawDb.execute(rawSql`
@@ -392,6 +461,9 @@ export async function getDriverEligibleServices(
   for (const svc of allServices) {
     if (svc.category === 'rides') {
       // Match ride service to vehicle type
+      if (isParcelCategory || isCityPoolCategory || isOutstationPoolCategory || isIntercityPoolCategory) {
+        continue;
+      }
       if (svc.key === 'bike_ride' && (vehicleName.includes('bike') || vehicleCode === 'bike')) {
         eligibleServices.push(svc);
       } else if (svc.key === 'auto_ride' && (vehicleName.includes('auto') || vehicleCode === 'auto')) {
@@ -402,7 +474,7 @@ export async function getDriverEligibleServices(
         eligibleServices.push(svc);
       }
     } else if (svc.category === 'parcel') {
-      // All drivers can do parcel based on their vehicle capacity
+      if (!parcelEnabled) continue;
       eligibleServices.push(svc);
       if (vehicleName.includes('bike') || vehicleCode === 'bike') {
         eligibleParcelKeys.push('bike_parcel');
@@ -414,9 +486,11 @@ export async function getDriverEligibleServices(
         eligibleParcelKeys.push('tata_ace', 'bolero_cargo', 'pickup_truck', 'tempo_407');
       }
     } else if (svc.category === 'carpool') {
-      // Carpool available for car/sedan/suv
-      if (vehicleName.includes('car') || vehicleName.includes('sedan') || vehicleName.includes('suv') ||
-          vehicleCode === 'car' || vehicleCode === 'sedan' || vehicleCode === 'suv') {
+      if (svc.key === "city_pool" && cityPoolEnabled) {
+        eligibleServices.push(svc);
+      } else if (svc.key === "outstation_pool" && outstationPoolEnabled) {
+        eligibleServices.push(svc);
+      } else if (svc.key === "intercity_pool" && intercityPoolEnabled) {
         eligibleServices.push(svc);
       }
     }

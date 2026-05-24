@@ -57,8 +57,12 @@ function inferDispatchServiceType(tripType: string, categoryKey: string | null):
   const ck = normalizeVehicleKey(categoryKey);
   if (tt === "parcel" || tt === "delivery") return "parcel";
   if (tt === "cargo" || tt === "b2b") return "b2b_parcel";
-  if (tt === "carpool" || tt === "pool" || tt === "city_pool") return "carpool";
-  if (tt === "intercity" || tt === "outstation" || tt === "outstation_pool") return "outstation";
+  if (tt === "carpool" || tt === "pool" || tt === "city_pool" || tt === "local_pool") return "city_pool";
+  if (tt === "intercity" || tt === "intercity_pool") return "intercity_pool";
+  if (tt === "outstation" || tt === "outstation_pool") return "outstation_pool";
+  if (ck === "city_pool" || ck === "local_pool" || ck === "carpool" || ck.startsWith("car_pool_") || ck.startsWith("pool_")) return "city_pool";
+  if (ck === "intercity_pool") return "intercity_pool";
+  if (ck === "outstation_pool") return "outstation_pool";
   if (ck === "bike" || ck === "bike_ride") return "bike";
   if (ck === "auto" || ck === "auto_ride") return "auto";
   return "cab";
@@ -70,14 +74,25 @@ function inferPlatformServiceKey(
   categoryServiceKey: string | null,
 ): string | null {
   const tt = normalizeVehicleKey(tripType);
+  const ck = normalizeVehicleKey(categoryKey);
+  if (ck === "outstation_pool") return "outstation_pool";
+  if (ck === "intercity_pool") return "intercity_pool";
+  if (
+    ck === "city_pool" ||
+    ck === "local_pool" ||
+    ck === "carpool" ||
+    ck.startsWith("car_pool_") ||
+    ck.startsWith("pool_")
+  ) {
+    return "city_pool";
+  }
   if (tt === "parcel" || tt === "delivery" || tt === "cargo" || tt === "b2b") {
     return "parcel_delivery";
   }
-  if (tt === "carpool" || tt === "pool" || tt === "city_pool") return "city_pool";
+  if (tt === "carpool" || tt === "pool" || tt === "city_pool" || tt === "local_pool") return "city_pool";
   if (tt === "intercity" || tt === "intercity_pool") return "intercity_pool";
   if (tt === "outstation" || tt === "outstation_pool") return "outstation_pool";
   if (categoryServiceKey) return normalizeVehicleKey(categoryServiceKey);
-  const ck = normalizeVehicleKey(categoryKey);
   if (ck === "bike") return "bike_ride";
   if (ck === "auto") return "auto_ride";
   if (ck === "mini_car") return "mini_car";
@@ -151,9 +166,9 @@ export async function buildDispatchRequirementsFromTripInput(input: {
     seatsRequired,
     strictCategoryIds,
     requiresParcel: dispatchServiceType === "parcel" || dispatchServiceType === "b2b_parcel",
-    requiresPool: dispatchServiceType === "carpool",
-    requiresOutstation: normalizeVehicleKey(tripType) === "outstation" || normalizeVehicleKey(tripType) === "outstation_pool",
-    requiresIntercity: normalizeVehicleKey(tripType) === "intercity",
+    requiresPool: serviceKey === "city_pool" || dispatchServiceType === "city_pool",
+    requiresOutstation: serviceKey === "outstation_pool" || dispatchServiceType === "outstation_pool",
+    requiresIntercity: serviceKey === "intercity_pool" || dispatchServiceType === "intercity_pool",
   };
 }
 
@@ -234,9 +249,7 @@ export async function getDriverDispatchProfile(driverId: string): Promise<Driver
     categoryMeta?.serviceType === "carpool" ||
     categoryMeta?.isCarpool === true;
 
-  const isRideCategory =
-    !isParcelCategory &&
-    !isPoolCategory;
+  const categoryServiceKey = inferPlatformServiceKey("", vehicleCategoryKey, categoryMeta?.serviceType || null);
 
   if (inferredService) {
     serviceEligibility.push(inferredService);
@@ -246,13 +259,9 @@ export async function getDriverDispatchProfile(driverId: string): Promise<Driver
     serviceEligibility.push("parcel_delivery");
   }
 
-  if (isPoolCategory) {
-    serviceEligibility.push("city_pool");
+  if (isPoolCategory && categoryServiceKey) {
+    serviceEligibility.push(categoryServiceKey);
   }
-  if (serviceEligibility.includes("intercity")) serviceEligibility.push("intercity_pool");
-  if (serviceEligibility.includes("outstation")) serviceEligibility.push("outstation_pool");
-  if (serviceEligibility.includes("intercity_pool")) serviceEligibility.push("intercity");
-  if (serviceEligibility.includes("outstation_pool")) serviceEligibility.push("outstation");
 
   const parcelEligibility =
     row.parcel_eligibility === null ||
@@ -264,14 +273,14 @@ export async function getDriverDispatchProfile(driverId: string): Promise<Driver
   const poolEligibility =
     row.pool_eligibility === null ||
     row.pool_eligibility === undefined
-      ? isPoolCategory ||
+      ? categoryServiceKey === "city_pool" ||
         serviceEligibility.includes("city_pool")
       : row.pool_eligibility === true;
   const outstationEligibility = row.outstation_eligibility === true
-    || serviceEligibility.includes("outstation")
+    || categoryServiceKey === "outstation_pool"
     || serviceEligibility.includes("outstation_pool");
   const intercityEligibility = row.intercity_eligibility === true
-    || serviceEligibility.includes("intercity")
+    || categoryServiceKey === "intercity_pool"
     || serviceEligibility.includes("intercity_pool");
   const seatCapacity = Math.max(1, Number(row.seat_capacity || row.category_total_seats || 1) || 1);
 
@@ -418,7 +427,27 @@ export async function findEligibleDriversForDispatch(input: {
     const profile = await getDriverDispatchProfile(row.id);
     if (!profile) continue;
     const eligibility = await isDriverEligibleForDispatch(row.id, requirements);
-    if (!eligibility.eligible) continue;
+    if (!eligibility.eligible) {
+      const reason = eligibility.reason || "not_eligible";
+      const event =
+        requirements.platformServiceKey === "outstation_pool" || reason === "outstation_not_enabled"
+          ? "OUTSTATION_CATEGORY_REJECT"
+          : requirements.platformServiceKey === "city_pool" || reason === "pool_not_enabled" || reason === "seat_capacity_low"
+            ? "POOL_DISPATCH_REJECT"
+            : "DRIVER_FILTER_REJECT";
+      console.warn(`[${event}] ${JSON.stringify({
+        source: "find_eligible_drivers",
+        driverId: row.id,
+        reason,
+        vehicleCategoryId: requirements.vehicleCategoryId,
+        vehicleCategoryKey: requirements.vehicleCategoryKey,
+        platformServiceKey: requirements.platformServiceKey,
+        dispatchServiceType: requirements.dispatchServiceType,
+        driverVehicleCategoryId: profile.vehicleCategoryId,
+        driverServices: profile.serviceEligibility,
+      })}`);
+      continue;
+    }
     filtered.push({
       driverId: row.id,
       fullName: row.full_name || "Pilot",

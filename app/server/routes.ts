@@ -462,6 +462,75 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 type VehicleServiceScope = "ride" | "parcel" | "pool";
 
+function normalizeDispatchIsolationKey(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function isCityPoolVehicleCategory(row: any): boolean {
+  const key = normalizeDispatchIsolationKey(row?.vehicle_type ?? row?.vehicleType ?? row?.slug ?? row?.name);
+  const serviceType = normalizeDispatchIsolationKey(row?.service_type ?? row?.serviceType ?? row?.type);
+  const name = normalizeDispatchIsolationKey(row?.name);
+  if (!row) return false;
+  if (key === "outstation_pool" || key === "intercity_pool") return false;
+  if (serviceType === "outstation_pool" || serviceType === "intercity_pool") return false;
+  if (name.includes("outstation") || name.includes("intercity")) return false;
+  return (
+    key === "city_pool" ||
+    key === "local_pool" ||
+    key === "carpool" ||
+    key.startsWith("car_pool_") ||
+    key.startsWith("pool_") ||
+    serviceType === "city_pool" ||
+    serviceType === "local_pool" ||
+    serviceType === "pool" ||
+    serviceType === "carpool" ||
+    row?.is_carpool === true ||
+    row?.isCarpool === true
+  );
+}
+
+function isOutstationPoolVehicleCategory(row: any): boolean {
+  const key = normalizeDispatchIsolationKey(row?.vehicle_type ?? row?.vehicleType ?? row?.slug ?? row?.name);
+  const serviceType = normalizeDispatchIsolationKey(row?.service_type ?? row?.serviceType ?? row?.type);
+  const name = normalizeDispatchIsolationKey(row?.name);
+  return Boolean(row) && (
+    key === "outstation_pool" ||
+    serviceType === "outstation_pool" ||
+    (name.includes("outstation") && name.includes("pool"))
+  );
+}
+
+function isIntercityPoolVehicleCategory(row: any): boolean {
+  const key = normalizeDispatchIsolationKey(row?.vehicle_type ?? row?.vehicleType ?? row?.slug ?? row?.name);
+  const serviceType = normalizeDispatchIsolationKey(row?.service_type ?? row?.serviceType ?? row?.type);
+  const name = normalizeDispatchIsolationKey(row?.name);
+  return Boolean(row) && (
+    key === "intercity_pool" ||
+    serviceType === "intercity_pool" ||
+    (name.includes("intercity") && name.includes("pool"))
+  );
+}
+
+function inferPoolIsolationKey(row: any): "city_pool" | "intercity_pool" | "outstation_pool" | null {
+  if (isOutstationPoolVehicleCategory(row)) return "outstation_pool";
+  if (isIntercityPoolVehicleCategory(row)) return "intercity_pool";
+  if (isCityPoolVehicleCategory(row)) return "city_pool";
+  return null;
+}
+
+function requestedPoolIsolationKey(value: unknown): "city_pool" | "intercity_pool" | "outstation_pool" | null {
+  const key = normalizeDispatchIsolationKey(value);
+  if (key === "outstation" || key === "outstation_pool") return "outstation_pool";
+  if (key === "intercity" || key === "intercity_pool") return "intercity_pool";
+  if (key === "pool" || key === "carpool" || key === "city_pool" || key === "local_pool") return "city_pool";
+  return null;
+}
+
 function normalizeVehicleServiceScope(value: unknown): VehicleServiceScope {
   const raw = String(value || "").trim().toLowerCase();
   if (!raw) return "ride";
@@ -650,6 +719,23 @@ async function validateBookingVehicleCategory(input: {
       `[BOOKING_CATEGORY_REJECTED] category=${id} tripType=${rawTripType} expectedScope=${expectedScope} categoryScope=${categoryScope} serviceType=${serviceType} name=${categoryName}`,
     );
     throw Object.assign(new Error("INVALID_VEHICLE_CATEGORY"), { status: 400, code: "INVALID_VEHICLE_CATEGORY" });
+  }
+  if (poolTrip) {
+    const requestedPoolKey = requestedPoolIsolationKey(rawTripType);
+    const categoryPoolKey = inferPoolIsolationKey(row);
+    if (!categoryPoolKey || (requestedPoolKey && requestedPoolKey !== categoryPoolKey)) {
+      console.warn(`[POOL_DISPATCH_REJECT] ${JSON.stringify({
+        source: "booking_vehicle_category_validation",
+        reason: "pool_category_mismatch",
+        category: id,
+        requestedPoolKey,
+        categoryPoolKey,
+        tripType: rawTripType,
+        serviceType,
+        name: categoryName,
+      })}`);
+      throw Object.assign(new Error("INVALID_VEHICLE_CATEGORY"), { status: 400, code: "INVALID_VEHICLE_CATEGORY" });
+    }
   }
 
   return {
@@ -1687,6 +1773,13 @@ async function ensureOperationalSchema() {
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       );
+
+      ALTER TABLE outstation_pool_rides
+        ADD COLUMN IF NOT EXISTS vehicle_category_id UUID,
+        ADD COLUMN IF NOT EXISTS accepting_new_requests BOOLEAN NOT NULL DEFAULT true;
+
+      CREATE INDEX IF NOT EXISTS idx_outstation_pool_rides_vehicle_category
+        ON outstation_pool_rides(vehicle_category_id, status, is_active);
     `);
 
     await rawDb.execute(rawSql`
@@ -7314,12 +7407,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { fromCity, toCity, routeKm, departureDate, departureTime, totalSeats, vehicleNumber, vehicleModel, farePerSeat, note } = req.body;
       if (!fromCity || !toCity) return res.status(400).json({ message: "fromCity and toCity are required" });
 
+      const driverCategoryR = await rawDb.execute(rawSql`
+        SELECT
+          dd.vehicle_category_id,
+          vc.id,
+          vc.name,
+          vc.vehicle_type,
+          vc.type,
+          vc.service_type,
+          vc.is_carpool
+        FROM driver_details dd
+        LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+        WHERE dd.user_id = ${driver.id}::uuid
+        LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const driverCategory = driverCategoryR.rows[0] as any;
+      if (!isOutstationPoolVehicleCategory(driverCategory)) {
+        console.warn(`[OUTSTATION_CATEGORY_REJECT] ${JSON.stringify({
+          source: "legacy_outstation_pool_create_ride",
+          driverId: driver.id,
+          reason: "driver_category_not_outstation_pool",
+          vehicleCategoryId: driverCategory?.vehicle_category_id || driverCategory?.id || null,
+          vehicleType: driverCategory?.vehicle_type || null,
+          serviceType: driverCategory?.service_type || driverCategory?.type || null,
+        })}`);
+        return res.status(403).json({
+          message: "Only outstation pool-enabled drivers can create outstation pool rides",
+          code: "OUTSTATION_POOL_DRIVER_NOT_ELIGIBLE",
+        });
+      }
+      const driverVehicleCategoryId = String(driverCategory.vehicle_category_id || driverCategory.id || "");
+
       const r = await rawDb.execute(rawSql`
         INSERT INTO outstation_pool_rides
-          (driver_id, from_city, to_city, route_km, departure_date, departure_time,
+          (driver_id, vehicle_category_id, from_city, to_city, route_km, departure_date, departure_time,
            total_seats, available_seats, vehicle_number, vehicle_model, fare_per_seat, note)
         VALUES
-          (${driver.id}::uuid, ${fromCity}, ${toCity},
+          (${driver.id}::uuid, ${driverVehicleCategoryId}::uuid, ${fromCity}, ${toCity},
            ${parseFloat(routeKm) || 0}, ${departureDate || null}, ${departureTime || null},
            ${parseInt(totalSeats) || 4}, ${parseInt(totalSeats) || 4},
            ${vehicleNumber || null}, ${vehicleModel || null},
@@ -7475,6 +7599,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           u.full_name as driver_name, u.phone as driver_phone,
           dd.avg_rating as driver_rating, dd.total_trips
         FROM outstation_pool_rides opr
+        JOIN vehicle_categories vc ON vc.id = opr.vehicle_category_id
         LEFT JOIN users u ON u.id = opr.driver_id
         LEFT JOIN driver_details dd ON dd.user_id = opr.driver_id
         WHERE LOWER(opr.from_city) LIKE ${`%${fromCity.toLowerCase()}%`}
@@ -7482,6 +7607,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           AND opr.is_active = true
           AND opr.status = 'scheduled'
           AND opr.available_seats > 0
+          AND opr.accepting_new_requests = true
+          AND (
+            LOWER(COALESCE(vc.vehicle_type, vc.name, '')) = 'outstation_pool'
+            OR LOWER(COALESCE(vc.service_type, vc.type, '')) = 'outstation_pool'
+            OR LOWER(COALESCE(vc.name, '')) LIKE '%outstation%pool%'
+          )
           ${date ? rawSql`AND opr.departure_date = ${date}::date` : rawSql``}
         ORDER BY opr.departure_date ASC, opr.fare_per_seat ASC
       `);
@@ -7501,14 +7632,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const bookingRes = await rawDb.execute(rawSql`
         WITH ride_claim AS (
-          UPDATE outstation_pool_rides
-          SET available_seats = available_seats - ${seats},
+          UPDATE outstation_pool_rides opr
+          SET available_seats = opr.available_seats - ${seats},
               updated_at = NOW()
-          WHERE id = ${rideId}::uuid
-            AND is_active = true
-            AND status = 'scheduled'
+          FROM vehicle_categories vc
+          WHERE opr.id = ${rideId}::uuid
+            AND vc.id = opr.vehicle_category_id
+            AND opr.is_active = true
+            AND opr.status = 'scheduled'
+            AND opr.accepting_new_requests = true
             AND available_seats >= ${seats}
-          RETURNING id, from_city, to_city, fare_per_seat, available_seats
+            AND (
+              LOWER(COALESCE(vc.vehicle_type, vc.name, '')) = 'outstation_pool'
+              OR LOWER(COALESCE(vc.service_type, vc.type, '')) = 'outstation_pool'
+              OR LOWER(COALESCE(vc.name, '')) LIKE '%outstation%pool%'
+            )
+          RETURNING opr.id, opr.from_city, opr.to_city, opr.fare_per_seat, opr.available_seats
         ),
         booking AS (
           INSERT INTO outstation_pool_bookings
@@ -15583,10 +15722,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       await rawDb.execute(rawSql`
         UPDATE vehicle_categories
         SET is_active = ${isActive}
-        WHERE is_carpool = true
-           OR vehicle_type = 'carpool'
-           OR LOWER(name) LIKE '%pool%'
-           OR LOWER(name) LIKE '%share%'
+        WHERE (
+          vehicle_type IN ('carpool','city_pool','local_pool','car_pool_4','car_pool_6','pool_mini','pool_sedan','pool_suv')
+          OR service_type IN ('city_pool','local_pool','pool','carpool')
+          OR LOWER(name) LIKE '%share%'
+          OR (COALESCE(is_carpool, false) = true AND LOWER(name) NOT LIKE '%outstation%' AND LOWER(name) NOT LIKE '%intercity%')
+        )
+          AND COALESCE(vehicle_type, '') NOT IN ('outstation_pool','intercity_pool')
+          AND COALESCE(service_type, '') NOT IN ('outstation_pool','intercity_pool')
+          AND LOWER(COALESCE(name, '')) NOT LIKE '%outstation%'
+          AND LOWER(COALESCE(name, '')) NOT LIKE '%intercity%'
+      `).catch(dbCatch("db"));
+    } else if (normalizedKey === "intercity_pool") {
+      await rawDb.execute(rawSql`
+        UPDATE vehicle_categories
+        SET is_active = ${isActive}
+        WHERE vehicle_type = 'intercity_pool'
+           OR service_type = 'intercity_pool'
+           OR LOWER(name) LIKE '%intercity%pool%'
+      `).catch(dbCatch("db"));
+    } else if (normalizedKey === "outstation_pool") {
+      await rawDb.execute(rawSql`
+        UPDATE vehicle_categories
+        SET is_active = ${isActive}
+        WHERE vehicle_type = 'outstation_pool'
+           OR service_type = 'outstation_pool'
+           OR LOWER(name) LIKE '%outstation%pool%'
       `).catch(dbCatch("db"));
     }
 
@@ -16066,6 +16227,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
             ).catch(() => undefined);
           }
           for (const driver of parcelDrivers) {
+            const snapshot = await getDriverEligibleServiceSnapshot(String(driver.id));
+            if (!snapshot.profile || !snapshot.parcelVehicleKeys.includes(String(vehicleCategory))) {
+              console.warn(`[WRONG_CATEGORY_NOTIFICATION_BLOCKED] ${JSON.stringify({
+                source: "parcel_dispatch_notification",
+                orderId: order.id,
+                driverId: driver.id,
+                reason: "parcel_category_mismatch",
+                vehicleCategory,
+                driverVehicleCategoryId: snapshot.profile?.vehicleCategoryId || null,
+                parcelVehicleKeys: snapshot.parcelVehicleKeys,
+              })}`);
+              continue;
+            }
             if (parcelRedis) {
               await parcelRedis.set(
                 `parcel_dispatch_offer:${order.id}:${driver.id}`,
@@ -16272,6 +16446,30 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       `);
       if ((activeParcel.rows as any[]).length) {
         return res.status(409).json({ message: 'Finish your current parcel order before accepting another one.', code: 'DRIVER_BUSY_WITH_PARCEL' });
+      }
+      const orderEligibilityR = await rawDb.execute(rawSql`
+        SELECT id, vehicle_category
+        FROM parcel_orders
+        WHERE id=${req.params.id}::uuid
+          AND current_status='searching'
+          AND driver_id IS NULL
+        LIMIT 1
+      `);
+      const candidateOrder = orderEligibilityR.rows[0] as any;
+      if (!candidateOrder) return res.status(409).json({ message: 'Already assigned' });
+      const snapshot = await getDriverEligibleServiceSnapshot(driverId);
+      const vehicleCategory = String(candidateOrder.vehicle_category || "");
+      if (!snapshot.profile || !snapshot.parcelVehicleKeys.includes(vehicleCategory)) {
+        console.warn(`[DRIVER_FILTER_REJECT] ${JSON.stringify({
+          source: "parcel_accept",
+          orderId: candidateOrder.id,
+          driverId,
+          reason: "parcel_category_mismatch",
+          vehicleCategory,
+          driverVehicleCategoryId: snapshot.profile?.vehicleCategoryId || null,
+          parcelVehicleKeys: snapshot.parcelVehicleKeys,
+        })}`);
+        return res.status(403).json({ message: 'This parcel is not eligible for your vehicle category.', code: 'PARCEL_CATEGORY_MISMATCH' });
       }
       const r = await rawDb.execute(rawSql`
         UPDATE parcel_orders

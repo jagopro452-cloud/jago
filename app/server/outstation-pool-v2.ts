@@ -33,18 +33,12 @@ function normalizePoolKey(value: unknown): string {
     .replace(/^_+|_+$/g, "");
 }
 
-function isPoolVehicleCategory(row: any): boolean {
+function isOutstationPoolVehicleCategory(row: any): boolean {
   const key = normalizePoolKey(row?.vehicle_type || row?.slug || row?.name);
   const serviceType = normalizePoolKey(row?.service_type || row?.type);
   return Boolean(row) && (
-    row.is_carpool === true ||
-    row.is_carpool === "true" ||
-    serviceType === "pool" ||
-    serviceType === "carpool" ||
-    key === "car_pool_4" ||
-    key === "car_pool_6" ||
-    key === "carpool" ||
-    key.includes("pool")
+    key === "outstation_pool" ||
+    serviceType === "outstation_pool"
   );
 }
 
@@ -235,7 +229,15 @@ export function registerOutstationPoolV2Routes(app: Express, authApp: any): void
         LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
       const driverCategory = driverCategoryR.rows[0] as any;
-      if (!isPoolVehicleCategory(driverCategory)) {
+      if (!isOutstationPoolVehicleCategory(driverCategory)) {
+        console.warn(`[OUTSTATION_CATEGORY_REJECT] ${JSON.stringify({
+          source: "outstation_pool_v2_create_ride",
+          driverId: driver.id,
+          reason: "driver_category_not_outstation_pool",
+          vehicleCategoryId: driverCategory?.vehicle_category_id || driverCategory?.id || null,
+          vehicleType: driverCategory?.vehicle_type || null,
+          serviceType: driverCategory?.service_type || driverCategory?.type || null,
+        })}`);
         return res.status(403).json({
           message: "Only approved pool-enabled drivers can create outstation pool rides",
           code: "OUTSTATION_POOL_DRIVER_NOT_ELIGIBLE",
@@ -566,12 +568,17 @@ export function registerOutstationPoolV2Routes(app: Express, authApp: any): void
           COUNT(opb.id) FILTER (WHERE opb.status != 'cancelled')::int as booked_count
         FROM outstation_pool_rides opr
         JOIN users u ON u.id = opr.driver_id
+        JOIN vehicle_categories vc ON vc.id = opr.vehicle_category_id
         LEFT JOIN driver_details dd ON dd.user_id = opr.driver_id
         LEFT JOIN outstation_pool_bookings opb ON opb.ride_id = opr.id
         WHERE opr.is_active = true
           AND opr.status IN ('scheduled', 'active')
           AND opr.accepting_new_requests = true
           AND opr.available_seats >= ${seatsN}
+          AND (
+            LOWER(COALESCE(vc.vehicle_type, vc.slug, vc.name, '')) = 'outstation_pool'
+            OR LOWER(COALESCE(vc.service_type, vc.type, '')) = 'outstation_pool'
+          )
           AND LOWER(opr.from_city) LIKE LOWER(${`%${fromCity}%`})
           AND LOWER(opr.to_city) LIKE LOWER(${`%${toCity}%`})
           ${date ? rawSql`AND opr.departure_date = ${date}::date` : rawSql``}
@@ -667,10 +674,15 @@ export function registerOutstationPoolV2Routes(app: Express, authApp: any): void
       try {
         await txClient.query("BEGIN");
         const rideR = await txClient.query(
-          `SELECT * FROM outstation_pool_rides
-           WHERE id = $1 AND is_active = true AND status IN ('scheduled','active')
-             AND accepting_new_requests = true
-             AND available_seats >= $2
+        `SELECT opr.* FROM outstation_pool_rides opr
+           JOIN vehicle_categories vc ON vc.id = opr.vehicle_category_id
+           WHERE opr.id = $1 AND opr.is_active = true AND opr.status IN ('scheduled','active')
+             AND opr.accepting_new_requests = true
+             AND opr.available_seats >= $2
+             AND (
+               LOWER(COALESCE(vc.vehicle_type, vc.slug, vc.name, '')) = 'outstation_pool'
+               OR LOWER(COALESCE(vc.service_type, vc.type, '')) = 'outstation_pool'
+             )
            FOR UPDATE`,
           [rideId, seatsN],
         );

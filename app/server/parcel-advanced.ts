@@ -596,6 +596,7 @@ export async function findParcelCapableDriversDetailed(
     FROM users u
     JOIN driver_locations dl ON dl.driver_id = u.id
     JOIN driver_details dd ON dd.user_id = u.id
+    JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
     LEFT JOIN driver_behavior_scores dbs ON dbs.driver_id = u.id
     WHERE u.user_type = 'driver'
       AND ${activeDriverEligibilitySql("u")}
@@ -604,6 +605,11 @@ export async function findParcelCapableDriversDetailed(
       AND dl.lat != 0 AND dl.lng != 0
       AND dl.updated_at > NOW() - (${Math.max(120, Number(process.env.DISPATCH_PARCEL_LOCATION_TTL_SECONDS || 150))} * INTERVAL '1 second')
       AND dd.vehicle_category_id = ANY(${uuidArraySql(categoryIds)})
+      AND (
+        dd.parcel_eligibility = true
+        OR LOWER(COALESCE(vc.service_type, '')) IN ('parcel', 'cargo')
+        OR LOWER(COALESCE(vc.type, '')) IN ('parcel', 'cargo')
+      )
       ${excludeClause}
       AND SQRT(
         POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
@@ -629,6 +635,7 @@ export async function findParcelCapableDriversDetailed(
           u.current_trip_id, u.verification_status,
           dl.is_online as dl_online, dl.lat, dl.lng, dl.updated_at,
           dd.vehicle_category_id,
+          dd.parcel_eligibility,
           SQRT(
             POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
             POW((dl.lng - ${Number(pickupLng)}) * 111.32 * COS(RADIANS(${Number(pickupLat)})), 2)
@@ -656,6 +663,7 @@ export async function findParcelCapableDriversDetailed(
         if (!row.vehicle_category_id || !categoryIds.includes(String(row.vehicle_category_id))) {
           reasons.push("vehicle_mismatch");
         }
+        if (row.parcel_eligibility === false) reasons.push("parcel_not_enabled");
         const distKm = Number(row.distance_km);
         if (Number.isFinite(distKm) && distKm > radiusKm) reasons.push("outside_radius");
 

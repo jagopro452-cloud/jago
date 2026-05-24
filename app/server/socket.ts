@@ -25,6 +25,7 @@ import { authenticateAppAccessToken } from "./auth/app-session";
 import { authenticateAdminAccessToken } from "./auth/admin-session";
 import { cancelTrip, CancelTripError } from "./services/cancel-trip";
 import { validateRecoveryTripOffer } from "./services/recovery-eligibility";
+import { validateDriverTripNotificationTarget } from "./services/driver-notification-filter";
 import {
   findEligibleDriversForDispatch,
   isDriverEligibleForDispatch,
@@ -1555,6 +1556,15 @@ export async function notifyNearbyDriversNewTrip(
 
     for (const row of strictDrivers) {
       const driverId = (row as any).driverId;
+      const notificationGuard = await validateDriverTripNotificationTarget({
+        driverId,
+        tripId,
+        source: "notify_nearby_drivers_new_trip",
+        requirements,
+      });
+      if (!notificationGuard.ok) {
+        continue;
+      }
       const payload = {
         tripId,
         refId: trip.refId,

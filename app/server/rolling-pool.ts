@@ -42,18 +42,27 @@ function normalizePoolKey(value: unknown): string {
     .replace(/^_+|_+$/g, "");
 }
 
-function isPoolVehicleCategory(row: any): boolean {
+function isLocalPoolVehicleCategory(row: any): boolean {
   const key = normalizePoolKey(row?.vehicle_type || row?.slug || row?.name);
   const serviceType = normalizePoolKey(row?.service_type || row?.type);
-  return Boolean(row) && (
-    row.is_carpool === true ||
-    row.is_carpool === "true" ||
+  const name = normalizePoolKey(row?.name);
+  if (!row) return false;
+  if (key === "outstation_pool" || key === "intercity_pool") return false;
+  if (serviceType === "outstation_pool" || serviceType === "intercity_pool") return false;
+  if (name.includes("outstation") || name.includes("intercity")) return false;
+  return (
+    serviceType === "city_pool" ||
+    serviceType === "local_pool" ||
     serviceType === "pool" ||
     serviceType === "carpool" ||
+    key === "city_pool" ||
+    key === "local_pool" ||
+    key === "carpool" ||
     key === "car_pool_4" ||
     key === "car_pool_6" ||
-    key === "carpool" ||
-    key.includes("pool")
+    key === "pool_mini" ||
+    key === "pool_sedan" ||
+    key === "pool_suv"
   );
 }
 
@@ -393,11 +402,21 @@ async function findBestSession(
            dps.current_lat, dps.current_lng, dps.current_bearing_deg,
            dps.vehicle_category_id
     FROM driver_pool_sessions dps
+    JOIN vehicle_categories vc ON vc.id = dps.vehicle_category_id
     WHERE dps.status = 'active'
       AND dps.accepting_new_requests = true
       AND dps.available_seats >= ${seatsNeeded}
       AND dps.current_lat IS NOT NULL
       AND dps.current_lng IS NOT NULL
+      AND LOWER(COALESCE(vc.vehicle_type, vc.slug, vc.name, '')) NOT IN ('outstation_pool', 'intercity_pool')
+      AND LOWER(COALESCE(vc.service_type, vc.type, '')) NOT IN ('outstation_pool', 'intercity_pool')
+      AND LOWER(COALESCE(vc.name, '')) NOT LIKE '%outstation%'
+      AND LOWER(COALESCE(vc.name, '')) NOT LIKE '%intercity%'
+      AND (
+        LOWER(COALESCE(vc.service_type, vc.type, '')) IN ('city_pool', 'local_pool', 'pool', 'carpool')
+        OR LOWER(COALESCE(vc.vehicle_type, vc.slug, vc.name, '')) IN ('city_pool', 'local_pool', 'carpool', 'car_pool_4', 'car_pool_6', 'pool_mini', 'pool_sedan', 'pool_suv')
+        OR vc.is_carpool = true
+      )
       AND (
         6371 * 2 * ASIN(SQRT(
           POWER(SIN((${pickupLat} - dps.current_lat::float) * PI()/360), 2) +
@@ -449,7 +468,15 @@ async function matchRequest(requestId: string): Promise<boolean> {
     parseInt(req.seats_requested),
     req.vehicle_category_id || null,
   );
-  if (!match) return false;
+  if (!match) {
+    console.warn(`[POOL_DISPATCH_REJECT] ${JSON.stringify({
+      source: "local_pool_match_request",
+      requestId,
+      reason: "no_city_pool_session",
+      vehicleCategoryId: req.vehicle_category_id || null,
+    })}`);
+    return false;
+  }
 
   // Atomically assign request to session and decrement available_seats
   let assignedPickupOrder = 1;
@@ -684,7 +711,15 @@ export function registerRollingPoolRoutes(app: Express, authApp: any, requireAdm
         LIMIT 1
       `).catch(() => ({ rows: [] as any[] }));
       const vc = vcR.rows[0] as any;
-      if (!isPoolVehicleCategory(vc)) {
+      if (!isLocalPoolVehicleCategory(vc)) {
+        console.warn(`[POOL_DISPATCH_REJECT] ${JSON.stringify({
+          source: "local_pool_session_start",
+          driverId: driver.id,
+          reason: "driver_category_not_city_pool",
+          vehicleCategoryId: resolvedVehicleCategoryId,
+          vehicleType: vc?.vehicle_type || null,
+          serviceType: vc?.service_type || vc?.type || null,
+        })}`);
         return res.status(403).json(poolResponse(false, "POOL_DRIVER_NOT_ELIGIBLE", "Only approved pool-enabled drivers can start rolling pool"));
       }
       try {
@@ -1220,6 +1255,26 @@ export function registerRollingPoolRoutes(app: Express, authApp: any, requireAdm
 
       if (!pickupLat || !pickupLng || !dropLat || !dropLng) {
         return res.status(400).json(poolResponse(false, "POOL_COORDS_REQUIRED", "Pickup and drop coordinates required"));
+      }
+      if (vehicleCategoryId) {
+        const categoryR = await rawDb.execute(rawSql`
+          SELECT id, name, slug, type, service_type, vehicle_type, is_carpool
+          FROM vehicle_categories
+          WHERE id=${String(vehicleCategoryId)}::uuid
+          LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        const category = categoryR.rows[0] as any;
+        if (!isLocalPoolVehicleCategory(category)) {
+          console.warn(`[POOL_DISPATCH_REJECT] ${JSON.stringify({
+            source: "local_pool_customer_book",
+            customerId: customer.id,
+            reason: "requested_category_not_city_pool",
+            vehicleCategoryId,
+            vehicleType: category?.vehicle_type || null,
+            serviceType: category?.service_type || category?.type || null,
+          })}`);
+          return res.status(400).json(poolResponse(false, "POOL_CATEGORY_MISMATCH", "Selected vehicle is not available for local pool"));
+        }
       }
 
       const modeR = await rawDb.execute(rawSql`

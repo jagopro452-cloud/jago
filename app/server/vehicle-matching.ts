@@ -315,6 +315,14 @@ function allowedVehicleKeys(meta: VehicleCategoryMeta): string[] {
 
   if (serviceType === "pool" || serviceType === "carpool" || meta.isCarpool || key.includes("pool") || key.includes("carpool") || key.includes("share")) {
     switch (key) {
+      case "outstation_pool":
+        return ["outstation_pool"];
+      case "intercity_pool":
+        return ["intercity_pool"];
+      case "city_pool":
+      case "local_pool":
+      case "carpool":
+        return ["carpool", "city_pool", "local_pool", "car_pool_4", "car_pool_6", "pool_mini", "pool_sedan", "pool_suv"];
       case "car_pool_4":
       case "car_pool_6":
         return [key];
@@ -324,12 +332,6 @@ function allowedVehicleKeys(meta: VehicleCategoryMeta): string[] {
         return ["pool_sedan"];
       case "pool_suv":
         return ["pool_suv"];
-      case "carpool":
-      case "city_pool":
-      case "local_pool":
-      case "intercity_pool":
-      case "outstation_pool":
-        return ["carpool", "city_pool", "local_pool", "intercity_pool", "outstation_pool", "car_pool_4", "car_pool_6", "pool_mini", "pool_sedan", "pool_suv"];
       default:
         return [key];
     }
@@ -448,6 +450,17 @@ export function getPlatformServiceKeyForCategory(meta: VehicleCategoryMeta | nul
   if (!meta) return null;
   const key = normalizeVehicleKey(meta.vehicleType || meta.name);
 
+  if (key === "outstation_pool") return "outstation_pool";
+  if (key === "intercity_pool") return "intercity_pool";
+  if (
+    key === "city_pool" ||
+    key === "local_pool" ||
+    key === "carpool" ||
+    key.startsWith("car_pool_") ||
+    key.startsWith("pool_")
+  ) {
+    return "city_pool";
+  }
   if (meta.serviceType === "parcel" || meta.serviceType === "cargo") return "parcel_delivery";
   if (meta.serviceType === "pool" || meta.serviceType === "carpool" || meta.isCarpool || key.includes("pool") || key.includes("share")) {
     return "city_pool";

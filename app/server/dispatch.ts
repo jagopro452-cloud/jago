@@ -32,6 +32,7 @@ import {
   saveDispatchSession,
   type RedisDispatchSession,
 } from "./dispatch-store";
+import { validateDriverTripNotificationTarget } from "./services/driver-notification-filter";
 
 // ── Service-specific dispatch configuration ──────────────────────────────────
 
@@ -50,6 +51,9 @@ const DISPATCH_CONFIGS: Record<string, DispatchConfig> = {
   parcel:     { radiusStepsKm: [5, 10, 15],        driverTimeoutMs: 60000, maxTotalTimeMs: 240000, driversPerStep: 8 },
   b2b_parcel: { radiusStepsKm: [5, 10, 15],        driverTimeoutMs: 60000, maxTotalTimeMs: 300000, driversPerStep: 8 },
   carpool:    { radiusStepsKm: [5, 8, 12, 20],     driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
+  city_pool:  { radiusStepsKm: [5, 8, 12, 20],     driverTimeoutMs: 60000, maxTotalTimeMs: 360000, driversPerStep: 10 },
+  intercity_pool: { radiusStepsKm: [5, 10, 15, 25], driverTimeoutMs: 60000, maxTotalTimeMs: 420000, driversPerStep: 10 },
+  outstation_pool:{ radiusStepsKm: [5, 10, 15, 25], driverTimeoutMs: 60000, maxTotalTimeMs: 420000, driversPerStep: 10 },
   outstation: { radiusStepsKm: [5, 10, 15, 25],    driverTimeoutMs: 60000, maxTotalTimeMs: 420000, driversPerStep: 10 },
 };
 
@@ -188,8 +192,9 @@ export function resolveServiceType(
 
   if (tt === "parcel" || tt === "delivery") return "parcel";
   if (tt === "cargo" || tt === "b2b") return "b2b_parcel";
-  if (tt === "carpool" || tt === "pool") return "carpool";
-  if (tt === "intercity" || tt === "outstation") return "outstation";
+  if (tt === "carpool" || tt === "pool" || tt === "city_pool" || tt === "local_pool") return "city_pool";
+  if (tt === "intercity" || tt === "intercity_pool") return "intercity_pool";
+  if (tt === "outstation" || tt === "outstation_pool") return "outstation_pool";
 
   // Determine from vehicle category name fallback
   if (vc.includes("bike") || vc.includes("two")) return "bike";
@@ -640,6 +645,21 @@ async function dispatchNextDriver(session: DispatchSession): Promise<void> {
  * Send trip request to a single driver and start the acceptance timer.
  */
 async function offerTripToDriver(session: DispatchSession, driver: DriverMatchScore): Promise<void> {
+  const notificationGuard = await validateDriverTripNotificationTarget({
+    driverId: driver.driverId,
+    tripId: session.tripId,
+    source: "dispatch_offer",
+    requirements: session.requirements,
+  });
+  if (!notificationGuard.ok) {
+    session.rejectedDriverIds.add(driver.driverId);
+    session.currentOfferedDriverId = null;
+    session.status = "searching";
+    await persistDispatchState(session).catch(() => undefined);
+    await dispatchNextDriver(session);
+    return;
+  }
+
   session.status = "offered";
   session.currentOfferedDriverId = driver.driverId;
   session.notifiedDriverIds.add(driver.driverId);
