@@ -182,14 +182,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       if (pendingTripStr != null && pendingTripStr.isNotEmpty) {
         await prefs.remove('pending_trip_data');
         final tripData = jsonDecode(pendingTripStr) as Map<String, dynamic>;
-        if (!_canReceiveTripPayload(tripData)) {
-          _showUnavailableByAdminOnce();
-          return;
-        }
-        if (mounted && _incomingTrip == null) {
+        final validatedTrip = await _fetchServerValidatedIncomingTrip(candidate: tripData);
+        if (mounted && _incomingTrip == null && validatedTrip != null) {
           await Future.delayed(const Duration(milliseconds: 300));
           if (!mounted) return;
-          setState(() => _incomingTrip = tripData);
+          setState(() => _incomingTrip = validatedTrip);
           _showIncomingTrip();
           return; // Show trip first; parcel can wait
         }
@@ -199,13 +196,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       final pendingParcelStr = prefs.getString('pending_parcel_data');
       if (pendingParcelStr != null && pendingParcelStr.isNotEmpty) {
         await prefs.remove('pending_parcel_data');
-        final parcelData = jsonDecode(pendingParcelStr) as Map<String, dynamic>;
-        if (mounted && _incomingParcel == null && _incomingTrip == null) {
-          await Future.delayed(const Duration(milliseconds: 300));
-          if (!mounted) return;
-          setState(() => _incomingParcel = parcelData);
-          _showIncomingParcel();
-        }
+        await _fetchPendingParcelOffer();
       }
     } catch (_) {}
   }
@@ -218,6 +209,51 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             _vehicleCategory)
         .toString();
     return VehicleStatusService.isActive(_vehicleStatuses, tripVehicle);
+  }
+
+  Future<Map<String, dynamic>?> _fetchServerValidatedIncomingTrip({
+    Map<String, dynamic>? candidate,
+  }) async {
+    try {
+      final candidateTripId =
+          (candidate?['tripId'] ?? candidate?['id'] ?? '').toString();
+      final headers = await AuthService.getHeaders();
+      final res = await http
+          .get(Uri.parse(ApiConfig.driverIncomingTrip), headers: headers)
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      if ((data['stage'] ?? '').toString() != 'new_request') return null;
+      final trip = data['trip'];
+      if (trip is! Map) return null;
+      final tripMap = Map<String, dynamic>.from(trip);
+      tripMap['tripId'] = tripMap['tripId'] ?? tripMap['id'];
+      final serverTripId = (tripMap['tripId'] ?? tripMap['id'] ?? '').toString();
+      if (candidateTripId.isNotEmpty && serverTripId != candidateTripId) {
+        return null;
+      }
+      if (!_canReceiveTripPayload(tripMap)) {
+        _showUnavailableByAdminOnce();
+        return null;
+      }
+      return tripMap;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _showIncomingTripAfterServerValidation(
+    Map<String, dynamic> candidate,
+  ) async {
+    if (!mounted || !_isOnline || _incomingTrip != null || _incomingParcel != null) {
+      return;
+    }
+    final validatedTrip = await _fetchServerValidatedIncomingTrip(candidate: candidate);
+    if (!mounted || validatedTrip == null || _incomingTrip != null || _incomingParcel != null) {
+      return;
+    }
+    setState(() => _incomingTrip = validatedTrip);
+    _showIncomingTrip();
   }
 
   void _showUnavailableByAdminOnce() {
@@ -237,16 +273,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       if (connected) _fetchPendingParcelOffer();
     }));
 
-    _subs.add(_socket.onNewTrip.listen((trip) {
+    _subs.add(_socket.onNewTrip.listen((trip) async {
       if (!mounted) return;
-      if (!_canReceiveTripPayload(trip)) {
-        _showUnavailableByAdminOnce();
-        return;
-      }
-      if (_incomingTrip == null) {
-        setState(() => _incomingTrip = trip);
-        _showIncomingTrip();
-      }
+      await _showIncomingTripAfterServerValidation(
+        Map<String, dynamic>.from(trip),
+      );
     }));
 
     _subs.add(_socket.onTripCancelled.listen((data) {
@@ -301,12 +332,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       AlarmService().stopAlarm();
     }));
 
-    _subs.add(_socket.onNewParcel.listen((parcel) {
+    _subs.add(_socket.onNewParcel.listen((parcel) async {
       if (!mounted) return;
       if (!_isOnline) return;
       if (_incomingTrip != null || _incomingParcel != null) return;
-      setState(() => _incomingParcel = parcel);
-      _showIncomingParcel();
+      await _fetchPendingParcelOffer();
     }));
 
     _subs.add(_socket.onWalletRecharged.listen((data) {
@@ -325,19 +355,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     // ── FCM foreground stream: app is open, direct-show IncomingTripSheet ─
     // Fires when FCM arrives while app is in foreground (no notification shown).
     // Also fires after notification tap when app is in background/terminated.
-    _subs.add(FcmService().onForegroundAlert.listen((data) {
+    _subs.add(FcmService().onForegroundAlert.listen((data) async {
       if (!mounted || !_isOnline) return;
       final type = data['type'] ?? '';
       if (type == 'new_trip' && _incomingTrip == null && _incomingParcel == null) {
-        if (!_canReceiveTripPayload(data)) {
-          _showUnavailableByAdminOnce();
-          return;
-        }
-        setState(() => _incomingTrip = data);
-        _showIncomingTrip();
+        await _showIncomingTripAfterServerValidation(
+          Map<String, dynamic>.from(data),
+        );
       } else if (type == 'new_parcel' && _incomingParcel == null && _incomingTrip == null) {
-        setState(() => _incomingParcel = data);
-        _showIncomingParcel();
+        await _fetchPendingParcelOffer();
       }
     }));
   }

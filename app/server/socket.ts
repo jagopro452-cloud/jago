@@ -24,6 +24,7 @@ import { parseEnv } from "./config/env";
 import { authenticateAppAccessToken } from "./auth/app-session";
 import { authenticateAdminAccessToken } from "./auth/admin-session";
 import { cancelTrip, CancelTripError } from "./services/cancel-trip";
+import { validateRecoveryTripOffer } from "./services/recovery-eligibility";
 import {
   findEligibleDriversForDispatch,
   isDriverEligibleForDispatch,
@@ -1596,8 +1597,17 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
   try {
     const activelyOffered = getCurrentOfferedTripForDriver(driverId);
     if (activelyOffered) {
-      io.to(`user:${driverId}`).emit("trip:new_request", activelyOffered.trip);
-      return;
+      const validation = await validateRecoveryTripOffer({
+        driverId,
+        tripId: activelyOffered.tripId,
+        source: "socket_driver_online_memory_offer",
+        requireCurrentOffer: true,
+        clearInvalidOffer: true,
+      });
+      if (validation.ok) {
+        io.to(`user:${driverId}`).emit("trip:new_request", activelyOffered.trip);
+        return;
+      }
     }
     const trips = await rawDb.execute(rawSql`
       SELECT
@@ -1618,11 +1628,37 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
     `);
     for (const row of trips.rows) {
       const trip = camelize(row) as any;
-      if (hasActiveDispatch(trip.id)) continue;
+      if (hasActiveDispatch(trip.id)) {
+        console.warn(`[RECOVERY_STALE_TRIP_BLOCKED] ${JSON.stringify({
+          source: "socket_driver_online_nearby_scan",
+          driverId,
+          tripId: trip.id,
+          reason: "active_dispatch_managed_offer_only",
+        })}`);
+        continue;
+      }
       const requirements = await resolveDispatchRequirementsFromTrip(trip.id);
-      if (!requirements) continue;
+      if (!requirements) {
+        console.warn(`[RECOVERY_TRIP_REJECTED] ${JSON.stringify({
+          source: "socket_driver_online_nearby_scan",
+          driverId,
+          tripId: trip.id,
+          reason: "requirements_missing",
+        })}`);
+        continue;
+      }
       const eligibility = await isDriverEligibleForDispatch(driverId, requirements);
-      if (!eligibility.eligible) continue;
+      if (!eligibility.eligible) {
+        console.warn(`[RECOVERY_CATEGORY_MISMATCH] ${JSON.stringify({
+          source: "socket_driver_online_nearby_scan",
+          driverId,
+          tripId: trip.id,
+          reason: eligibility.reason || "not_eligible",
+          vehicleCategoryId: requirements.vehicleCategoryId,
+          platformServiceKey: requirements.platformServiceKey,
+        })}`);
+        continue;
+      }
       io.to(`user:${driverId}`).emit("trip:new_request", {
         tripId: trip.id,
         refId: trip.refId,

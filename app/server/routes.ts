@@ -70,6 +70,7 @@ import {
 import { diagnoseDispatch, TripNotFoundError } from "./dispatch-diag";
 import { getPlatformServiceKeyForCategory, getVehicleCategoryMeta, normalizeBookingVehicleType } from "./vehicle-matching";
 import { cancelTrip, CancelTripError } from "./services/cancel-trip";
+import { validateRecoveryTripOffer } from "./services/recovery-eligibility";
 import { getRedisClient } from "./redis";
 import {
   computeDemandHeatmap,
@@ -8990,7 +8991,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const activelyOffered = getCurrentOfferedTripForDriver(driver.id);
       if (activelyOffered) {
-        return res.json({ trip: activelyOffered.trip, stage: "new_request" });
+        const validation = await validateRecoveryTripOffer({
+          driverId: driver.id,
+          tripId: activelyOffered.tripId,
+          source: "driver_incoming_trip_memory_offer",
+          requireCurrentOffer: true,
+          clearInvalidOffer: true,
+        });
+        if (validation.ok) {
+          return res.json({ trip: activelyOffered.trip, stage: "new_request" });
+        }
       }
 
       // HA recovery: process-local dispatch state can be lost across app instances,
@@ -9013,6 +9023,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (dbOffered.rows.length) {
         const row = dbOffered.rows[0] as any;
         const trip = camelize(row) as any;
+        const validation = await validateRecoveryTripOffer({
+          driverId: driver.id,
+          tripId: String(row.id),
+          source: "driver_incoming_trip_db_offer",
+          requireCurrentOffer: true,
+          clearInvalidOffer: true,
+        });
+        if (!validation.ok) {
+          return res.json({ trip: null });
+        }
         const payload = row.offer_payload && typeof row.offer_payload === "object"
           ? row.offer_payload
           : {};
@@ -9037,6 +9057,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       if (!locR.rows.length) return res.json({ trip: null });
       const { lat, lng, vehicle_category_id } = locR.rows[0] as any;
+      if (!vehicle_category_id) {
+        console.warn(`[RECOVERY_CATEGORY_MISMATCH] ${JSON.stringify({
+          source: "driver_incoming_trip_nearby_scan",
+          driverId: driver.id,
+          reason: "driver_missing_vehicle_category",
+        })}`);
+        return res.json({ trip: null });
+      }
       // Legacy fallback only: skip trips already managed by the dispatch engine.
       const searching = await rawDb.execute(rawSql`
         SELECT t.*, c.full_name as customer_name, c.phone as customer_phone,
@@ -9057,11 +9085,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       `);
       for (const row of searching.rows) {
         const trip = camelize(row) as any;
-        if (hasActiveDispatch(trip.id)) continue;
+        if (hasActiveDispatch(trip.id)) {
+          console.warn(`[RECOVERY_STALE_TRIP_BLOCKED] ${JSON.stringify({
+            source: "driver_incoming_trip_nearby_scan",
+            driverId: driver.id,
+            tripId: trip.id,
+            reason: "active_dispatch_managed_offer_only",
+          })}`);
+          continue;
+        }
         const requirements = await resolveDispatchRequirementsFromTrip(trip.id);
-        if (!requirements) continue;
+        if (!requirements) {
+          console.warn(`[RECOVERY_TRIP_REJECTED] ${JSON.stringify({
+            source: "driver_incoming_trip_nearby_scan",
+            driverId: driver.id,
+            tripId: trip.id,
+            reason: "requirements_missing",
+          })}`);
+          continue;
+        }
         const eligibility = await isDriverEligibleForDispatch(driver.id, requirements);
-        if (!eligibility.eligible) continue;
+        if (!eligibility.eligible) {
+          console.warn(`[RECOVERY_CATEGORY_MISMATCH] ${JSON.stringify({
+            source: "driver_incoming_trip_nearby_scan",
+            driverId: driver.id,
+            tripId: trip.id,
+            reason: eligibility.reason || "not_eligible",
+            vehicleCategoryId: requirements.vehicleCategoryId,
+            platformServiceKey: requirements.platformServiceKey,
+          })}`);
+          continue;
+        }
         return res.json({ trip, stage: "new_request" });
       }
       res.json({ trip: null });
