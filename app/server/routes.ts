@@ -11602,14 +11602,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const customer = (req as any).currentUser;
 
-      // Auto-cancel stale searching trips (no driver found in 5 minutes)
+      // Auto-cancel only truly abandoned searches. Do not cancel while a driver
+      // offer is still active; otherwise a pilot accepting near timeout can race
+      // against this endpoint and the ride appears cancelled on first accept.
       await rawDb.execute(rawSql`
         UPDATE trip_requests
-        SET current_status='cancelled', cancel_reason='Auto-cancelled: no pilot found'
+        SET current_status='cancelled', cancel_reason='Auto-cancelled: no pilot found within 12 minutes'
         WHERE customer_id=${customer.id}::uuid
           AND current_status = 'searching'
           AND driver_id IS NULL
-          AND created_at < NOW() - INTERVAL '5 minutes'
+          AND created_at < NOW() - INTERVAL '12 minutes'
+          AND (offered_driver_id IS NULL OR offer_expires_at IS NULL OR offer_expires_at <= NOW())
       `);
 
       const r = await rawDb.execute(rawSql`
@@ -17722,11 +17725,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   // -- Periodic stale trip cleanup (every 2 minutes) ------------------------
   setInterval(async () => {
     try {
-      // Cancel trips stuck in 'searching' for more than 3 minutes (no driver accepted)
+      // Safety-net cancel only truly stale searches. Active offers are protected
+      // so accept attempts cannot be invalidated by this background cleanup.
       const staleTrips = await rawDb.execute(rawSql`
-        UPDATE trip_requests SET current_status='cancelled', cancel_reason='Auto-cancelled: no pilot found within 3 minutes'
+        UPDATE trip_requests SET current_status='cancelled', cancel_reason='Auto-cancelled: no pilot found within 12 minutes'
         WHERE current_status = 'searching'
-          AND created_at < NOW() - INTERVAL '3 minutes'
+          AND driver_id IS NULL
+          AND created_at < NOW() - INTERVAL '12 minutes'
+          AND (offered_driver_id IS NULL OR offer_expires_at IS NULL OR offer_expires_at <= NOW())
         RETURNING id, customer_id
       `);
       if (staleTrips.rows.length) {

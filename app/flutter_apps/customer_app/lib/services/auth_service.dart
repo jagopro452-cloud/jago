@@ -73,6 +73,8 @@ class AuthService {
     if (_handling401) return;
     _handling401 = true;
     try {
+      final recovered = await _refreshSession(clearOnFailure: false);
+      if (recovered) return;
       await _clearStoredSession();
       navigatorKey.currentState?.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const SplashScreen()),

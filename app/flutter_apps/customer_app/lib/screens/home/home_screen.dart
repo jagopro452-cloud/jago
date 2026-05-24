@@ -27,7 +27,6 @@ import '../booking/parcel_booking_screen.dart';
 import '../booking/location_screen.dart';
 import '../booking/premium_location_screen.dart';
 import '../../services/trip_service.dart';
-import '../auth/login_screen.dart';
 import '../b2b/b2b_login_screen.dart';
 import '../outstation_pool/outstation_pool_screen.dart';
 
@@ -844,10 +843,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _handleUnauthorized() {
-    AuthService.logout().then((_) {
+    AuthService.handle401(source: 'customer_home').then((_) {
       if (!mounted) return;
-      Navigator.pushAndRemoveUntil(context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
     });
   }
 

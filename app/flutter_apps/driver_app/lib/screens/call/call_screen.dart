@@ -30,6 +30,7 @@ class _CallScreenState extends State<CallScreen> {
   CallState _state = CallState.idle;
   bool _isMuted = false;
   bool _isSpeaker = false;
+  bool _closing = false;
   int _durationSec = 0;
   Timer? _durationTimer;
 
@@ -42,9 +43,12 @@ class _CallScreenState extends State<CallScreen> {
       if (s == CallState.connected) _startDurationTimer();
       if (s == CallState.idle || s == CallState.rejected || s == CallState.failed) {
         _durationTimer?.cancel();
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) Navigator.of(context).pop();
-        });
+        if (s == CallState.failed) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Call failed. Please try again.')),
+          );
+        }
+        _closeCallScreen();
       }
     }));
 
@@ -77,7 +81,7 @@ class _CallScreenState extends State<CallScreen> {
   Future<void> _hangUp() async {
     _durationTimer?.cancel();
     await _callService.hangUp();
-    if (mounted) Navigator.of(context).pop();
+    _closeCallScreen(immediate: true);
   }
 
   Future<void> _accept() async {
@@ -89,7 +93,16 @@ class _CallScreenState extends State<CallScreen> {
 
   void _reject() {
     _callService.rejectIncomingCall();
-    if (mounted) Navigator.of(context).pop();
+    _closeCallScreen(immediate: true);
+  }
+
+  void _closeCallScreen({bool immediate = false}) {
+    if (_closing) return;
+    _closing = true;
+    Future.delayed(immediate ? Duration.zero : const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      Navigator.of(context).maybePop();
+    });
   }
 
   @override

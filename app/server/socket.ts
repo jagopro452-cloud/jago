@@ -44,6 +44,13 @@ import {
   registerRealtimeOpsIO,
 } from "./realtime-ops";
 import { addSocketPresence, hasSocketPresence, removeSocketPresence, touchSocketPresence } from "./socket-presence";
+import {
+  deleteCallSession,
+  findCallSessionsForUser,
+  getCallSession,
+  saveCallSession,
+  type ActiveCallSession,
+} from "./call-session-store";
 
 export let io: SocketIOServer;
 
@@ -73,17 +80,6 @@ const pendingOfflineTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const DRIVER_OFFLINE_GRACE_MS = 90_000; // 90 seconds
 const SOCKET_PRESENCE_HEARTBEAT_MS = 45_000;
 
-type ActiveCallSession = {
-  sessionId: string;
-  tripId: string;
-  callerId: string;
-  targetId: string;
-  startedAt: number;
-  connectedAt?: number;
-  mode: "ride" | "support";
-};
-
-const activeCallSessions = new Map<string, ActiveCallSession>();
 const RIDE_SAFETY_CALL_STATUSES = new Set(["accepted", "arrived", "on_the_way", "in_progress"]);
 const SUPPORT_CALL_TARGET = "__admin_support__";
 
@@ -117,12 +113,6 @@ async function getRideSafetyCallTrip(tripId: string, userA: string, userB: strin
     return { ok: false, message: "Calling is only allowed between the active customer and driver." };
   }
   return { ok: true, tripRow };
-}
-
-function findCallSessionForUser(userId: string): ActiveCallSession[] {
-  return Array.from(activeCallSessions.values()).filter(
-    (session) => session.callerId === userId || session.targetId === userId,
-  );
 }
 
 function isSupportCallTarget(targetUserId: unknown): boolean {
@@ -1225,7 +1215,7 @@ export function setupSocket(httpServer: HttpServer) {
         }
 
         if (userType === "admin") {
-          activeCallSessions.set(tripId, {
+          await saveCallSession({
             sessionId: tripId,
             tripId,
             callerId: userId,
@@ -1245,7 +1235,7 @@ export function setupSocket(httpServer: HttpServer) {
         }
 
         if (isSupportCallTarget(targetUserId)) {
-          activeCallSessions.set(tripId, {
+          await saveCallSession({
             sessionId: tripId,
             tripId,
             callerId: userId,
@@ -1271,7 +1261,7 @@ export function setupSocket(httpServer: HttpServer) {
           return;
         }
 
-        const existingSession = activeCallSessions.get(tripId);
+        const existingSession = await getCallSession(tripId);
         if (existingSession && !isCallSessionParticipant(existingSession, userId, targetUserId)) {
           socket.emit("call:error", { message: "Another call is already active for this trip." });
           return;
@@ -1283,7 +1273,7 @@ export function setupSocket(httpServer: HttpServer) {
           ON CONFLICT DO NOTHING
         `).catch(() => {});
 
-        activeCallSessions.set(tripId, {
+        await saveCallSession({
           sessionId: tripId,
           tripId,
           callerId: userId,
@@ -1329,7 +1319,7 @@ export function setupSocket(httpServer: HttpServer) {
     });
 
     socket.on("call:offer", async (data: { targetUserId: string; tripId: string; sdp: any }) => {
-      const session = activeCallSessions.get(data.tripId);
+      const session = await getCallSession(data.tripId);
       if (!session) {
         socket.emit("call:error", { message: "Call session is no longer active." });
         return;
@@ -1337,7 +1327,7 @@ export function setupSocket(httpServer: HttpServer) {
       if (session.mode === "ride") {
         const tripCheck = await getRideSafetyCallTrip(data.tripId, userId, data.targetUserId);
         if (!tripCheck.ok || !isCallSessionParticipant(session, userId, data.targetUserId)) {
-          activeCallSessions.delete(data.tripId);
+          await deleteCallSession(data.tripId);
           socket.emit("call:ended", { by: "system", reason: tripCheck.message || "Call session ended." });
           return;
         }
@@ -1375,7 +1365,7 @@ export function setupSocket(httpServer: HttpServer) {
     });
 
     socket.on("call:answer", async (data: { targetUserId: string; tripId: string; sdp: any }) => {
-      const session = activeCallSessions.get(data.tripId);
+      const session = await getCallSession(data.tripId);
       if (!session) {
         socket.emit("call:error", { message: "Call session is no longer active." });
         return;
@@ -1383,11 +1373,12 @@ export function setupSocket(httpServer: HttpServer) {
       if (session.mode === "ride") {
         const tripCheck = await getRideSafetyCallTrip(data.tripId, userId, data.targetUserId);
         if (!tripCheck.ok || !isCallSessionParticipant(session, userId, data.targetUserId)) {
-          activeCallSessions.delete(data.tripId);
+          await deleteCallSession(data.tripId);
           socket.emit("call:ended", { by: "system", reason: tripCheck.message || "Call session ended." });
           return;
         }
         session.connectedAt = Date.now();
+        await saveCallSession(session);
         io.to(`user:${data.targetUserId}`).emit("call:answer", {
           callerId: userId,
           tripId: data.tripId,
@@ -1409,6 +1400,7 @@ export function setupSocket(httpServer: HttpServer) {
       }
 
       session.connectedAt = Date.now();
+      await saveCallSession(session);
       const answerTarget = userId === session.callerId ? session.targetId : session.callerId;
       io.to(`user:${answerTarget}`).emit("call:answer", {
         callerId: userId,
@@ -1419,7 +1411,7 @@ export function setupSocket(httpServer: HttpServer) {
     });
 
     socket.on("call:ice", async (data: { targetUserId: string; tripId: string; candidate: any }) => {
-      const session = activeCallSessions.get(data.tripId);
+      const session = await getCallSession(data.tripId);
       if (!session) {
         socket.emit("call:error", { message: "Call session is no longer active." });
         return;
@@ -1427,7 +1419,7 @@ export function setupSocket(httpServer: HttpServer) {
       if (session.mode === "ride") {
         const tripCheck = await getRideSafetyCallTrip(data.tripId, userId, data.targetUserId);
         if (!tripCheck.ok || !isCallSessionParticipant(session, userId, data.targetUserId)) {
-          activeCallSessions.delete(data.tripId);
+          await deleteCallSession(data.tripId);
           socket.emit("call:ended", { by: "system", reason: tripCheck.message || "Call session ended." });
           return;
         }
@@ -1462,7 +1454,7 @@ export function setupSocket(httpServer: HttpServer) {
 
     socket.on("call:end", async (data: { targetUserId: string; tripId?: string; durationSec?: number }) => {
       const { targetUserId, tripId, durationSec } = data;
-      const session = tripId ? activeCallSessions.get(tripId) : null;
+      const session = tripId ? await getCallSession(tripId) : null;
       if (session) {
         if (session.mode === "support") {
           const supportTarget =
@@ -1479,7 +1471,7 @@ export function setupSocket(httpServer: HttpServer) {
         io.to(`user:${targetUserId}`).emit("call:ended", { by: userId, tripId });
       }
       if (tripId) {
-        activeCallSessions.delete(tripId);
+        await deleteCallSession(tripId);
         if (session?.mode === "ride") {
           await rawDb.execute(rawSql`
             UPDATE call_logs
@@ -1499,7 +1491,7 @@ export function setupSocket(httpServer: HttpServer) {
 
     socket.on("call:reject", async (data: { targetUserId: string; tripId?: string }) => {
       const { targetUserId, tripId } = data;
-      const session = tripId ? activeCallSessions.get(tripId) : null;
+      const session = tripId ? await getCallSession(tripId) : null;
       if (session?.mode === "support") {
         const rejectTarget =
           session.targetId === SUPPORT_CALL_TARGET
@@ -1512,7 +1504,7 @@ export function setupSocket(httpServer: HttpServer) {
         io.to(`user:${targetUserId}`).emit("call:rejected", { by: userId, tripId, callMode: "ride" });
       }
       if (tripId) {
-        activeCallSessions.delete(tripId);
+        await deleteCallSession(tripId);
         if (session?.mode === "ride") {
           await rawDb.execute(rawSql`
             UPDATE call_logs
@@ -1530,23 +1522,27 @@ export function setupSocket(httpServer: HttpServer) {
     });
 
     socket.on("disconnect", (reason) => {
-      for (const session of findCallSessionForUser(userId)) {
-        activeCallSessions.delete(session.sessionId);
-        const peerRoom =
-          session.mode === "support"
-            ? session.targetId === SUPPORT_CALL_TARGET
-              ? "admin:ops"
-              : userId === session.callerId
-                ? `user:${session.targetId}`
-                : `user:${session.callerId}`
-            : `user:${session.callerId === userId ? session.targetId : session.callerId}`;
-        io.to(peerRoom).emit("call:ended", {
-          by: userId,
-          tripId: session.sessionId,
-          callMode: session.mode,
-          reason: "disconnect",
-        });
-      }
+      findCallSessionsForUser(userId).then(async (sessions) => {
+        for (const session of sessions) {
+          await deleteCallSession(session.sessionId).catch(() => undefined);
+          const peerRoom =
+            session.mode === "support"
+              ? session.targetId === SUPPORT_CALL_TARGET
+                ? "admin:ops"
+                : userId === session.callerId
+                  ? `user:${session.targetId}`
+                  : `user:${session.callerId}`
+              : `user:${session.callerId === userId ? session.targetId : session.callerId}`;
+          io.to(peerRoom).emit("call:ended", {
+            by: userId,
+            tripId: session.sessionId,
+            callMode: session.mode,
+            reason: "disconnect",
+          });
+        }
+      }).catch((error) => {
+        console.warn(`[CALL] disconnect cleanup failed user=${userId}: ${error?.message || error}`);
+      });
       if (userType === "driver") {
         removeSocketPresence("driver", userId, socket.id).catch(() => {});
         noteSocketDisconnected({ userId, userType: "driver", reason });

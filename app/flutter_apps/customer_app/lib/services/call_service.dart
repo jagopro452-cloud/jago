@@ -20,6 +20,9 @@ class CallService {
   MediaStream? _localStream;
   MediaStream? _remoteStream;
   RTCSessionDescription? _pendingRemoteOffer;
+  final List<Map<String, dynamic>> _pendingIceCandidates = [];
+  Completer<void>? _remoteOfferCompleter;
+  bool _remoteDescriptionApplied = false;
 
   final _remoteStreamController = StreamController<dynamic>.broadcast();
   final _callStateController = StreamController<CallState>.broadcast();
@@ -115,9 +118,12 @@ class CallService {
 
     try {
       await _preparePeerConnection();
-      if (_pendingRemoteOffer != null) {
-        await _peerConnection!.setRemoteDescription(_pendingRemoteOffer!);
+      final offerReady = await _waitForRemoteOffer();
+      if (!offerReady || _pendingRemoteOffer == null) {
+        _failCall('Call connection timed out. Please try again.');
+        return;
       }
+      await _setRemoteDescription(_pendingRemoteOffer!);
       final answer = await _peerConnection!.createAnswer({
         'offerToReceiveAudio': true,
         'offerToReceiveVideo': false,
@@ -245,10 +251,15 @@ class CallService {
     if (_state == CallState.connected) return;
     activeCallTargetId = data['callerId']?.toString();
     activeCallTripId = data['tripId']?.toString() ?? activeCallTripId;
+    final sdp = data['sdp'];
+    if (sdp is! Map || (sdp['sdp']?.toString() ?? '').isEmpty) return;
     _pendingRemoteOffer = RTCSessionDescription(
-      data['sdp']?['sdp']?.toString(),
-      data['sdp']?['type']?.toString(),
+      sdp['sdp']?.toString(),
+      sdp['type']?.toString(),
     );
+    if (!(_remoteOfferCompleter?.isCompleted ?? true)) {
+      _remoteOfferCompleter?.complete();
+    }
     if (_state != CallState.incoming) {
       _setState(CallState.incoming);
     }
@@ -261,7 +272,7 @@ class CallService {
         data['sdp']?['sdp']?.toString(),
         data['sdp']?['type']?.toString(),
       );
-      await _peerConnection!.setRemoteDescription(answer);
+      await _setRemoteDescription(answer);
       _callStartTime = DateTime.now();
       _setState(CallState.connected);
     } catch (_) {
@@ -270,9 +281,41 @@ class CallService {
   }
 
   Future<void> _handleIce(Map<String, dynamic> data) async {
-    if (_peerConnection == null) return;
     final candidateData = data['candidate'];
     if (candidateData is! Map) return;
+    final candidateMap = Map<String, dynamic>.from(candidateData);
+    if (_peerConnection == null || !_remoteDescriptionApplied) {
+      _pendingIceCandidates.add(candidateMap);
+      return;
+    }
+    await _addIceCandidate(candidateMap);
+  }
+
+  Future<bool> _waitForRemoteOffer() async {
+    if (_pendingRemoteOffer != null) return true;
+    _remoteOfferCompleter ??= Completer<void>();
+    try {
+      await _remoteOfferCompleter!.future.timeout(const Duration(seconds: 8));
+    } catch (_) {}
+    return _pendingRemoteOffer != null;
+  }
+
+  Future<void> _setRemoteDescription(RTCSessionDescription description) async {
+    await _peerConnection!.setRemoteDescription(description);
+    _remoteDescriptionApplied = true;
+    await _flushPendingIceCandidates();
+  }
+
+  Future<void> _flushPendingIceCandidates() async {
+    final pending = List<Map<String, dynamic>>.from(_pendingIceCandidates);
+    _pendingIceCandidates.clear();
+    for (final candidateData in pending) {
+      await _addIceCandidate(candidateData);
+    }
+  }
+
+  Future<void> _addIceCandidate(Map<String, dynamic> candidateData) async {
+    if (_peerConnection == null) return;
     final candidate = RTCIceCandidate(
       candidateData['candidate']?.toString(),
       candidateData['sdpMid']?.toString(),
@@ -328,6 +371,9 @@ class CallService {
     _localStream = null;
     _remoteStream = null;
     _pendingRemoteOffer = null;
+    _pendingIceCandidates.clear();
+    _remoteOfferCompleter = null;
+    _remoteDescriptionApplied = false;
     activeCallTargetId = null;
     activeCallTripId = null;
     _callStartTime = null;
