@@ -51,6 +51,36 @@ Future<void> _queueAlertAction(String actionId, Map<String, dynamic> data) async
   } catch (_) {}
 }
 
+Future<void> _ackDriverAlertDisplayed(
+  Map<String, dynamic> data,
+  String source,
+) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final token = (prefs.getString('auth_token') ?? '').trim();
+    if (token.isEmpty) return;
+
+    final tripId = (data['tripId'] ?? data['trip_id'] ?? data['id'] ?? '').toString();
+    final orderId = (data['orderId'] ?? data['order_id'] ?? '').toString();
+    await http
+        .post(
+          Uri.parse(ApiConfig.driverAlertDisplayed),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({
+            'tripId': tripId.isEmpty ? null : tripId,
+            'orderId': orderId.isEmpty ? null : orderId,
+            'source': source,
+            'channel': 'driver_fcm',
+            'displayedAt': DateTime.now().toIso8601String(),
+          }),
+        )
+        .timeout(const Duration(seconds: 5));
+  } catch (_) {}
+}
+
 Future<void> _handleNotificationResponse(NotificationResponse response) async {
   final payload = response.payload;
   if (payload == null || payload.isEmpty) return;
@@ -129,6 +159,7 @@ Future<FlutterLocalNotificationsPlugin> _createAlertPlugin() async {
 Future<void> _showDriverAlertNotification(
   FlutterLocalNotificationsPlugin plugin,
   Map<String, dynamic> data,
+  String source,
 ) async {
   final isTrip = _isTripAlert(data);
   final isParcel = _isParcelAlert(data);
@@ -168,6 +199,7 @@ Future<void> _showDriverAlertNotification(
     ),
     payload: jsonEncode(data),
   );
+  await _ackDriverAlertDisplayed(data, source);
 }
 
 @pragma('vm:entry-point')
@@ -181,7 +213,7 @@ Future<void> firebaseBackgroundMessageHandler(RemoteMessage message) async {
   await _persistPendingAlert(data);
 
   final plugin = await _createAlertPlugin();
-  await _showDriverAlertNotification(plugin, data);
+  await _showDriverAlertNotification(plugin, data, 'fcm_background');
 }
 
 @pragma('vm:entry-point')
@@ -288,7 +320,7 @@ class FcmService {
     if (type == 'new_trip' || type == 'new_parcel') {
       final data = Map<String, dynamic>.from(message.data);
       _persistPendingAlert(data);
-      _showDriverAlertNotification(_localNotif, data);
+      unawaited(_showDriverAlertNotification(_localNotif, data, 'fcm_foreground'));
       _foregroundAlertController.add(data);
       return;
     }
@@ -360,6 +392,7 @@ class FcmService {
       ),
       payload: jsonEncode(payload),
     );
+    await _ackDriverAlertDisplayed(payload, 'manual_fullscreen');
   }
 
   void _showUpdateNotification({

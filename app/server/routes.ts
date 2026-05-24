@@ -11400,6 +11400,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         tripType,
         paymentMethod: finalPayment,
       });
+      console.log(`[BOOKING_CREATED] ${JSON.stringify({
+        ts: new Date().toISOString(),
+        tripId: tripRow.id,
+        customerId: customer.id,
+        tripType,
+        vehicleCategoryId: safeVehicleCategoryId,
+        pickupLat: Number(pickupLat),
+        pickupLng: Number(pickupLng),
+        paymentMethod: finalPayment,
+      })}`);
 
       // ?? Heatmap event: booking demand signal
       logHeatmapEvent(
@@ -12663,13 +12673,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const user = (req as any).currentUser;
       const { fcmToken, deviceType = "android", appVersion } = req.body;
+      if (typeof fcmToken !== "string" || fcmToken.trim().length < 20) {
+        return res.status(400).json({ success: false, message: "Valid FCM token required" });
+      }
       await rawDb.execute(rawSql`
         INSERT INTO user_devices (user_id, fcm_token, device_type, app_version)
-        VALUES (${user.id}::uuid, ${fcmToken}, ${deviceType}, ${appVersion || ''})
-        ON CONFLICT (user_id) DO UPDATE SET fcm_token=${fcmToken}, device_type=${deviceType}, app_version=${appVersion || ''}, updated_at=NOW()
+        VALUES (${user.id}::uuid, ${fcmToken.trim()}, ${deviceType}, ${appVersion || ''})
+        ON CONFLICT (user_id) DO UPDATE SET fcm_token=${fcmToken.trim()}, device_type=${deviceType}, app_version=${appVersion || ''}, updated_at=NOW()
       `);
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // -- DRIVER: Alert displayed acknowledgement -------------------------------
+  app.post("/api/app/driver/alert-displayed", authApp, requireDriver, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { tripId, orderId, source, channel, displayedAt } = req.body || {};
+      const safeTripId = typeof tripId === "string" && tripId.trim() ? tripId.trim() : null;
+      const safeOrderId = typeof orderId === "string" && orderId.trim() ? orderId.trim() : null;
+      const safeSource = typeof source === "string" && source.trim() ? source.trim().slice(0, 64) : "unknown";
+      const safeChannel = typeof channel === "string" && channel.trim() ? channel.trim().slice(0, 64) : "driver_app";
+
+      console.log(`[DRIVER_ALERT_DISPLAYED] ${JSON.stringify({
+        ts: new Date().toISOString(),
+        driverId: driver.id,
+        tripId: safeTripId,
+        orderId: safeOrderId,
+        source: safeSource,
+        channel: safeChannel,
+        displayedAt: typeof displayedAt === "string" ? displayedAt : null,
+      })}`);
+
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ success: false, message: safeErrMsg(e) });
+    }
   });
 
   // -- SHARED: App configs (vehicle categories, cancellation reasons etc) ----

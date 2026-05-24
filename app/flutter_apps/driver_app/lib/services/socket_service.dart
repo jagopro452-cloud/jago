@@ -102,6 +102,19 @@ class SocketService {
     }
   }
 
+  void ackAlertDisplayed(Map<String, dynamic> data, String source) {
+    if (!_isConnected || _socket == null) return;
+    final tripId = (data['tripId'] ?? data['trip_id'] ?? data['id'] ?? '').toString();
+    final orderId = (data['orderId'] ?? data['order_id'] ?? '').toString();
+    _socket!.emit('driver:alert_displayed', {
+      'tripId': tripId.isEmpty ? null : tripId,
+      'orderId': orderId.isEmpty ? null : orderId,
+      'source': source,
+      'channel': 'driver_socket',
+      'displayedAt': DateTime.now().toIso8601String(),
+    });
+  }
+
   Future<void> connect(String baseUrl) async {
     if (_socket?.connected == true) return;
 

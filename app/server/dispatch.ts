@@ -112,6 +112,17 @@ export interface TripMeta {
 
 const activeDispatches = new Map<string, DispatchSession>();
 
+function traceDispatch(event: string, data: Record<string, unknown>): void {
+  try {
+    console.log(`[${event}] ${JSON.stringify({
+      ts: new Date().toISOString(),
+      ...data,
+    })}`);
+  } catch {
+    console.log(`[${event}] trace_serialization_failed`);
+  }
+}
+
 function toRedisSession(session: DispatchSession): RedisDispatchSession {
   return {
     tripId: session.tripId,
@@ -290,6 +301,16 @@ async function startDispatchLocked(
 
   activeDispatches.set(tripId, session);
   await persistDispatchState(session);
+
+  traceDispatch("DISPATCH_STARTED", {
+    tripId,
+    customerId,
+    serviceType,
+    vehicleCategoryId,
+    radiusStepsKm: config.radiusStepsKm,
+    driverTimeoutMs: config.driverTimeoutMs,
+    maxTotalTimeMs: config.maxTotalTimeMs,
+  });
 
   // Set max total timeout — auto-cancel if no driver found in time
   session.totalTimer = setTimeout(() => {
@@ -556,6 +577,18 @@ async function searchAndDispatchNextRadius(session: DispatchSession): Promise<vo
       );
     }
 
+    drivers.forEach((driver) => {
+      traceDispatch("DRIVER_ELIGIBLE", {
+        tripId: session.tripId,
+        driverId: driver.driverId,
+        serviceType: session.serviceType,
+        vehicleCategoryId: session.vehicleCategoryId || null,
+        distanceKm: driver.distanceKm,
+        score: driver.score,
+        radiusKm,
+      });
+    });
+
     if (session.status !== "searching" && session.status !== "offered") return;
 
     if (drivers.length === 0) {
@@ -652,6 +685,14 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
     requirements: session.requirements,
   });
   if (!notificationGuard.ok) {
+    traceDispatch("DRIVER_REJECTED", {
+      tripId: session.tripId,
+      driverId: driver.driverId,
+      serviceType: session.serviceType,
+      vehicleCategoryId: session.vehicleCategoryId || null,
+      reason: notificationGuard.reason || "notification_guard_failed",
+      source: "dispatch_offer_guard",
+    });
     session.rejectedDriverIds.add(driver.driverId);
     session.currentOfferedDriverId = null;
     session.status = "searching";
@@ -680,14 +721,22 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
     console.error(`[DISPATCH] Failed to persist driver offer trip=${session.tripId} pilot=${driver.driverId}:`, err?.message || err);
   });
 
+  const socketRoom = io?.sockets?.adapter?.rooms?.get(`user:${driver.driverId}`);
+  const socketConnected = !!(socketRoom && socketRoom.size > 0);
   // Socket notification (foreground)
   if (io) {
     io.to(`user:${driver.driverId}`).emit("trip:new_request", payload);
+    traceDispatch("SOCKET_EMIT_SENT", {
+      tripId: session.tripId,
+      driverId: driver.driverId,
+      socketRoom: `user:${driver.driverId}`,
+      socketConnected,
+      socketCount: socketRoom?.size || 0,
+      event: "trip:new_request",
+    });
   }
 
   // FCM notification (background/killed app)
-  const socketRoom = io?.sockets?.adapter?.rooms?.get(`user:${driver.driverId}`);
-  const socketConnected = !!(socketRoom && socketRoom.size > 0);
   if (driver.fcmToken) {
     notifyDriverNewRide({
       fcmToken: driver.fcmToken,
@@ -701,9 +750,43 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
       vehicleCategoryId: session.vehicleCategoryId || null,
       vehicleCategoryName: session.tripMeta.vehicleCategoryName || null,
       timeoutMs: session.config.driverTimeoutMs,
-    }).then(() => {
-      console.log(`[DISPATCH] FCM sent trip=${session.tripId} pilot=${driver.driverId} (${driver.fullName})`);
+    }).then((sent) => {
+      traceDispatch(sent ? "FCM_PUSH_SENT" : "FCM_PUSH_FAILED", {
+        tripId: session.tripId,
+        driverId: driver.driverId,
+        serviceType: session.serviceType,
+        vehicleCategoryId: session.vehicleCategoryId || null,
+        socketConnected,
+        reason: sent ? undefined : "send_returned_false",
+      });
+      if (sent) {
+        console.log(`[DISPATCH] FCM sent trip=${session.tripId} pilot=${driver.driverId} (${driver.fullName})`);
+        return;
+      }
+      if (io) {
+        io.to(`user:${driver.driverId}`).emit("trip:new_request", {
+          ...payload,
+          _fcmFallback: true,
+        });
+        traceDispatch("SOCKET_EMIT_SENT", {
+          tripId: session.tripId,
+          driverId: driver.driverId,
+          socketRoom: `user:${driver.driverId}`,
+          socketConnected,
+          socketCount: socketRoom?.size || 0,
+          event: "trip:new_request",
+          fallbackReason: "fcm_send_false",
+        });
+      }
     }).catch((err: any) => {
+      traceDispatch("FCM_PUSH_FAILED", {
+        tripId: session.tripId,
+        driverId: driver.driverId,
+        serviceType: session.serviceType,
+        vehicleCategoryId: session.vehicleCategoryId || null,
+        socketConnected,
+        error: err?.message || String(err),
+      });
       console.error(`[DISPATCH] ❌ FCM FAILED — trip=${session.tripId} pilot=${driver.driverId} error=${err?.message || err}`);
       // FCM failed fallback: re-emit via socket (covers apps that were background but socket stayed open)
       if (io) {
@@ -711,10 +794,27 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
           ...payload,
           _fcmFallback: true,
         });
-        console.log(`[DISPATCH] 🔁 FCM fallback socket emit — trip=${session.tripId} pilot=${driver.driverId}`);
+        traceDispatch("SOCKET_EMIT_SENT", {
+          tripId: session.tripId,
+          driverId: driver.driverId,
+          socketRoom: `user:${driver.driverId}`,
+          socketConnected,
+          socketCount: socketRoom?.size || 0,
+          event: "trip:new_request",
+          fallbackReason: "fcm_exception",
+        });
+        console.log(`[DISPATCH] FCM fallback socket emit trip=${session.tripId} pilot=${driver.driverId}`);
       }
     });
   } else {
+    traceDispatch("FCM_PUSH_FAILED", {
+      tripId: session.tripId,
+      driverId: driver.driverId,
+      serviceType: session.serviceType,
+      vehicleCategoryId: session.vehicleCategoryId || null,
+      socketConnected,
+      reason: "missing_fcm_token",
+    });
     console.warn(`[DISPATCH] ⚠️  No FCM token for pilot=${driver.driverId} (${driver.fullName}) — socket-only`);
     // No FCM token — socket is the only channel. Already emitted above. Log for monitoring.
   }
@@ -867,6 +967,13 @@ async function checkDriverAvailability(driverId: string, requirements: DispatchR
   try {
     const strictEligibility = await isDriverEligibleForDispatch(driverId, requirements);
     if (!strictEligibility.eligible) {
+      traceDispatch("DRIVER_REJECTED", {
+        driverId,
+        serviceType: requirements.platformServiceKey || null,
+        vehicleCategoryId: requirements.vehicleCategoryId || null,
+        reason: strictEligibility.reason || "not_eligible",
+        source: "availability_strict_eligibility",
+      });
       console.log(`[DISPATCH] âš  Driver ${driverId} unavailable â€” ${strictEligibility.reason || "not_eligible"}`);
       return false;
     }
@@ -879,6 +986,13 @@ async function checkDriverAvailability(driverId: string, requirements: DispatchR
       LIMIT 1
     `);
     if (!r.rows.length) {
+      traceDispatch("DRIVER_REJECTED", {
+        driverId,
+        serviceType: requirements.platformServiceKey || null,
+        vehicleCategoryId: requirements.vehicleCategoryId || null,
+        reason: "driver_not_found",
+        source: "availability_db_check",
+      });
       console.log(`[DISPATCH] ⚠ Driver ${driverId} — NOT FOUND in DB`);
       return false;
     }
@@ -897,6 +1011,13 @@ async function checkDriverAvailability(driverId: string, requirements: DispatchR
       if (!d.is_online && !d.dl_online)  reasons.push("offline (both is_online flags false)");
       if (d.current_trip_id !== null)    reasons.push(`on trip ${d.current_trip_id}`);
       if (!['approved','verified'].includes(d.verification_status)) reasons.push(`verification=${d.verification_status}`);
+      traceDispatch("DRIVER_REJECTED", {
+        driverId,
+        serviceType: requirements.platformServiceKey || null,
+        vehicleCategoryId: requirements.vehicleCategoryId || null,
+        reason: reasons.join(", ") || "not_available",
+        source: "availability_db_check",
+      });
       console.log(`[DISPATCH] ⚠ Driver ${driverId} unavailable — ${reasons.join(", ")}`);
     }
     return available;

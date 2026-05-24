@@ -242,6 +242,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     }
   }
 
+  Future<void> _ackDriverAlertDisplayed(
+    Map<String, dynamic> data,
+    String source,
+  ) async {
+    try {
+      _socket.ackAlertDisplayed(data, source);
+      final headers = await AuthService.getHeaders();
+      final tripId = (data['tripId'] ?? data['trip_id'] ?? data['id'] ?? '').toString();
+      final orderId = (data['orderId'] ?? data['order_id'] ?? '').toString();
+      await http
+          .post(
+            Uri.parse(ApiConfig.driverAlertDisplayed),
+            headers: {
+              ...headers,
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'tripId': tripId.isEmpty ? null : tripId,
+              'orderId': orderId.isEmpty ? null : orderId,
+              'source': source,
+              'channel': 'driver_app',
+              'displayedAt': DateTime.now().toIso8601String(),
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {}
+  }
+
   Future<void> _showIncomingTripAfterServerValidation(
     Map<String, dynamic> candidate,
   ) async {
@@ -254,6 +282,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     }
     setState(() => _incomingTrip = validatedTrip);
     _showIncomingTrip();
+    unawaited(_ackDriverAlertDisplayed(validatedTrip, 'in_app_popup'));
   }
 
   void _showUnavailableByAdminOnce() {
@@ -390,6 +419,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       final first = Map<String, dynamic>.from(orders.first as Map);
       setState(() => _incomingParcel = first);
       _showIncomingParcel();
+      unawaited(_ackDriverAlertDisplayed(first, 'parcel_popup'));
     } catch (_) {}
   }
 

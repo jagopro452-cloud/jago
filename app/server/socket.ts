@@ -269,6 +269,38 @@ export function setupSocket(httpServer: HttpServer) {
       }, SOCKET_PRESENCE_HEARTBEAT_MS);
       socket.once("disconnect", () => clearInterval(driverPresenceHeartbeat));
 
+      socket.on("driver:alert_displayed", async (data: { tripId?: string; orderId?: string; source?: string; channel?: string; displayedAt?: string }) => {
+        try {
+          const tripId = typeof data?.tripId === "string" && data.tripId.trim() ? data.tripId.trim() : null;
+          const orderId = typeof data?.orderId === "string" && data.orderId.trim() ? data.orderId.trim() : null;
+          const source = typeof data?.source === "string" && data.source.trim() ? data.source.trim().slice(0, 64) : "socket";
+          const channel = typeof data?.channel === "string" && data.channel.trim() ? data.channel.trim().slice(0, 64) : "driver_app";
+          noteSocketActivity({ userId, userType: "driver", tripId: tripId || undefined });
+          console.log(`[DRIVER_ALERT_DISPLAYED] ${JSON.stringify({
+            ts: new Date().toISOString(),
+            driverId: userId,
+            socketId: socket.id,
+            tripId,
+            orderId,
+            source,
+            channel,
+            displayedAt: typeof data?.displayedAt === "string" ? data.displayedAt : null,
+          })}`);
+          console.log(`[SOCKET_ACK_RECEIVED] ${JSON.stringify({
+            ts: new Date().toISOString(),
+            driverId: userId,
+            socketId: socket.id,
+            tripId,
+            orderId,
+            event: "driver:alert_displayed",
+            source,
+          })}`);
+          socket.emit("driver:alert_displayed_ack", { success: true, tripId, orderId });
+        } catch (e: any) {
+          console.error("[SOCKET] driver:alert_displayed error:", e?.message || e);
+        }
+      });
+
       // ── Driver: send location update ───────────────────────────────────────
       socket.on("driver:location", async (data: { lat: number; lng: number; heading?: number; speed?: number }) => {
         try {
