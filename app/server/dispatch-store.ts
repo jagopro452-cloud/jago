@@ -10,6 +10,7 @@ export type DispatchPhase =
 
 export interface RedisDispatchSession {
   tripId: string;
+  bookingTraceId?: string;
   customerId: string;
   pickupLat: number;
   pickupLng: number;

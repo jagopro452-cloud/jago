@@ -130,6 +130,7 @@ async function isServiceEnabledForCity(
 }
 
 export async function buildDispatchRequirementsFromTripInput(input: {
+  bookingTraceId?: string | null;
   tripId?: string;
   tripType?: string | null;
   vehicleCategoryId?: string | null;
@@ -151,7 +152,7 @@ export async function buildDispatchRequirementsFromTripInput(input: {
     ? [input.vehicleCategoryId]
     : (await getMatchingDriverCategoryIds(input.vehicleCategoryId || null));
 
-  return {
+  const requirements = {
     tripId: input.tripId,
     tripType,
     dispatchServiceType,
@@ -170,9 +171,30 @@ export async function buildDispatchRequirementsFromTripInput(input: {
     requiresOutstation: serviceKey === "outstation_pool" || dispatchServiceType === "outstation_pool",
     requiresIntercity: serviceKey === "intercity_pool" || dispatchServiceType === "intercity_pool",
   };
+  if (input.tripId) {
+    console.log(`[DISPATCH_REQUIREMENTS_RESOLVED] ${JSON.stringify({
+      ts: new Date().toISOString(),
+      bookingTraceId: input.bookingTraceId || input.tripId,
+      tripId: input.tripId,
+      tripType,
+      inputVehicleCategoryId: input.vehicleCategoryId || null,
+      categoryKey: requirements.vehicleCategoryKey,
+      dispatchServiceType: requirements.dispatchServiceType,
+      platformServiceKey: requirements.platformServiceKey,
+      strictCategoryIds: requirements.strictCategoryIds,
+      requiresParcel: requirements.requiresParcel,
+      requiresPool: requirements.requiresPool,
+      requiresOutstation: requirements.requiresOutstation,
+      requiresIntercity: requirements.requiresIntercity,
+    })}`);
+  }
+  return requirements;
 }
 
-export async function resolveDispatchRequirementsFromTrip(tripId: string): Promise<DispatchRequirements | null> {
+export async function resolveDispatchRequirementsFromTrip(
+  tripId: string,
+  bookingTraceId?: string | null,
+): Promise<DispatchRequirements | null> {
   const tripR = await rawDb.execute(rawSql`
     SELECT
       t.id,
@@ -191,6 +213,7 @@ export async function resolveDispatchRequirementsFromTrip(tripId: string): Promi
   if (!tripR.rows.length) return null;
   const row = tripR.rows[0] as any;
   return buildDispatchRequirementsFromTripInput({
+    bookingTraceId: bookingTraceId || tripId,
     tripId,
     tripType: row.trip_type,
     vehicleCategoryId: row.vehicle_category_id,

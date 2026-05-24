@@ -34,7 +34,12 @@ function logRecoveryReject(
   event: "RECOVERY_TRIP_REJECTED" | "RECOVERY_CATEGORY_MISMATCH" | "RECOVERY_STALE_TRIP_BLOCKED",
   meta: Record<string, unknown>,
 ): void {
-  console.warn(`[${event}] ${JSON.stringify(meta)}`);
+  const tripId = typeof meta.tripId === "string" ? meta.tripId : null;
+  console.warn(`[${event}] ${JSON.stringify({
+    ts: new Date().toISOString(),
+    bookingTraceId: meta.bookingTraceId || tripId,
+    ...meta,
+  })}`);
 }
 
 export async function validateRecoveryTripOffer(
@@ -92,7 +97,7 @@ export async function validateRecoveryTripOffer(
     return { ok: false, reason: "missing_vehicle_category" };
   }
 
-  const requirements = await resolveDispatchRequirementsFromTrip(tripId);
+  const requirements = await resolveDispatchRequirementsFromTrip(tripId, tripId);
   if (!requirements) {
     logRecoveryReject("RECOVERY_TRIP_REJECTED", { source, tripId, driverId, reason: "requirements_missing" });
     if (clearInvalidOffer) await clearOfferIfOwned(tripId, driverId);

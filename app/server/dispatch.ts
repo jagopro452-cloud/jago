@@ -65,6 +65,7 @@ function getConfig(serviceType: string): DispatchConfig {
 
 interface DispatchSession {
   tripId: string;
+  bookingTraceId: string;
   customerId: string;
   pickupLat: number;
   pickupLng: number;
@@ -93,6 +94,7 @@ interface DispatchSession {
 }
 
 export interface TripMeta {
+  bookingTraceId?: string;
   refId: string;
   customerName: string;
   pickupAddress: string;
@@ -114,8 +116,10 @@ const activeDispatches = new Map<string, DispatchSession>();
 
 function traceDispatch(event: string, data: Record<string, unknown>): void {
   try {
+    const tripId = typeof data.tripId === "string" ? data.tripId : undefined;
     console.log(`[${event}] ${JSON.stringify({
       ts: new Date().toISOString(),
+      bookingTraceId: data.bookingTraceId || tripId || null,
       ...data,
     })}`);
   } catch {
@@ -126,6 +130,7 @@ function traceDispatch(event: string, data: Record<string, unknown>): void {
 function toRedisSession(session: DispatchSession): RedisDispatchSession {
   return {
     tripId: session.tripId,
+    bookingTraceId: session.bookingTraceId,
     customerId: session.customerId,
     pickupLat: session.pickupLat,
     pickupLng: session.pickupLng,
@@ -265,8 +270,10 @@ async function startDispatchLocked(
   cancelDispatch(tripId);
 
   const config = getConfig(serviceType);
-  const requirements = await resolveDispatchRequirementsFromTrip(tripId)
+  const bookingTraceId = tripMeta.bookingTraceId || tripId;
+  const requirements = await resolveDispatchRequirementsFromTrip(tripId, bookingTraceId)
     || await buildDispatchRequirementsFromTripInput({
+      bookingTraceId,
       tripId,
       tripType: tripMeta.tripType,
       vehicleCategoryId: vehicleCategoryId || null,
@@ -276,6 +283,7 @@ async function startDispatchLocked(
 
   const session: DispatchSession = {
     tripId,
+    bookingTraceId,
     customerId,
     pickupLat,
     pickupLng,
@@ -304,6 +312,7 @@ async function startDispatchLocked(
 
   traceDispatch("DISPATCH_STARTED", {
     tripId,
+    bookingTraceId: session.bookingTraceId,
     customerId,
     serviceType,
     vehicleCategoryId,
@@ -707,6 +716,7 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
   await persistDispatchState(session).catch(() => undefined);
 
   const payload = {
+    bookingTraceId: session.bookingTraceId,
     tripId: session.tripId,
     ...session.tripMeta,
     vehicleCategoryId: session.vehicleCategoryId || null,
@@ -747,6 +757,7 @@ async function offerTripToDriver(session: DispatchSession, driver: DriverMatchSc
       estimatedFare: session.tripMeta.estimatedFare,
       estimatedDistance: session.tripMeta.estimatedDistance,
       tripId: session.tripId,
+      bookingTraceId: session.bookingTraceId,
       vehicleCategoryId: session.vehicleCategoryId || null,
       vehicleCategoryName: session.tripMeta.vehicleCategoryName || null,
       timeoutMs: session.config.driverTimeoutMs,

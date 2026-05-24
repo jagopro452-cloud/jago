@@ -62,6 +62,8 @@ Future<void> _ackDriverAlertDisplayed(
 
     final tripId = (data['tripId'] ?? data['trip_id'] ?? data['id'] ?? '').toString();
     final orderId = (data['orderId'] ?? data['order_id'] ?? '').toString();
+    final bookingTraceId =
+        (data['bookingTraceId'] ?? data['booking_trace_id'] ?? tripId).toString();
     await http
         .post(
           Uri.parse(ApiConfig.driverAlertDisplayed),
@@ -72,6 +74,7 @@ Future<void> _ackDriverAlertDisplayed(
           body: jsonEncode({
             'tripId': tripId.isEmpty ? null : tripId,
             'orderId': orderId.isEmpty ? null : orderId,
+            'bookingTraceId': bookingTraceId.isEmpty ? null : bookingTraceId,
             'source': source,
             'channel': 'driver_fcm',
             'displayedAt': DateTime.now().toIso8601String(),
@@ -199,6 +202,10 @@ Future<void> _showDriverAlertNotification(
     ),
     payload: jsonEncode(data),
   );
+  debugPrint(
+    '[DRIVER_ALERT_DISPLAYED_LOCAL] bookingTraceId=${data['bookingTraceId'] ?? data['booking_trace_id'] ?? data['tripId'] ?? data['orderId'] ?? ''} '
+    'source=$source type=${data['type'] ?? ''}',
+  );
   await _ackDriverAlertDisplayed(data, source);
 }
 
@@ -210,6 +217,7 @@ Future<void> firebaseBackgroundMessageHandler(RemoteMessage message) async {
   if (!_isDriverAlert(data)) return;
 
   debugPrint('[FCM-BG] incoming driver alert ${data['type']}');
+  debugPrint('[FCM-BG] bookingTraceId=${data['bookingTraceId'] ?? data['booking_trace_id'] ?? data['tripId'] ?? data['orderId'] ?? ''}');
   await _persistPendingAlert(data);
 
   final plugin = await _createAlertPlugin();
@@ -315,7 +323,7 @@ class FcmService {
 
   void _onForegroundMessage(RemoteMessage message) {
     final type = message.data['type'] ?? '';
-    debugPrint('[FCM-FG] type=$type');
+    debugPrint('[FCM-FG] type=$type bookingTraceId=${message.data['bookingTraceId'] ?? message.data['booking_trace_id'] ?? message.data['tripId'] ?? message.data['orderId'] ?? ''}');
 
     if (type == 'new_trip' || type == 'new_parcel') {
       final data = Map<String, dynamic>.from(message.data);

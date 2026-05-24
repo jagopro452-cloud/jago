@@ -106,9 +106,11 @@ class SocketService {
     if (!_isConnected || _socket == null) return;
     final tripId = (data['tripId'] ?? data['trip_id'] ?? data['id'] ?? '').toString();
     final orderId = (data['orderId'] ?? data['order_id'] ?? '').toString();
+    final bookingTraceId = (data['bookingTraceId'] ?? data['booking_trace_id'] ?? tripId).toString();
     _socket!.emit('driver:alert_displayed', {
       'tripId': tripId.isEmpty ? null : tripId,
       'orderId': orderId.isEmpty ? null : orderId,
+      'bookingTraceId': bookingTraceId.isEmpty ? null : bookingTraceId,
       'source': source,
       'channel': 'driver_socket',
       'displayedAt': DateTime.now().toIso8601String(),

@@ -9236,6 +9236,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           trip: {
             ...trip,
             ...payload,
+            bookingTraceId: payload.bookingTraceId || trip.id,
             tripId: payload.tripId || trip.id,
             id: trip.id,
           },
@@ -9312,7 +9313,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           })}`);
           continue;
         }
-        return res.json({ trip, stage: "new_request" });
+        return res.json({ trip: { ...trip, bookingTraceId: trip.id, tripId: trip.tripId || trip.id }, stage: "new_request" });
       }
       res.json({ trip: null });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
@@ -9364,14 +9365,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ message: "Invalid trip ID", code: "INVALID_TRIP_ID" });
       }
       if (hasActiveDispatch(tripId) && !isDriverCurrentlyOfferedTrip(tripId, driver.id)) {
+        console.warn(`[TRIP_ACCEPT_REJECTED] ${JSON.stringify({
+          ts: new Date().toISOString(),
+          bookingTraceId: tripId,
+          tripId,
+          driverId: driver.id,
+          source: "rest_accept_trip",
+          reason: "trip_not_assigned_to_driver",
+        })}`);
         return res.status(409).json({
           message: "This ride request is no longer assigned to you.",
           code: "TRIP_NOT_ASSIGNED",
         });
       }
 
-      const dispatchRequirements = await resolveDispatchRequirementsFromTrip(tripId);
+      console.log(`[TRIP_ACCEPT_ATTEMPT] ${JSON.stringify({
+        ts: new Date().toISOString(),
+        bookingTraceId: tripId,
+        tripId,
+        driverId: driver.id,
+        source: "rest_accept_trip",
+      })}`);
+
+      const dispatchRequirements = await resolveDispatchRequirementsFromTrip(tripId, tripId);
       if (!dispatchRequirements) {
+        console.warn(`[TRIP_ACCEPT_REJECTED] ${JSON.stringify({
+          ts: new Date().toISOString(),
+          bookingTraceId: tripId,
+          tripId,
+          driverId: driver.id,
+          source: "rest_accept_trip",
+          reason: "requirements_missing",
+        })}`);
         return res.status(404).json({ message: "Trip not found", code: "TRIP_NOT_FOUND" });
       }
       const driverEligibility = await isDriverEligibleForDispatch(driver.id, dispatchRequirements);
@@ -9403,6 +9428,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           platformServiceKey: dispatchRequirements.platformServiceKey,
           vehicleCategoryId: dispatchRequirements.vehicleCategoryId,
         });
+        console.warn(`[TRIP_ACCEPT_REJECTED] ${JSON.stringify({
+          ts: new Date().toISOString(),
+          bookingTraceId: tripId,
+          tripId,
+          driverId: driver.id,
+          source: "rest_accept_trip",
+          reason,
+          platformServiceKey: dispatchRequirements.platformServiceKey,
+          vehicleCategoryId: dispatchRequirements.vehicleCategoryId,
+        })}`);
         return res.status(409).json({
           message: `Driver not eligible for this booking: ${reason}`,
           code: codeMap[reason] || "DISPATCH_MISMATCH",
@@ -9531,6 +9566,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       console.log(`[DRIVER_ACCEPT] Claiming trip ${tripId} for driver ${driver.id}`);
       if (!acceptOutcome.ok) {
+        console.warn(`[TRIP_ACCEPT_REJECTED] ${JSON.stringify({
+          ts: new Date().toISOString(),
+          bookingTraceId: tripId,
+          tripId,
+          driverId: driver.id,
+          source: "rest_accept_trip",
+          reason: acceptOutcome.code || "accept_failed",
+        })}`);
         if (acceptOutcome.code === "DRIVER_BUSY") {
           onDriverRejected(tripId, driver.id).catch((err: any) => {
             console.error("[DISPATCH] reject after driver busy:", err.message);
@@ -9548,6 +9591,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       onDriverAccepted(tripId, driver.id);
 
       const tripData = camelize(acceptOutcome.trip) as any;
+      console.log(`[TRIP_ACCEPTED] ${JSON.stringify({
+        ts: new Date().toISOString(),
+        bookingTraceId: tripId,
+        tripId,
+        driverId: driver.id,
+        source: "rest_accept_trip",
+        currentStatus: tripData.currentStatus || tripData.current_status || "accepted",
+      })}`);
       const driverVehicleR = await rawDb.execute(rawSql`
         SELECT dd.vehicle_number, dd.vehicle_model, vc.name as vehicle_category
         FROM driver_details dd
@@ -11063,6 +11114,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/customer/book-ride", authApp, requireCustomer, async (req, res) => {
     try {
       const customer = (req as any).currentUser;
+      const bookingTraceId = crypto.randomUUID();
       const {
         pickupAddress, pickupLat, pickupLng,
         pickupShortName,
@@ -11079,6 +11131,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Online payment ï¿½ used to link customer_payments ? trip for refund on cancel
         razorpayPaymentId
       } = req.body;
+
+      console.log(`[BOOKING_PAYLOAD_RECEIVED] ${JSON.stringify({
+        ts: new Date().toISOString(),
+        bookingTraceId,
+        customerId: customer.id,
+        requestedTripType: tripType,
+        requestedVehicleCategoryId: vehicleCategoryId || null,
+        requestedVehicleType: vehicleType || null,
+        hasPickup: Boolean(pickupAddress && pickupLat && pickupLng),
+        hasDestination: Boolean((destinationAddress || destAddress) && (destinationLat || destLat) && (destinationLng || destLng)),
+        paymentMethod: paymentMethod || paymentMode || "cash",
+      })}`);
 
       // -- SECURITY: Validate pickup and destination coordinates --
       const validPickupCoords = validateLatLng(pickupLat, pickupLng);
@@ -11102,9 +11166,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           tripType,
         });
       } catch (categoryErr: any) {
-        console.warn(`[BOOKING_REJECTED] customer=${customer.id} reason=INVALID_VEHICLE_CATEGORY raw=${String(vehicleCategoryId || "")}`);
+        console.warn(`[BOOKING_REJECTED] ${JSON.stringify({
+          ts: new Date().toISOString(),
+          bookingTraceId,
+          customerId: customer.id,
+          reason: "INVALID_VEHICLE_CATEGORY",
+          rawVehicleCategoryId: String(vehicleCategoryId || ""),
+          requestedVehicleType: vehicleType || null,
+        })}`);
         return res.status(400).json({
           success: false,
+          bookingTraceId,
           error: "INVALID_VEHICLE_CATEGORY",
         });
       }
@@ -11402,6 +11474,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       console.log(`[BOOKING_CREATED] ${JSON.stringify({
         ts: new Date().toISOString(),
+        bookingTraceId,
         tripId: tripRow.id,
         customerId: customer.id,
         tripType,
@@ -11426,6 +11499,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const serviceType = resolveServiceType(tripType, vcName);
 
       const dispatchMeta: TripMeta = {
+        bookingTraceId,
         refId: tripRow.refId,
         customerName: customer.fullName || "Customer",
         pickupAddress: pickupAddress || "",
@@ -11451,7 +11525,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         serviceType,
         dispatchMeta
       ).catch((err: any) => {
-        console.error('[DISPATCH] startDispatch error:', err.message);
+        console.error(`[DISPATCH] startDispatch error bookingTraceId=${bookingTraceId}:`, err.message);
         rawDb.execute(rawSql`
           UPDATE trip_requests
           SET current_status='cancelled',
@@ -11469,6 +11543,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       res.json({
         success: true,
+        bookingTraceId,
         trip: tripRow,
         driver: null,
         status: "searching",
@@ -12689,14 +12764,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/app/driver/alert-displayed", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
-      const { tripId, orderId, source, channel, displayedAt } = req.body || {};
+      const { tripId, orderId, bookingTraceId, source, channel, displayedAt } = req.body || {};
       const safeTripId = typeof tripId === "string" && tripId.trim() ? tripId.trim() : null;
       const safeOrderId = typeof orderId === "string" && orderId.trim() ? orderId.trim() : null;
+      const safeBookingTraceId = typeof bookingTraceId === "string" && bookingTraceId.trim()
+        ? bookingTraceId.trim().slice(0, 128)
+        : safeTripId;
       const safeSource = typeof source === "string" && source.trim() ? source.trim().slice(0, 64) : "unknown";
       const safeChannel = typeof channel === "string" && channel.trim() ? channel.trim().slice(0, 64) : "driver_app";
 
       console.log(`[DRIVER_ALERT_DISPLAYED] ${JSON.stringify({
         ts: new Date().toISOString(),
+        bookingTraceId: safeBookingTraceId,
         driverId: driver.id,
         tripId: safeTripId,
         orderId: safeOrderId,

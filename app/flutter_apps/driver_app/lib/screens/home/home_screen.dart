@@ -228,6 +228,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       if (trip is! Map) return null;
       final tripMap = Map<String, dynamic>.from(trip);
       tripMap['tripId'] = tripMap['tripId'] ?? tripMap['id'];
+      tripMap['bookingTraceId'] = tripMap['bookingTraceId'] ??
+          candidate?['bookingTraceId'] ??
+          candidate?['booking_trace_id'] ??
+          tripMap['tripId'];
       final serverTripId = (tripMap['tripId'] ?? tripMap['id'] ?? '').toString();
       if (candidateTripId.isNotEmpty && serverTripId != candidateTripId) {
         return null;
@@ -251,6 +255,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       final headers = await AuthService.getHeaders();
       final tripId = (data['tripId'] ?? data['trip_id'] ?? data['id'] ?? '').toString();
       final orderId = (data['orderId'] ?? data['order_id'] ?? '').toString();
+      final bookingTraceId =
+          (data['bookingTraceId'] ?? data['booking_trace_id'] ?? tripId).toString();
       await http
           .post(
             Uri.parse(ApiConfig.driverAlertDisplayed),
@@ -261,6 +267,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             body: jsonEncode({
               'tripId': tripId.isEmpty ? null : tripId,
               'orderId': orderId.isEmpty ? null : orderId,
+              'bookingTraceId': bookingTraceId.isEmpty ? null : bookingTraceId,
               'source': source,
               'channel': 'driver_app',
               'displayedAt': DateTime.now().toIso8601String(),
@@ -282,6 +289,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     }
     setState(() => _incomingTrip = validatedTrip);
     _showIncomingTrip();
+    debugPrint(
+      '[DRIVER_ALERT_DISPLAYED_LOCAL] bookingTraceId=${validatedTrip['bookingTraceId'] ?? validatedTrip['tripId'] ?? ''} source=in_app_popup',
+    );
     unawaited(_ackDriverAlertDisplayed(validatedTrip, 'in_app_popup'));
   }
 

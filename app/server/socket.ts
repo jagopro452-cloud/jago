@@ -54,11 +54,16 @@ export async function hasActiveDriverSocket(driverId: string): Promise<boolean> 
 
 async function disconnectDuplicateUserSockets(userId: string, currentSocketId: string) {
   const sockets = await io.in(`user:${userId}`).fetchSockets();
-  await Promise.all(
-    sockets
-      .filter((candidate) => candidate.id !== currentSocketId)
-      .map((candidate) => candidate.disconnect(true)),
-  );
+  const duplicates = sockets.filter((candidate) => candidate.id !== currentSocketId);
+  if (duplicates.length) {
+    console.warn(`[SOCKET_DUPLICATE_CLEANUP] ${JSON.stringify({
+      ts: new Date().toISOString(),
+      userId,
+      currentSocketId,
+      duplicateCount: duplicates.length,
+    })}`);
+  }
+  await Promise.all(duplicates.map((candidate) => candidate.disconnect(true)));
 }
 
 // Grace-period timers: when a driver socket disconnects we wait before marking them offline.
@@ -222,6 +227,13 @@ export function setupSocket(httpServer: HttpServer) {
 
     // Join personal room
     socket.join(`user:${userId}`);
+    console.log(`[SOCKET_ROOM_JOINED] ${JSON.stringify({
+      ts: new Date().toISOString(),
+      userId,
+      userType,
+      socketId: socket.id,
+      room: `user:${userId}`,
+    })}`);
 
     if (userType === "admin") {
       socket.join("admin:ops");
@@ -269,15 +281,19 @@ export function setupSocket(httpServer: HttpServer) {
       }, SOCKET_PRESENCE_HEARTBEAT_MS);
       socket.once("disconnect", () => clearInterval(driverPresenceHeartbeat));
 
-      socket.on("driver:alert_displayed", async (data: { tripId?: string; orderId?: string; source?: string; channel?: string; displayedAt?: string }) => {
+      socket.on("driver:alert_displayed", async (data: { tripId?: string; orderId?: string; bookingTraceId?: string; source?: string; channel?: string; displayedAt?: string }) => {
         try {
           const tripId = typeof data?.tripId === "string" && data.tripId.trim() ? data.tripId.trim() : null;
           const orderId = typeof data?.orderId === "string" && data.orderId.trim() ? data.orderId.trim() : null;
+          const bookingTraceId = typeof data?.bookingTraceId === "string" && data.bookingTraceId.trim()
+            ? data.bookingTraceId.trim().slice(0, 128)
+            : tripId;
           const source = typeof data?.source === "string" && data.source.trim() ? data.source.trim().slice(0, 64) : "socket";
           const channel = typeof data?.channel === "string" && data.channel.trim() ? data.channel.trim().slice(0, 64) : "driver_app";
           noteSocketActivity({ userId, userType: "driver", tripId: tripId || undefined });
           console.log(`[DRIVER_ALERT_DISPLAYED] ${JSON.stringify({
             ts: new Date().toISOString(),
+            bookingTraceId,
             driverId: userId,
             socketId: socket.id,
             tripId,
@@ -288,6 +304,7 @@ export function setupSocket(httpServer: HttpServer) {
           })}`);
           console.log(`[SOCKET_ACK_RECEIVED] ${JSON.stringify({
             ts: new Date().toISOString(),
+            bookingTraceId,
             driverId: userId,
             socketId: socket.id,
             tripId,
@@ -295,7 +312,7 @@ export function setupSocket(httpServer: HttpServer) {
             event: "driver:alert_displayed",
             source,
           })}`);
-          socket.emit("driver:alert_displayed_ack", { success: true, tripId, orderId });
+          socket.emit("driver:alert_displayed_ack", { success: true, tripId, orderId, bookingTraceId });
         } catch (e: any) {
           console.error("[SOCKET] driver:alert_displayed error:", e?.message || e);
         }
@@ -455,6 +472,27 @@ export function setupSocket(httpServer: HttpServer) {
         console.log(`[SOCKET] driver:accept_trip received for trip ${data.tripId} from driver ${userId}`);
         try {
           const { tripId } = data;
+          const bookingTraceId = tripId;
+          const logAcceptRejected = (reason: string, extra: Record<string, unknown> = {}) => {
+            console.warn(`[TRIP_ACCEPT_REJECTED] ${JSON.stringify({
+              ts: new Date().toISOString(),
+              bookingTraceId,
+              tripId,
+              driverId: userId,
+              socketId: socket.id,
+              source: "socket_accept_trip",
+              reason,
+              ...extra,
+            })}`);
+          };
+          console.log(`[TRIP_ACCEPT_ATTEMPT] ${JSON.stringify({
+            ts: new Date().toISOString(),
+            bookingTraceId,
+            tripId,
+            driverId: userId,
+            socketId: socket.id,
+            source: "socket_accept_trip",
+          })}`);
           const pickupOtp = Math.floor(1000 + Math.random() * 9000).toString();
           // Gate driver state before trip claim to prevent bypassing HTTP checks.
           const driverStateR = await rawDb.execute(rawSql`
@@ -465,10 +503,12 @@ export function setupSocket(httpServer: HttpServer) {
           `);
           const driverState = driverStateR.rows[0] as any;
           if (!driverState || driverState.user_type !== 'driver') {
+            logAcceptRejected("not_driver_socket");
             socket.emit("driver:accept_trip_error", { message: "Only drivers can accept trips" });
             return;
           }
           if (driverState.is_locked) {
+            logAcceptRejected("account_locked");
             socket.emit("driver:accept_trip_error", {
               message: "Account locked. Clear dues to continue",
               code: "ACCOUNT_LOCKED",
@@ -476,6 +516,7 @@ export function setupSocket(httpServer: HttpServer) {
             return;
           }
           if (driverState.current_trip_id) {
+            logAcceptRejected("driver_busy_current_trip");
             socket.emit("driver:accept_trip_error", { message: "You already have an active trip" });
             return;
           }
@@ -486,10 +527,12 @@ export function setupSocket(httpServer: HttpServer) {
             LIMIT 1
           `);
           if (busyR.rows.length) {
+            logAcceptRejected("driver_busy_active_trip");
             socket.emit("driver:accept_trip_error", { message: "You already have an active trip" });
             return;
           }
           if (hasActiveDispatch(tripId) && !isDriverCurrentlyOfferedTrip(tripId, userId)) {
+            logAcceptRejected("trip_not_assigned_to_driver");
             socket.emit("driver:accept_trip_error", {
               message: "This ride request is no longer assigned to you.",
               code: "TRIP_NOT_ASSIGNED",
@@ -508,12 +551,14 @@ export function setupSocket(httpServer: HttpServer) {
             WHERE t.id=${tripId}::uuid AND t.current_status IN ('searching','driver_assigned')
           `);
           if (!tripR.rows.length) {
+            logAcceptRejected("trip_not_available");
             socket.emit("driver:accept_trip_error", { message: "Trip no longer available" });
             return;
           }
           const trip = camelize(tripR.rows[0]) as any;
-          const dispatchRequirements = await resolveDispatchRequirementsFromTrip(tripId);
+          const dispatchRequirements = await resolveDispatchRequirementsFromTrip(tripId, bookingTraceId);
           if (!dispatchRequirements) {
+            logAcceptRejected("requirements_missing");
             socket.emit("driver:accept_trip_error", { message: "Trip no longer available", code: "TRIP_NOT_FOUND" });
             return;
           }
@@ -524,6 +569,10 @@ export function setupSocket(httpServer: HttpServer) {
               driverId: userId,
               reason: driverEligibility.reason || "dispatch_mismatch",
               tripType: dispatchRequirements.tripType,
+              platformServiceKey: dispatchRequirements.platformServiceKey,
+              vehicleCategoryId: dispatchRequirements.vehicleCategoryId,
+            });
+            logAcceptRejected(driverEligibility.reason || "dispatch_mismatch", {
               platformServiceKey: dispatchRequirements.platformServiceKey,
               vehicleCategoryId: dispatchRequirements.vehicleCategoryId,
             });
@@ -584,9 +633,19 @@ export function setupSocket(httpServer: HttpServer) {
             return { ok: true as const };
           });
           if (!acceptOutcome.ok) {
+            logAcceptRejected(acceptOutcome.message || "accept_failed");
             socket.emit("driver:accept_trip_error", { message: acceptOutcome.message });
             return;
           }
+          console.log(`[TRIP_ACCEPTED] ${JSON.stringify({
+            ts: new Date().toISOString(),
+            bookingTraceId,
+            tripId,
+            driverId: userId,
+            socketId: socket.id,
+            source: "socket_accept_trip",
+            currentStatus: "accepted",
+          })}`);
           await appendTripStatus(tripId, "accepted", "driver", "Driver accepted trip via socket");
           await logRideLifecycleEvent(tripId, "trip_accepted", userId, "driver", {
             via: "socket",
@@ -1562,7 +1621,7 @@ export async function notifyNearbyDriversNewTrip(
     `);
     if (!tripR.rows.length) return;
     const trip = camelize(tripR.rows[0]) as any;
-    const requirements = await resolveDispatchRequirementsFromTrip(tripId);
+    const requirements = await resolveDispatchRequirementsFromTrip(tripId, tripId);
     if (!requirements) return;
     const strictDrivers = await findEligibleDriversForDispatch({
       pickupLat,
@@ -1598,6 +1657,7 @@ export async function notifyNearbyDriversNewTrip(
         continue;
       }
       const payload = {
+        bookingTraceId: tripId,
         tripId,
         refId: trip.refId,
         customerName: trip.customerName,
@@ -1615,6 +1675,14 @@ export async function notifyNearbyDriversNewTrip(
       };
       // Socket (foreground) + FCM (background)
       io.to(`user:${driverId}`).emit("trip:new_request", payload);
+      console.log(`[SOCKET_EMIT_SENT] ${JSON.stringify({
+        ts: new Date().toISOString(),
+        bookingTraceId: payload.bookingTraceId,
+        tripId,
+        driverId,
+        source: "notify_nearby_drivers_new_trip",
+        event: "trip:new_request",
+      })}`);
       const fcmToken = fcmMap[driverId];
       if (fcmToken) {
         notifyDriverNewRide({
@@ -1624,6 +1692,7 @@ export async function notifyNearbyDriversNewTrip(
           pickupAddress: trip.pickupAddress,
           estimatedFare: trip.estimatedFare,
           tripId,
+          bookingTraceId: payload.bookingTraceId,
         }).catch(() => { });
       }
     }
@@ -1679,7 +1748,7 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
         })}`);
         continue;
       }
-      const requirements = await resolveDispatchRequirementsFromTrip(trip.id);
+      const requirements = await resolveDispatchRequirementsFromTrip(trip.id, trip.id);
       if (!requirements) {
         console.warn(`[RECOVERY_TRIP_REJECTED] ${JSON.stringify({
           source: "socket_driver_online_nearby_scan",
@@ -1701,7 +1770,8 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
         })}`);
         continue;
       }
-      io.to(`user:${driverId}`).emit("trip:new_request", {
+      const payload = {
+        bookingTraceId: trip.id,
         tripId: trip.id,
         refId: trip.refId,
         customerName: trip.customerName,
@@ -1715,7 +1785,16 @@ async function notifyDriverNearbyTrips(driverId: string, lat: number, lng: numbe
         vehicleCategoryName: trip.vehicleName || trip.vehicleTypeName || null,
         vehicleIcon: trip.vehicleIcon || null,
         vehicleType: trip.vehicleTypeField || null,
-      });
+      };
+      io.to(`user:${driverId}`).emit("trip:new_request", payload);
+      console.log(`[SOCKET_EMIT_SENT] ${JSON.stringify({
+        ts: new Date().toISOString(),
+        bookingTraceId: payload.bookingTraceId,
+        tripId: trip.id,
+        driverId,
+        source: "socket_driver_online_nearby_scan",
+        event: "trip:new_request",
+      })}`);
     }
   } catch (e: any) {
     console.error("[SOCKET] notifyDriverNearbyTrips error:", e.message);

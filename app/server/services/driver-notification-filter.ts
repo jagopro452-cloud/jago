@@ -24,7 +24,12 @@ type ValidateDriverTripNotificationResult = {
 };
 
 function logFilterReject(event: FilterLogEvent, meta: Record<string, unknown>): void {
-  console.warn(`[${event}] ${JSON.stringify(meta)}`);
+  const tripId = typeof meta.tripId === "string" ? meta.tripId : null;
+  console.warn(`[${event}] ${JSON.stringify({
+    ts: new Date().toISOString(),
+    bookingTraceId: meta.bookingTraceId || tripId,
+    ...meta,
+  })}`);
 }
 
 function classifyReject(requirements: DispatchRequirements | null | undefined, reason: string): FilterLogEvent {
@@ -49,7 +54,7 @@ function classifyReject(requirements: DispatchRequirements | null | undefined, r
 export async function validateDriverTripNotificationTarget(
   input: ValidateDriverTripNotificationInput,
 ): Promise<ValidateDriverTripNotificationResult> {
-  const requirements = input.requirements || await resolveDispatchRequirementsFromTrip(input.tripId);
+  const requirements = input.requirements || await resolveDispatchRequirementsFromTrip(input.tripId, input.tripId);
   if (!requirements) {
     const meta = {
       source: input.source,

@@ -48,17 +48,12 @@ async function initFirebaseAsync() {
   if (fcmInitialized) return;
   fcmInitialized = true;
 
-  // Only use env var for service account
-  let serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (!serviceAccountJson) {
-    try {
-      const r = await rawDb.execute(rawSql`SELECT value FROM business_settings WHERE key_name='firebase_service_account' LIMIT 1`);
-      const val = (r.rows[0] as any)?.value?.trim();
-      if (val && val.startsWith("{")) serviceAccountJson = val;
-    } catch (_) {}
-  }
+  // Only use the explicit Admin SDK service-account JSON from production env.
+  // A DB fallback can silently resurrect revoked credentials, so do not use one.
+  const serviceAccountJson = (process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "").trim();
 
   if (!serviceAccountJson) {
+    lastFcmError = "FIREBASE_SERVICE_ACCOUNT_KEY is required";
     log("[FCM] Firebase service account not configured — push notifications disabled", "fcm");
     return;
   }
@@ -73,6 +68,9 @@ async function initFirebaseAsync() {
         throw new Error("Malformed Firebase service account");
       }
       const expectedProject = (process.env.FIREBASE_PROJECT_ID || "").trim();
+      if (process.env.NODE_ENV === "production" && !expectedProject) {
+        throw new Error("FIREBASE_PROJECT_ID is required in production");
+      }
       if (expectedProject && serviceAccount.project_id !== expectedProject) {
         throw new Error(`Firebase project mismatch: env=${expectedProject} serviceAccount=${serviceAccount.project_id}`);
       }
@@ -88,6 +86,7 @@ async function initFirebaseAsync() {
     log("[FCM] Firebase Admin initialized successfully", "fcm");
   } catch (e: any) {
     admin = null;
+    fcmInitialized = false;
     lastFcmError = e?.message || "Firebase Admin initialization failed";
     log(`[FCM] Init failed: ${e.message}`, "fcm");
   }
@@ -260,6 +259,7 @@ export async function notifyDriverNewRide(opts: {
   estimatedFare: number;
   estimatedDistance?: number | string;
   tripId: string;
+  bookingTraceId?: string | null;
   vehicleCategoryId?: string | null;
   vehicleCategoryName?: string | null;
   timeoutMs?: number;
@@ -275,6 +275,7 @@ export async function notifyDriverNewRide(opts: {
     data: {
       type: "new_trip",
       tripId: opts.tripId,
+      bookingTraceId: opts.bookingTraceId || opts.tripId,
       customerName: opts.customerName,
       pickupAddress: opts.pickupAddress,
       destinationAddress: opts.destinationAddress || "",
