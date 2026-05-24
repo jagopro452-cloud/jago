@@ -1973,10 +1973,67 @@ async function ensureOperationalSchema() {
       WHERE vc.type = 'ride'
     `).catch(dbCatch("db"));
     await rawDb.execute(rawSql`
+      WITH ranked_parcel AS (
+        SELECT
+          id,
+          ROW_NUMBER() OVER (
+            PARTITION BY
+              LOWER(COALESCE(service_type, 'parcel')),
+              LOWER(COALESCE(NULLIF(vehicle_type, ''), name))
+            ORDER BY
+              CASE
+                WHEN LOWER(name) IN ('bike parcel','auto parcel','mini truck','pickup truck','bolero cargo','tempo 407') THEN 0
+                ELSE 1
+              END,
+              created_at ASC NULLS LAST,
+              id
+          ) AS rn
+        FROM vehicle_categories
+        WHERE LOWER(COALESCE(type, '')) IN ('parcel','cargo')
+           OR LOWER(COALESCE(service_type, '')) IN ('parcel','cargo')
+      )
       UPDATE vehicle_categories vc
-      SET is_active = COALESCE((SELECT service_status='active' FROM platform_services WHERE service_key='parcel_delivery' LIMIT 1), vc.is_active)
-      WHERE vc.type = 'parcel'
-    `).catch(dbCatch("db"));
+      SET is_active = false
+      FROM ranked_parcel rp
+      WHERE vc.id = rp.id
+        AND rp.rn > 1
+    `).catch(dbCatch("vehicle-category-parcel-dedup-sync"));
+    await rawDb.execute(rawSql`
+      WITH parcel_gate AS (
+        SELECT COALESCE((
+          SELECT service_status = 'active'
+          FROM platform_services
+          WHERE service_key = 'parcel_delivery'
+          LIMIT 1
+        ), true) AS enabled
+      ),
+      ranked_parcel AS (
+        SELECT
+          id,
+          ROW_NUMBER() OVER (
+            PARTITION BY
+              LOWER(COALESCE(service_type, 'parcel')),
+              LOWER(COALESCE(NULLIF(vehicle_type, ''), name))
+            ORDER BY
+              CASE
+                WHEN LOWER(name) IN ('bike parcel','auto parcel','mini truck','pickup truck','bolero cargo','tempo 407') THEN 0
+                ELSE 1
+              END,
+              created_at ASC NULLS LAST,
+              id
+          ) AS rn
+        FROM vehicle_categories
+        WHERE LOWER(COALESCE(type, '')) IN ('parcel','cargo')
+           OR LOWER(COALESCE(service_type, '')) IN ('parcel','cargo')
+      )
+      UPDATE vehicle_categories vc
+      SET is_active = CASE
+        WHEN (SELECT enabled FROM parcel_gate) THEN ranked_parcel.rn = 1
+        ELSE false
+      END
+      FROM ranked_parcel
+      WHERE vc.id = ranked_parcel.id
+    `).catch(dbCatch("vehicle-category-parcel-activation-sync"));
     console.log('[seed] vehicle_categories.is_active synced with platform_services');
 
     // -- Auto-promote pending drivers to verified so they can go online ------
