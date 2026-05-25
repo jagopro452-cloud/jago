@@ -10175,6 +10175,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           UPDATE trip_requests
           SET current_status='completed',
               ride_ended_at=NOW(),
+              completed_at=NOW(),
               actual_fare=${fare},
               actual_distance=${parseFloat(actualDistance) || parseFloat(tripRow.estimated_distance) || 0},
               tips=${tipsVal},
@@ -10303,8 +10304,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await tx.execute(rawSql`
           UPDATE users
           SET current_trip_id=NULL
-          WHERE id=${driver.id}::uuid
-            AND current_trip_id=${tripId}::uuid
+          WHERE current_trip_id=${tripId}::uuid
         `);
 
         return { ok: true as const, completedTrip };
@@ -11635,7 +11635,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           AND t.updated_at > NOW() - INTERVAL '12 hours'
         ORDER BY t.created_at DESC LIMIT 1
       `);
-      if (!r.rows.length) return res.json({ trip: null });
+      if (!r.rows.length) {
+        await rawDb.execute(rawSql`
+          UPDATE users
+          SET current_trip_id=NULL
+          WHERE id=${customer.id}::uuid
+            AND current_trip_id IS NOT NULL
+            AND current_trip_id NOT IN (
+              SELECT id
+              FROM trip_requests
+              WHERE current_status IN ('searching','driver_assigned','accepted','arrived','on_the_way')
+            )
+        `).catch(() => {});
+        return res.json({ trip: null });
+      }
       const trip = camelize(r.rows[0]) as any;
       await noteRecoveryAudit({
         tripId: String(trip.id),
@@ -11724,6 +11737,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       const booking = ride || parcel;
+      if (!booking) {
+        await rawDb.execute(rawSql`
+          UPDATE users
+          SET current_trip_id=NULL
+          WHERE id=${customer.id}::uuid
+            AND current_trip_id IS NOT NULL
+            AND current_trip_id NOT IN (
+              SELECT id
+              FROM trip_requests
+              WHERE current_status IN ('searching','driver_assigned','accepted','arrived','on_the_way')
+            )
+        `).catch(() => {});
+      }
       return res.json({
         success: true,
         bookingType: ride ? "ride" : parcel ? "parcel" : null,

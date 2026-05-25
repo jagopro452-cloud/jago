@@ -103,6 +103,36 @@ class _TrackingScreenState extends State<TrackingScreen>
     return status == 'in_progress' || status == 'on_the_way';
   }
 
+  void _cleanupTerminalRideState(String status) {
+    _pollTimer?.cancel();
+    _searchTimeoutTimer?.cancel();
+    _nearbyDriversTimer?.cancel();
+    _driverAnimationTimer?.cancel();
+    try {
+      _socket.stopTrackingTrip(widget.tripId);
+      if (CallService().activeCallTripId == widget.tripId) {
+        CallService().hangUp();
+      }
+      _tts.stop();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _status = status;
+      _polylines.clear();
+      _nearbyDrivers = [];
+      if (status == 'cancelled') {
+        _driverLatLng = null;
+        _trip = {
+          ...?_trip,
+          'driverName': null,
+          'driverPhone': null,
+          'driverVehicleNumber': null,
+          'driverVehicleModel': null,
+        };
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -163,6 +193,11 @@ class _TrackingScreenState extends State<TrackingScreen>
     _subs.add(_socket.onTripStatus.listen((data) {
       try {
         final newStatus = _normalizeTripStatus(data['status']);
+        if (newStatus == 'completed' || newStatus == 'cancelled') {
+          _cleanupTerminalRideState(newStatus);
+          _handleStatusTransition(newStatus);
+          return;
+        }
 
         if ((newStatus == 'cancelled' || newStatus == 'searching') &&
             _isLiveTripStatus(_status)) {
@@ -349,13 +384,7 @@ class _TrackingScreenState extends State<TrackingScreen>
     _subs.add(_socket.onTripCancelled.listen((data) {
       if (!mounted) return;
       if (!_isSameTripEvent(data)) return;
-      if (_isLiveTripStatus(_status)) {
-        debugPrint('[SOCKET] Verifying late cancel event after trip start');
-        _pollStatus();
-        return;
-      }
-      setState(() => _status = 'cancelled');
-      _pollTimer?.cancel();
+      _cleanupTerminalRideState('cancelled');
       _showStatusBanner('Trip was cancelled', Colors.red);
       _announceStatus('cancelled');
     }));
@@ -1294,6 +1323,20 @@ class _TrackingScreenState extends State<TrackingScreen>
         final trip = data['trip'];
         if (trip != null) {
           final resolvedStatus = _normalizeTripStatus(trip['currentStatus']);
+          if (resolvedStatus == 'completed' || resolvedStatus == 'cancelled') {
+            if (resolvedStatus == 'completed') {
+              _walletPendingAmount = double.tryParse(
+                    trip['walletPendingAmount']?.toString() ??
+                        trip['pendingPaymentAmount']?.toString() ??
+                        '0',
+                  ) ??
+                  _walletPendingAmount;
+              _trip = Map<String, dynamic>.from(trip);
+            }
+            _cleanupTerminalRideState(resolvedStatus);
+            _handleStatusTransition(resolvedStatus);
+            return;
+          }
 
           const statusRank = {
             'searching': 0,
@@ -1642,7 +1685,9 @@ class _TrackingScreenState extends State<TrackingScreen>
                                       children: [
                                         _buildPremiumHeader(statusInfo, otp),
                                         const SizedBox(height: 14),
-                                        if (_status != 'searching') ...[
+                                        if (_status != 'searching' &&
+                                            _status != 'cancelled' &&
+                                            _status != 'completed') ...[
                                           if (driverName != null)
                                             _buildPremiumDriverCard(
                                               name: driverName,
@@ -1674,7 +1719,9 @@ class _TrackingScreenState extends State<TrackingScreen>
                                               statusInfo['color'] as Color),
                                           const SizedBox(height: 16),
                                         ],
-                                        if (trip != null) ...[
+                                        if (trip != null &&
+                                            _status != 'cancelled' &&
+                                            _status != 'completed') ...[
                                           if (_status == 'in_progress' ||
                                               _status == 'on_the_way')
                                             _buildInProgressPanel(trip)
@@ -2271,17 +2318,29 @@ class _TrackingScreenState extends State<TrackingScreen>
     }
   }
 
+  String _formatTripMoney(dynamic value) {
+    final n = double.tryParse(value?.toString() ?? '') ?? 0;
+    return '₹${n.toStringAsFixed(0)}';
+  }
+
+  String _formatTripDistance(dynamic value) {
+    final n = double.tryParse(value?.toString() ?? '') ?? 0;
+    if (n <= 0) return '--';
+    return '${n.toStringAsFixed(1)} km';
+  }
+
   Widget _buildFareRow(
       Map<String, dynamic> trip, dynamic actualFare, dynamic estimatedFare) {
     final fareVal = actualFare ?? estimatedFare;
-    final dist = trip['estimatedDistance'] ?? trip['estimated_distance'];
+    final dist = _formatTripDistance(
+        trip['estimatedDistance'] ?? trip['estimated_distance']);
     final vehicle = trip['vehicleName'] ?? trip['vehicle_name'];
     return Wrap(spacing: 8, children: [
       if (fareVal != null)
         _chip(
-            Icons.currency_rupee_rounded, '₹$fareVal', const Color(0xFF10B981)),
-      if (dist != null)
-        _chip(Icons.route_rounded, '$dist km', const Color(0xFF6B7280)),
+            Icons.currency_rupee_rounded, _formatTripMoney(fareVal), const Color(0xFF10B981)),
+      if (dist != '--')
+        _chip(Icons.route_rounded, dist, const Color(0xFF6B7280)),
       if (vehicle != null)
         _chip(Icons.electric_bike, vehicle.toString(), const Color(0xFF6B7280)),
     ]);
@@ -2524,7 +2583,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                   ],
                 ),
               ),
-              if (dist != null)
+              if (dist != '--')
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -2532,7 +2591,7 @@ class _TrackingScreenState extends State<TrackingScreen>
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: JT.border)),
-                  child: Text('$dist km',
+                  child: Text(dist,
                       style: GoogleFonts.poppins(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,

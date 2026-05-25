@@ -37,6 +37,17 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
   bool _isRatingSubmitted = false;
   int _currentIndex = 0; // For bottom nav mock consistency
 
+  String _formatMoney(dynamic value) {
+    final n = double.tryParse(value?.toString() ?? '') ?? 0;
+    return '₹${n.toStringAsFixed(0)}';
+  }
+
+  String _formatDistance(dynamic value) {
+    final n = double.tryParse(value?.toString() ?? '') ?? 0;
+    if (n <= 0) return '--';
+    return '${n.toStringAsFixed(1)} km';
+  }
+
   @override
   Widget build(BuildContext context) {
     final trip = widget.trip;
@@ -59,9 +70,10 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
                  trip['estimatedFare'] ?? trip['estimated_fare'] ?? 
                  trip['fare'] ?? '0.00';
     
-    final actualFare = fare.toString();
+    final actualFare = _formatMoney(fare);
     final distance = trip['estimatedDistance'] ?? trip['estimated_distance'] ?? 
                      trip['distanceKm'] ?? trip['distance_km'] ?? '';
+    final distanceText = _formatDistance(distance);
     final pendingAmount = widget.walletPendingAmount;
 
     return Scaffold(
@@ -188,7 +200,7 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
                             _buildActionRow(driverName),
                             const SizedBox(height: 16),
 
-                            _buildTripHighlights(actualFare, distance),
+                            _buildTripHighlights(actualFare, distanceText),
                             const SizedBox(height: 20),
 
                             // Route Details
@@ -196,7 +208,7 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
                             const SizedBox(height: 24),
 
                             // Final Fare
-                            _buildFareDisplay(actualFare, distance),
+                            _buildFareDisplay(actualFare, distanceText),
                             if (pendingAmount > 0) ...[
                               const SizedBox(height: 12),
                               _buildPendingPayment(pendingAmount),
@@ -446,7 +458,7 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
         _highlightChip(
           icon: Icons.currency_rupee_rounded,
           label: 'FARE',
-          value: '₹${actualFare.toString()}',
+          value: actualFare.toString(),
           accent: JT.success,
         ),
         if (distance.toString().isNotEmpty) ...[
@@ -454,7 +466,7 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
           _highlightChip(
             icon: Icons.route_rounded,
             label: 'DISTANCE',
-            value: '${distance.toString()} km',
+            value: distance.toString(),
             accent: _rideSecondary,
           ),
         ],
@@ -653,7 +665,7 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
                 ),
               ),
               Text(
-                '₹${actualFare.toString()}',
+                actualFare.toString(),
                 style: GoogleFonts.outfit(
                   fontSize: 24,
                   fontWeight: FontWeight.w800,
@@ -675,7 +687,7 @@ class _TripCompletionScreenState extends State<TripCompletionScreen> {
                   ),
                 ),
                 Text(
-                  '${distance.toString()} km',
+                  distance.toString(),
                   style: GoogleFonts.poppins(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,

@@ -9,3 +9,4 @@ app/test-results/
 
 # Local nested worktree used for production recovery history.
 jago-Updates-23-04-jago/
+node_modules

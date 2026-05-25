@@ -18,6 +18,7 @@ import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
 import '../../services/call_service.dart';
 import '../../services/trip_service.dart';
+import '../../widgets/jago_mobility_ui.dart';
 import '../call/call_screen.dart';
 import '../chat/trip_chat_sheet.dart';
 import '../home/home_screen.dart';
@@ -74,6 +75,7 @@ class _TripScreenState extends State<TripScreen>
   String _status = 'accepted';
   Map<String, dynamic>? _trip;
   bool _loading = false;
+  bool _terminalCleanupInProgress = false;
   bool _nearPickup = false;
   final _otpCtrl = TextEditingController();
   Timer? _locationTimer;
@@ -160,15 +162,16 @@ class _TripScreenState extends State<TripScreen>
         final serverTrip = data['trip'];
         if (serverTrip == null) {
           // No active trip on server — this screen is stale
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Trip no longer active. Returning home.'),
-                backgroundColor: Colors.orange),
-          );
-          Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => const HomeScreen()),
-              (_) => false);
+          await _cleanupTerminalTrip('cancelled',
+              message: 'Trip no longer active. Returning home.');
+          return;
+        }
+        final serverStatus =
+            (serverTrip['currentStatus'] ?? serverTrip['current_status'] ?? '')
+                .toString();
+        if (_isTerminalStatus(serverStatus)) {
+          await _cleanupTerminalTrip(serverStatus);
+          return;
         }
       }
     } catch (_) {
@@ -204,26 +207,15 @@ class _TripScreenState extends State<TripScreen>
         final serverTrip = data['trip'] as Map<String, dynamic>?;
         if (serverTrip == null) {
           // Trip ended on server — pop to home
-          _stopStatePoll();
-          if (mounted) {
-            Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const HomeScreen()),
-                (_) => false);
-          }
+          await _cleanupTerminalTrip('cancelled',
+              message: 'Trip no longer active. Returning home.');
           return;
         }
         final serverStatus =
             (serverTrip['currentStatus'] ?? serverTrip['current_status'] ?? '')
                 .toString();
         if (serverStatus == 'completed' || serverStatus == 'cancelled') {
-          _stopStatePoll();
-          if (mounted) {
-            Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (_) => const HomeScreen()),
-                (_) => false);
-          }
+          await _cleanupTerminalTrip(serverStatus);
           return;
         }
         // Sync status if server differs from local (handles race conditions)
@@ -282,6 +274,157 @@ class _TripScreenState extends State<TripScreen>
     if (m <= 0) return '--';
     if (m < 1000) return '${m.round()} m';
     return '${(m / 1000).toStringAsFixed(1)} km';
+  }
+
+  String _money(dynamic value) {
+    final n = double.tryParse(value?.toString() ?? '') ?? 0;
+    return '₹${n.toStringAsFixed(0)}';
+  }
+
+  bool _isTerminalStatus(String status) =>
+      status == 'completed' || status == 'cancelled';
+
+  Future<void> _cleanupTerminalTrip(String status,
+      {String? message, bool showSnack = true}) async {
+    if (_terminalCleanupInProgress) return;
+    _terminalCleanupInProgress = true;
+    _socket.setActiveTrip(null);
+    _locationTimer?.cancel();
+    await _posStream?.cancel();
+    _posStream = null;
+    _stopTripTimer();
+    _stopStatePoll();
+    try {
+      if (CallService().activeCallTripId ==
+          (_trip?['id']?.toString() ?? _trip?['tripId']?.toString() ?? '')) {
+        CallService().hangUp();
+      }
+      await _tts.stop();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _status = status;
+      _loading = false;
+      _polylines.clear();
+      _markers.clear();
+    });
+    if (showSnack) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          message ??
+              (status == 'completed'
+                  ? 'Trip completed. Returning to dashboard.'
+                  : 'Trip cancelled. Returning to dashboard.'),
+          style: GoogleFonts.poppins(color: Colors.white, fontSize: 13),
+        ),
+        backgroundColor: status == 'completed' ? JT.success : JT.error,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+      (_) => false,
+    );
+  }
+
+  Future<bool> _confirmPaymentBeforeCompletion() async {
+    final pm = (_trip?['paymentMethod'] ?? _trip?['payment_method'] ?? 'cash')
+        .toString()
+        .toLowerCase();
+    if (pm != 'cash') return true;
+    final fare = _money(_trip?['estimatedFare'] ?? _trip?['estimated_fare']);
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 44,
+            height: 4,
+            decoration: BoxDecoration(
+              color: JT.border,
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: JT.success.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.payments_rounded,
+                color: JT.success, size: 34),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Confirm cash collection',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              color: JT.textPrimary,
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Complete trip only after collecting $fare from the customer.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              color: JT.textSecondary,
+              fontSize: 13,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 22),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: JT.textPrimary,
+                  side: BorderSide(color: JT.border),
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: Text('Go Back',
+                    style:
+                        GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: JT.success,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: Text('Collected',
+                    style:
+                        GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+              ),
+            ),
+          ]),
+        ]),
+      ),
+    );
+    return confirmed == true;
   }
 
   bool get _isHeadingToPickup =>
@@ -387,46 +530,7 @@ class _TripScreenState extends State<TripScreen>
           incomingTripId != activeTripId) {
         return;
       }
-      if (_status == 'in_progress' || _status == 'on_the_way') {
-        debugPrint('[TRIP] Verifying late cancel event after ride start');
-        _syncTripState();
-        return;
-      }
-      _locationTimer?.cancel();
-      _stopTripTimer();
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          backgroundColor: JT.surface,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text('Trip Cancelled',
-              style: GoogleFonts.poppins(
-                  color: JT.textPrimary, fontWeight: FontWeight.w400)),
-          content: Text('Customer cancelled the trip.',
-              style:
-                  GoogleFonts.poppins(color: JT.textSecondary, fontSize: 14)),
-          actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: JT.primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10))),
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (_) => const HomeScreen()),
-                    (_) => false);
-              },
-              child: const Text('OK',
-                  style: TextStyle(fontWeight: FontWeight.w500)),
-            ),
-          ],
-        ),
-      );
+      _cleanupTerminalTrip('cancelled', message: 'Customer cancelled the trip.');
     });
   }
 
@@ -462,6 +566,10 @@ class _TripScreenState extends State<TripScreen>
       }
       final incomingStatus = data['status']?.toString() ?? '';
       if (incomingStatus.isEmpty) return;
+      if (_isTerminalStatus(incomingStatus)) {
+        _cleanupTerminalTrip(incomingStatus);
+        return;
+      }
       setState(() {
         _status = incomingStatus;
         _trip = _mergeTripState(_trip, data);
@@ -528,13 +636,21 @@ class _TripScreenState extends State<TripScreen>
       if (!mounted || res.statusCode != 200) return;
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final serverTrip = data['trip'] as Map<String, dynamic>?;
-      if (serverTrip == null) return;
+      if (serverTrip == null) {
+        await _cleanupTerminalTrip('cancelled',
+            message: 'Trip no longer active. Returning home.');
+        return;
+      }
       final serverTripId =
           serverTrip['id']?.toString() ?? serverTrip['tripId']?.toString() ?? '';
       if (serverTripId != tripId) return;
       final serverStatus =
           (serverTrip['currentStatus'] ?? serverTrip['current_status'] ?? _status)
               .toString();
+      if (_isTerminalStatus(serverStatus)) {
+        await _cleanupTerminalTrip(serverStatus);
+        return;
+      }
       setState(() {
         _trip = _mergeTripState(_trip, serverTrip);
         _status = serverStatus;
@@ -607,6 +723,7 @@ class _TripScreenState extends State<TripScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      if (_isTerminalStatus(_status)) return;
       _socket.setAppInBackground(false);
       if (!_socket.isConnected) {
         _socket.connect(ApiConfig.socketUrl);
@@ -774,6 +891,10 @@ class _TripScreenState extends State<TripScreen>
   Future<void> _fetchRouteForCurrentStatus() async {
     final t = _trip;
     if (t == null) return;
+    if (_isTerminalStatus(_status)) {
+      if (mounted) setState(() => _polylines.clear());
+      return;
+    }
     // Use best available GPS origin: prefer real GPS > last cached > map center
     final origin = _lastTripPosition;
     final myLat = origin?.latitude ?? _center.latitude;
@@ -853,6 +974,7 @@ class _TripScreenState extends State<TripScreen>
   // ── Location updates ──────────────────────────────────────────────────────
 
   Future<void> _startLocationUpdates() async {
+    if (_isTerminalStatus(_status)) return;
     _locationTimer?.cancel();
     _posStream?.cancel();
 
@@ -1047,6 +1169,10 @@ class _TripScreenState extends State<TripScreen>
           setState(() => _loading = false);
         }
       } else if (_status == 'in_progress' || _status == 'on_the_way') {
+        setState(() => _loading = false);
+        final paymentConfirmed = await _confirmPaymentBeforeCompletion();
+        if (!paymentConfirmed || !mounted) return;
+        setState(() => _loading = true);
         await _completeTrip(h);
         return;
       }
@@ -1117,8 +1243,23 @@ class _TripScreenState extends State<TripScreen>
         final commission = pricing['platformDeduction'] ?? 0;
         _socket.setActiveTrip(null); // clear trip room tracking
         _locationTimer?.cancel();
-        _posStream?.cancel();
+        await _posStream?.cancel();
+        _posStream = null;
         _stopTripTimer();
+        _stopStatePoll();
+        try {
+          await _tts.stop();
+          if (CallService().activeCallTripId == tripId.toString()) {
+            CallService().hangUp();
+          }
+        } catch (_) {}
+        if (mounted) {
+          setState(() {
+            _status = 'completed';
+            _loading = false;
+            _polylines.clear();
+          });
+        }
         _tripDebugLog(
             '[TRIP] ✅ Ride completed — tripId=$tripId fare=$rideFare earnings=$driverEarnings');
         if (!mounted) return;
@@ -1155,7 +1296,10 @@ class _TripScreenState extends State<TripScreen>
     } catch (_) {}
     _socket.setActiveTrip(null); // clear trip room tracking
     _locationTimer?.cancel();
+    await _posStream?.cancel();
+    _posStream = null;
     _stopTripTimer();
+    _stopStatePoll();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(context,
         MaterialPageRoute(builder: (_) => const HomeScreen()), (_) => false);
@@ -2103,10 +2247,8 @@ class _TripScreenState extends State<TripScreen>
                 child: Column(
                   children: [
                     _buildTopBar(pickup, dest),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     _buildNavigationInstructions(),
-                    const SizedBox(height: 10),
-                    _buildRouteStageCard(pickup, dest),
                   ],
                 ),
               ),
@@ -2114,11 +2256,16 @@ class _TripScreenState extends State<TripScreen>
           ),
 
           // ── Bottom action sheet ────────────────────────────────────────────
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
+          DraggableScrollableSheet(
+            initialChildSize: 0.36,
+            minChildSize: 0.28,
+            maxChildSize: 0.64,
+            snap: true,
+            snapSizes: const [0.36, 0.64],
+            builder: (context, scrollController) {
+              return SingleChildScrollView(
+                controller: scrollController,
+                child: Container(
               constraints: BoxConstraints(maxHeight: panelMaxHeight),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -2131,19 +2278,15 @@ class _TripScreenState extends State<TripScreen>
                 ],
               ),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                    width: 44,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 10, bottom: 4),
-                    decoration: BoxDecoration(
-                        color: JT.border,
-                        borderRadius: BorderRadius.circular(2))),
-                Flexible(
-                  child: SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(),
-                    child: Padding(
+                const Padding(
+                  padding: EdgeInsets.only(top: 10, bottom: 4),
+                  child: JagoDragHandle(),
+                ),
+                Padding(
                       padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        _buildRouteStageCard(pickup, dest),
+                        const SizedBox(height: 10),
                         _buildCustomerCard(customerName, customerPhone),
                         if (isForSomeoneElse &&
                             passengerName.toString().isNotEmpty) ...[
@@ -2168,12 +2311,12 @@ class _TripScreenState extends State<TripScreen>
                         const SizedBox(height: 8),
                         _buildQuickActions(customerPhone?.toString()),
                       ]),
-                    ),
-                  ),
                 ),
               ]),
             ),
-          ),
+          );
+        },
+      ),
             ]);
           },
         ),
@@ -2271,61 +2414,13 @@ class _TripScreenState extends State<TripScreen>
     final String instruction =
         isOnTheWay ? 'Head to Destination' : 'Head to Pickup';
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: accentColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-              color: accentColor.withValues(alpha: 0.3),
-              blurRadius: 10,
-              offset: const Offset(0, 4))
-        ],
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.navigation_rounded, color: Colors.white, size: 24),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  instruction,
-                  style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600),
-                ),
-                Text(
-                  _etaSec > 0
-                      ? 'EST. ARRIVAL: ${_formatEta(_etaSec)}'
-                      : 'FOLLOW THE ROUTE',
-                  style: GoogleFonts.poppins(
-                      color: Colors.white70,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500),
-                ),
-              ],
-            ),
-          ),
-          if (_distanceToTargetM > 0)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8)),
-              child: Text(
-                _formatDist(_distanceToTargetM),
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14),
-              ),
-            ),
-        ],
-      ),
+    return JagoNavigationPill(
+      label: instruction,
+      sublabel:
+          _etaSec > 0 ? 'EST. ARRIVAL: ${_formatEta(_etaSec)}' : 'FOLLOW THE ROUTE',
+      trailing: _distanceToTargetM > 0 ? _formatDist(_distanceToTargetM) : null,
+      color: accentColor,
+      onTap: () => _focusRouteOnMap(showReadySnack: true),
     );
   }
 
@@ -2841,68 +2936,14 @@ class _TripScreenState extends State<TripScreen>
   Widget _buildActionBtn() {
     final step = _getStepInfo();
     final isOnTheWay = _status == 'in_progress' || _status == 'on_the_way';
-    final showGlow =
-        _nearPickup && (_status == 'accepted' || _status == 'driver_assigned');
-
-    return GestureDetector(
-      onTap: _loading ? null : _nextStep,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        width: double.infinity,
-        height: 60,
-        margin: const EdgeInsets.only(top: 6),
-        decoration: BoxDecoration(
-          gradient: isOnTheWay
-              ? const LinearGradient(
-                  colors: [JT.success, Color(0xFF15803D)],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight)
-              : JT.grad,
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-                color: (isOnTheWay ? JT.success : JT.primary)
-                    .withValues(alpha: showGlow ? 0.55 : 0.35),
-                blurRadius: showGlow ? 28 : 18,
-                offset: const Offset(0, 6)),
-          ],
-          border: showGlow ? Border.all(color: JT.success, width: 2) : null,
-        ),
-        child: Center(
-          child: _loading
-              ? const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                      SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                              color: Colors.white, strokeWidth: 2.5)),
-                      SizedBox(width: 12),
-                      Text('Please wait...',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                              fontSize: 14)),
-                    ])
-              : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          shape: BoxShape.circle),
-                      child: Icon(step['icon'] as IconData,
-                          color: Colors.white, size: 20)),
-                  const SizedBox(width: 12),
-                  Text(step['action'] as String,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: -0.2)),
-                ]),
-        ),
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: JagoPrimaryCta(
+        label: step['action'] as String,
+        icon: step['icon'] as IconData,
+        color: isOnTheWay ? JT.success : JT.primary,
+        loading: _loading,
+        onTap: _nextStep,
       ),
     );
   }
@@ -2937,23 +2978,12 @@ class _TripScreenState extends State<TripScreen>
 
   Widget _quickBtn(
           IconData icon, String label, Color color, VoidCallback onTap) =>
-      GestureDetector(
-          onTap: onTap,
-          child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: color.withValues(alpha: 0.22))),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(icon, color: color, size: 15),
-                const SizedBox(width: 5),
-                Text(label,
-                    style: GoogleFonts.poppins(
-                        color: color,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500)),
-              ])));
+      JagoQuickAction(
+        icon: icon,
+        label: label,
+        color: color,
+        onTap: onTap,
+      );
 
   // ── Parcel card ───────────────────────────────────────────────────────────
 

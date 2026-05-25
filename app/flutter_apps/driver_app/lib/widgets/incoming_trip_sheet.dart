@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/alarm_service.dart';
 
-/// Redesigned Full-screen ride request overlay inspired by Rapido.
+/// Premium Jago ride request overlay.
 /// Pushed as a Navigator route so it sits above the home map.
 class IncomingTripSheet extends StatefulWidget {
   final Map<String, dynamic> trip;

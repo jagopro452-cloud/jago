@@ -18,6 +18,7 @@ import '../../services/vehicle_status_service.dart';
 import '../../services/alarm_service.dart';
 import '../../widgets/incoming_trip_sheet.dart';
 import '../../widgets/incoming_parcel_sheet.dart';
+import '../../widgets/jago_mobility_ui.dart';
 import '../../services/fcm_service.dart';
 import '../auth/login_screen.dart';
 import '../auth/pending_verification_screen.dart';
@@ -1326,7 +1327,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 // Heatmap banner
                 if (_isOnline && _nearestHighZone != null && _showHeatmap)
                   _buildHeatmapBanner(_nearestHighZone!),
-                _buildBottomPanel(),
+                _buildPremiumBottomPanel(),
               ] else if (_navIndex == 1) ...[
                 const Expanded(child: InlineTripsView()),
               ] else if (_navIndex == 2) ...[
@@ -1488,8 +1489,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             child: Align(
               alignment: Alignment.topCenter,
               child: Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: JT.logoBlue(height: 64),
+                padding: const EdgeInsets.only(top: 10),
+                child: JT.logoBlue(height: 48),
               ),
             ),
           ),
@@ -1502,17 +1503,264 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 48, height: 48,
+        width: 44, height: 44,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(15),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
         ),
-        child: Icon(icon, color: const Color(0xFF0F172A), size: 24),
+        child: Icon(icon, color: const Color(0xFF0F172A), size: 22),
       ),
     );
   }
 
+  Widget _buildPremiumBottomPanel() {
+    return JagoRideSurface(
+      radius: 30,
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 18),
+      border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const JagoDragHandle(),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  gradient: JT.grad,
+                  borderRadius: BorderRadius.circular(15),
+                  boxShadow: JT.btnShadow,
+                ),
+                child: Center(
+                  child: Text(
+                    (_userName.isNotEmpty ? _userName[0] : 'P').toUpperCase(),
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 17,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _userName.isNotEmpty ? _userName : 'Jago Pilot',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        color: JT.textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    Text(
+                      _isOnline
+                          ? (_socketConnected
+                              ? 'Live and receiving trips'
+                              : 'Reconnecting live updates')
+                          : 'Go online to start earning',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        color: _isOnline ? JT.success : JT.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: _toggling ? null : _toggleOnline,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 260),
+                  width: 86,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: _isOnline ? JT.success : JT.error,
+                    borderRadius: BorderRadius.circular(999),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (_isOnline ? JT.success : JT.error)
+                            .withValues(alpha: 0.24),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      AnimatedAlign(
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeInOut,
+                        alignment:
+                            _isOnline ? Alignment.centerLeft : Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          child: Text(
+                            _isOnline ? 'ON' : 'OFF',
+                            style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                              letterSpacing: 0.4,
+                            ),
+                          ),
+                        ),
+                      ),
+                      AnimatedAlign(
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeInOut,
+                        alignment:
+                            _isOnline ? Alignment.centerRight : Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.all(4),
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black12,
+                                  blurRadius: 5,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              Icons.power_settings_new_rounded,
+                              color: _isOnline ? JT.success : JT.error,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              JagoMetricTile(
+                color: JT.primary,
+                icon: Icons.currency_rupee_rounded,
+                value: 'Rs ${_earningsToday.toStringAsFixed(0)}',
+                label: 'Earnings',
+                onTap: () => setState(() => _navIndex = 2),
+              ),
+              const SizedBox(width: 9),
+              JagoMetricTile(
+                color: JT.success,
+                icon: Icons.route_rounded,
+                value: '$_tripsToday',
+                label: 'Trips',
+                onTap: () => setState(() => _navIndex = 1),
+              ),
+              const SizedBox(width: 9),
+              JagoMetricTile(
+                color: JT.warning,
+                icon: Icons.star_rounded,
+                value: _driverRating.toStringAsFixed(1),
+                label: 'Rating',
+                onTap: () => setState(() => _navIndex = 4),
+              ),
+              const SizedBox(width: 9),
+              JagoMetricTile(
+                color: const Color(0xFF5667F5),
+                icon: Icons.account_balance_wallet_rounded,
+                value: 'Rs ${_walletBalance.toStringAsFixed(0)}',
+                label: 'Wallet',
+                onTap: () => setState(() => _navIndex = 3),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _buildPremiumVehicleCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPremiumVehicleCard() {
+    final vehicleTitle = _vehicleCategory.isNotEmpty ? _vehicleCategory : 'My Vehicle';
+    final vehicleMeta = _vehicleNumber.isNotEmpty
+        ? '$_vehicleNumber - $_vehicleModel'
+        : 'Ready for verified trips';
+
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FAFF),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: JT.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: JT.primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: const Icon(Icons.two_wheeler_rounded, color: JT.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  vehicleTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    color: JT.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  vehicleMeta,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    color: JT.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          JagoStatusChip(
+            label: _isOnline ? 'Live' : 'Offline',
+            color: _isOnline ? JT.success : JT.textSecondary,
+            live: _isOnline,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Kept temporarily for rollback while the premium panel is being piloted.
+  // ignore: unused_element
   Widget _buildBottomPanel() {
     return Container(
       width: double.infinity,

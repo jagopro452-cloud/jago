@@ -164,15 +164,11 @@ export async function cancelTrip(input: CancelTripInput): Promise<CancelTripResu
       RETURNING *
     `);
 
-    const driverId = (updated.rows[0] as any)?.driver_id || existingTrip.driver_id;
-    if (driverId) {
-      await tx.execute(rawSql`
-        UPDATE users
-        SET current_trip_id=NULL
-        WHERE id=${driverId}::uuid
-          AND current_trip_id=${tripId}::uuid
-      `);
-    }
+    await tx.execute(rawSql`
+      UPDATE users
+      SET current_trip_id=NULL
+      WHERE current_trip_id=${tripId}::uuid
+    `);
 
     return {
       ok: true as const,

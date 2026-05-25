@@ -54,6 +54,13 @@ import {
 
 export let io: SocketIOServer;
 
+function socketLog(event: string, data: Record<string, unknown>) {
+  console.log(`[${event}] ${JSON.stringify({
+    ts: new Date().toISOString(),
+    ...data,
+  })}`);
+}
+
 // Track connected sockets: userId → socketId
 export async function hasActiveDriverSocket(driverId: string): Promise<boolean> {
   return hasSocketPresence("driver", driverId);
@@ -129,6 +136,24 @@ function camelize(obj: any): any {
   );
 }
 
+const DRIVER_SOCKET_STATUS_TRANSITIONS: Record<string, Set<string>> = {
+  arrived: new Set(["driver_assigned", "accepted"]),
+  on_the_way: new Set(["arrived"]),
+};
+
+const DRIVER_SOCKET_TERMINAL_REJECTS = new Set(["completed", "cancelled", "payment_pending"]);
+
+function normalizeTripStatus(status: unknown): string {
+  return String(status || "").trim().toLowerCase();
+}
+
+function socketStatusRejectMessage(status: string): string {
+  if (status === "completed") return "Complete trip through the secure complete-trip API.";
+  if (status === "cancelled") return "Cancel trip through the secure cancellation API.";
+  if (status === "payment_pending") return "Payment pending is backend-controlled.";
+  return "Invalid trip status transition.";
+}
+
 async function persistSafetyAlert(alert: any, driverId: string) {
   try {
     await rawDb.execute(rawSql`
@@ -196,7 +221,20 @@ export function setupSocket(httpServer: HttpServer) {
     const token = (socket.handshake.query.token || socket.handshake.auth?.token) as string | undefined;
     const claimedUserType = String(socket.handshake.query.userType || "").toLowerCase();
 
+    socketLog("SOCKET_AUTH_START", {
+      socketId: socket.id,
+      claimedUserId: claimedUserId || null,
+      claimedUserType: claimedUserType || null,
+      hasToken: Boolean(token),
+      transport: socket.conn.transport.name,
+    });
+
     if (!claimedUserId) {
+      socketLog("SOCKET_AUTH_FAIL", {
+        socketId: socket.id,
+        reason: "missing_user_id",
+        claimedUserType: claimedUserType || null,
+      });
       socket.disconnect();
       return;
     }
@@ -204,6 +242,12 @@ export function setupSocket(httpServer: HttpServer) {
     // Verify the token matches the claimed userId (prevents room spoofing)
     const verified = await verifySocketToken(token, claimedUserId, claimedUserType);
     if (!verified) {
+      socketLog("SOCKET_AUTH_FAIL", {
+        socketId: socket.id,
+        userId: claimedUserId,
+        claimedUserType: claimedUserType || null,
+        reason: token ? "invalid_or_expired_token" : "missing_token",
+      });
       console.warn(`[SOCKET] Auth failed for userId=${claimedUserId} — disconnecting`);
       socket.emit("auth:error", { message: "Invalid or expired token. Please reconnect with a valid token." });
       socket.disconnect();
@@ -212,11 +256,29 @@ export function setupSocket(httpServer: HttpServer) {
     const userId = verified.userId;
     const userType = verified.userType;
     if (claimedUserType && claimedUserType !== userType) {
+      socketLog("SOCKET_AUTH_FAIL", {
+        socketId: socket.id,
+        userId,
+        claimedUserType,
+        actualUserType: userType,
+        reason: "role_mismatch_claim_ignored",
+      });
       console.warn(`[SOCKET] Role mismatch for ${userId}: claimed=${claimedUserType}, actual=${userType}`);
     }
+    socketLog("SOCKET_AUTH_SUCCESS", {
+      socketId: socket.id,
+      userId,
+      userType,
+    });
 
     // Join personal room
     socket.join(`user:${userId}`);
+    socketLog("SOCKET_ROOM_JOIN", {
+      userId,
+      userType,
+      socketId: socket.id,
+      room: `user:${userId}`,
+    });
     console.log(`[SOCKET_ROOM_JOINED] ${JSON.stringify({
       ts: new Date().toISOString(),
       userId,
@@ -227,12 +289,24 @@ export function setupSocket(httpServer: HttpServer) {
 
     if (userType === "admin") {
       socket.join("admin:ops");
+      socketLog("SOCKET_ROOM_JOIN", {
+        userId,
+        userType,
+        socketId: socket.id,
+        room: "admin:ops",
+      });
       emitRealtimeOpsSnapshot("admin_connected").catch(() => {});
       console.log(`[SOCKET] Admin ${userId} connected to admin:ops`);
     } else if (userType === "driver") {
       await disconnectDuplicateUserSockets(userId, socket.id).catch(() => {});
       addSocketPresence("driver", userId, socket.id).catch(() => {});
       socket.join(`drivers`);
+      socketLog("SOCKET_ROOM_JOIN", {
+        userId,
+        userType,
+        socketId: socket.id,
+        room: "drivers",
+      });
 
       // Cancel any pending offline timer (driver reconnected within grace window)
       const pendingTimer = pendingOfflineTimers.get(userId);
@@ -387,6 +461,14 @@ export function setupSocket(httpServer: HttpServer) {
           `);
           if (r.rows.length) {
             socket.join(`trip:${tripId}`);
+            socketLog("SOCKET_ROOM_JOIN", {
+              userId,
+              userType: "driver",
+              socketId: socket.id,
+              room: `trip:${tripId}`,
+              tripId,
+              source: "driver_rejoin_trip",
+            });
             noteSocketActivity({ userId, userType: "driver", tripId });
             await noteRecoveryAudit({
               tripId,
@@ -403,6 +485,19 @@ export function setupSocket(httpServer: HttpServer) {
       });
 
       // ── Driver: go online/offline ──────────────────────────────────────────
+      socket.on("driver:leave_trip", (data: { tripId?: string }) => {
+        const tripId = typeof data?.tripId === "string" ? data.tripId.trim() : "";
+        if (!tripId) return;
+        socket.leave(`trip:${tripId}`);
+        socketLog("SOCKET_ROOM_LEAVE", {
+          userId,
+          userType: "driver",
+          socketId: socket.id,
+          room: `trip:${tripId}`,
+          tripId,
+        });
+      });
+
       socket.on("driver:online", async (data: { isOnline: boolean; lat?: number; lng?: number }) => {
         try {
           const { isOnline, lat, lng } = data;
@@ -786,19 +881,86 @@ export function setupSocket(httpServer: HttpServer) {
       // ── Driver: update trip status ─────────────────────────────────────────
       socket.on("driver:trip_status", async (data: { tripId: string; status: string; otp?: string }) => {
         try {
-          const { tripId, status, otp } = data;
+          const { tripId, status: requestedStatus, otp } = data;
+          const status = normalizeTripStatus(requestedStatus);
           noteSocketActivity({ userId, userType: "driver", tripId });
-          const allowed = ["accepted", "arrived", "on_the_way", "completed", "cancelled"];
+          if (DRIVER_SOCKET_TERMINAL_REJECTS.has(status)) {
+            console.warn(`[TRIP_STATE_REJECTED] ${JSON.stringify({
+              tripId,
+              driverId: userId,
+              source: "socket_driver_trip_status",
+              requestedStatus: status,
+              reason: "terminal_status_requires_rest_transaction",
+            })}`);
+            socket.emit("driver:trip_status_error", {
+              tripId,
+              status,
+              code: status === "completed" ? "COMPLETE_REQUIRES_REST" : "TERMINAL_STATUS_REQUIRES_REST",
+              message: socketStatusRejectMessage(status),
+            });
+            return;
+          }
+          const allowed = ["arrived", "on_the_way"];
           if (!allowed.includes(status)) {
-            socket.emit("error", { message: "Invalid status" });
+            socket.emit("driver:trip_status_error", {
+              tripId,
+              status,
+              code: "INVALID_TRIP_STATUS",
+              message: socketStatusRejectMessage(status),
+            });
             return;
           }
 
           if (status === "on_the_way") {
-            await rawDb.execute(rawSql`
-              UPDATE trip_requests SET current_status=${status}, ride_started_at=NOW(), updated_at=NOW()
-              WHERE id=${tripId}::uuid
-            `);
+            const started = await rawDb.transaction(async (tx) => {
+              const tripR = await tx.execute(rawSql`
+                SELECT current_status
+                FROM trip_requests
+                WHERE id=${tripId}::uuid
+                  AND driver_id=${userId}::uuid
+                FOR UPDATE
+              `);
+              if (!tripR.rows.length) {
+                return { ok: false as const, code: "TRIP_NOT_FOUND", message: "Trip not found or not assigned to this driver" };
+              }
+              const previousStatus = normalizeTripStatus((tripR.rows[0] as any).current_status);
+              if (previousStatus === status) {
+                return { ok: true as const, previousStatus, idempotent: true };
+              }
+              if (!DRIVER_SOCKET_STATUS_TRANSITIONS.on_the_way.has(previousStatus)) {
+                return { ok: false as const, code: "INVALID_TRIP_TRANSITION", message: `Cannot move trip from ${previousStatus} to ${status}`, previousStatus };
+              }
+              const updateR = await tx.execute(rawSql`
+                UPDATE trip_requests
+                SET current_status=${status},
+                    ride_started_at=COALESCE(ride_started_at, NOW()),
+                    updated_at=NOW()
+                WHERE id=${tripId}::uuid
+                  AND driver_id=${userId}::uuid
+                  AND current_status=${previousStatus}
+                RETURNING id
+              `);
+              return updateR.rows.length
+                ? { ok: true as const, previousStatus, idempotent: false }
+                : { ok: false as const, code: "TRIP_STATE_RACE_LOST", message: "Trip status changed during update. Please refresh.", previousStatus };
+            });
+            if (!started.ok) {
+              console.warn(`[TRIP_STATE_REJECTED] ${JSON.stringify({
+                tripId,
+                driverId: userId,
+                source: "socket_driver_trip_status",
+                requestedStatus: status,
+                previousStatus: started.previousStatus,
+                reason: started.code,
+              })}`);
+              socket.emit("driver:trip_status_error", {
+                tripId,
+                status,
+                code: started.code,
+                message: started.message,
+              });
+              return;
+            }
           } else if (status === "completed") {
             // PAYMENT GATE: trip only moves to completed if payment is verified
             const paymentCheckR = await rawDb.execute(rawSql`
@@ -851,10 +1013,55 @@ export function setupSocket(httpServer: HttpServer) {
               return;
             }
           } else {
-            await rawDb.execute(rawSql`
-              UPDATE trip_requests SET current_status=${status}, updated_at=NOW()
-              WHERE id=${tripId}::uuid
-            `);
+            const arrived = await rawDb.transaction(async (tx) => {
+              const tripR = await tx.execute(rawSql`
+                SELECT current_status
+                FROM trip_requests
+                WHERE id=${tripId}::uuid
+                  AND driver_id=${userId}::uuid
+                FOR UPDATE
+              `);
+              if (!tripR.rows.length) {
+                return { ok: false as const, code: "TRIP_NOT_FOUND", message: "Trip not found or not assigned to this driver" };
+              }
+              const previousStatus = normalizeTripStatus((tripR.rows[0] as any).current_status);
+              if (previousStatus === status) {
+                return { ok: true as const, previousStatus, idempotent: true };
+              }
+              if (!DRIVER_SOCKET_STATUS_TRANSITIONS.arrived.has(previousStatus)) {
+                return { ok: false as const, code: "INVALID_TRIP_TRANSITION", message: `Cannot move trip from ${previousStatus} to ${status}`, previousStatus };
+              }
+              const updateR = await tx.execute(rawSql`
+                UPDATE trip_requests
+                SET current_status=${status},
+                    driver_arriving_at=COALESCE(driver_arriving_at, NOW()),
+                    updated_at=NOW()
+                WHERE id=${tripId}::uuid
+                  AND driver_id=${userId}::uuid
+                  AND current_status=${previousStatus}
+                RETURNING id
+              `);
+              return updateR.rows.length
+                ? { ok: true as const, previousStatus, idempotent: false }
+                : { ok: false as const, code: "TRIP_STATE_RACE_LOST", message: "Trip status changed during update. Please refresh.", previousStatus };
+            });
+            if (!arrived.ok) {
+              console.warn(`[TRIP_STATE_REJECTED] ${JSON.stringify({
+                tripId,
+                driverId: userId,
+                source: "socket_driver_trip_status",
+                requestedStatus: status,
+                previousStatus: arrived.previousStatus,
+                reason: arrived.code,
+              })}`);
+              socket.emit("driver:trip_status_error", {
+                tripId,
+                status,
+                code: arrived.code,
+                message: arrived.message,
+              });
+              return;
+            }
           }
 
           if (status === "completed" || status === "cancelled") {
@@ -1036,6 +1243,13 @@ export function setupSocket(httpServer: HttpServer) {
     } else if (userType === "customer") {
       await disconnectDuplicateUserSockets(userId, socket.id).catch(() => {});
       addSocketPresence("customer", userId, socket.id).catch(() => {});
+      socketLog("SOCKET_ROOM_JOIN", {
+        userId,
+        userType: "customer",
+        socketId: socket.id,
+        room: `user:${userId}`,
+        source: "customer_connected",
+      });
       console.log(`[SOCKET] Customer ${userId} connected`);
       const customerPresenceHeartbeat = setInterval(() => {
         touchSocketPresence("customer", userId, socket.id).catch(() => {});
@@ -1055,6 +1269,14 @@ export function setupSocket(httpServer: HttpServer) {
             return;
           }
           socket.join(`trip:${tripId}`);
+          socketLog("SOCKET_ROOM_JOIN", {
+            userId,
+            userType: "customer",
+            socketId: socket.id,
+            room: `trip:${tripId}`,
+            tripId,
+            source: "customer_track_trip",
+          });
           await noteRecoveryAudit({
             tripId,
             eventType: "customer_trip_tracking_restored",
@@ -1071,6 +1293,19 @@ export function setupSocket(httpServer: HttpServer) {
       });
 
       // ── Customer: cancel trip ──────────────────────────────────────────────
+      socket.on("customer:leave_trip", (data: { tripId?: string }) => {
+        const tripId = typeof data?.tripId === "string" ? data.tripId.trim() : "";
+        if (!tripId) return;
+        socket.leave(`trip:${tripId}`);
+        socketLog("SOCKET_ROOM_LEAVE", {
+          userId,
+          userType: "customer",
+          socketId: socket.id,
+          room: `trip:${tripId}`,
+          tripId,
+        });
+      });
+
       socket.on("customer:cancel_trip", async (data: { tripId: string }) => {
         try {
           const { tripId } = data;
@@ -1112,6 +1347,14 @@ export function setupSocket(httpServer: HttpServer) {
             return;
           }
           socket.join(`parcel:${orderId}`);
+          socketLog("SOCKET_ROOM_JOIN", {
+            userId,
+            userType: "customer",
+            socketId: socket.id,
+            room: `parcel:${orderId}`,
+            orderId,
+            source: "customer_track_parcel",
+          });
           socket.emit("parcel:tracking_started", { orderId });
           console.log(`[SOCKET] Customer ${userId} tracking parcel ${orderId}`);
         } catch (e: any) {
@@ -1120,6 +1363,59 @@ export function setupSocket(httpServer: HttpServer) {
       });
 
       // ── Customer: cancel parcel order ──────────────────────────────────────
+      socket.on("parcel:track", async (data: { orderId: string }) => {
+        try {
+          const { orderId } = data;
+          if (!orderId) return;
+          const r = await rawDb.execute(rawSql`
+            SELECT id FROM parcel_orders WHERE id=${orderId}::uuid AND customer_id=${userId}::uuid
+          `);
+          if (!r.rows.length) {
+            socket.emit("parcel:error", { message: "Parcel order not found" });
+            return;
+          }
+          socket.join(`parcel:${orderId}`);
+          socketLog("SOCKET_ROOM_JOIN", {
+            userId,
+            userType: "customer",
+            socketId: socket.id,
+            room: `parcel:${orderId}`,
+            orderId,
+            source: "legacy_parcel_track",
+          });
+          socket.emit("parcel:tracking_started", { orderId });
+        } catch (e: any) {
+          console.error("[SOCKET] parcel:track error:", e.message);
+        }
+      });
+
+      socket.on("customer:leave_parcel", (data: { orderId?: string }) => {
+        const orderId = typeof data?.orderId === "string" ? data.orderId.trim() : "";
+        if (!orderId) return;
+        socket.leave(`parcel:${orderId}`);
+        socketLog("SOCKET_ROOM_LEAVE", {
+          userId,
+          userType: "customer",
+          socketId: socket.id,
+          room: `parcel:${orderId}`,
+          orderId,
+        });
+      });
+
+      socket.on("parcel:leave", (data: { orderId?: string }) => {
+        const orderId = typeof data?.orderId === "string" ? data.orderId.trim() : "";
+        if (!orderId) return;
+        socket.leave(`parcel:${orderId}`);
+        socketLog("SOCKET_ROOM_LEAVE", {
+          userId,
+          userType: "customer",
+          socketId: socket.id,
+          room: `parcel:${orderId}`,
+          orderId,
+          source: "legacy_parcel_leave",
+        });
+      });
+
       socket.on("customer:cancel_parcel", async (data: { orderId: string; reason?: string }) => {
         try {
           const { orderId, reason } = data;
@@ -1522,6 +1818,12 @@ export function setupSocket(httpServer: HttpServer) {
     });
 
     socket.on("disconnect", (reason) => {
+      socketLog("SOCKET_DISCONNECT", {
+        userId,
+        userType,
+        socketId: socket.id,
+        reason,
+      });
       findCallSessionsForUser(userId).then(async (sessions) => {
         for (const session of sessions) {
           await deleteCallSession(session.sessionId).catch(() => undefined);

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import '../main.dart' show navigatorKey;
 import '../screens/splash_screen.dart';
+import 'auth_token_notifier.dart';
 import 'device_identity_service.dart';
 import 'fcm_service.dart';
 
@@ -148,6 +149,7 @@ class AuthService {
     await prefs.remove('user_id');
     await prefs.remove('user_name');
     await prefs.remove('user_phone');
+    AuthTokenNotifier.instance.notifyChanged(reason: 'session_cleared');
   }
 
   static Future<Map<String, dynamic>?> getSavedUser() async {
@@ -236,6 +238,7 @@ class AuthService {
     if (userId.isNotEmpty) {
       await prefs.setString('user_id', userId);
     }
+    AuthTokenNotifier.instance.notifyChanged(reason: 'auth_persisted');
     FcmService().onLoginSuccess().catchError((_) {});
   }
 

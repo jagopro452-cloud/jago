@@ -7,6 +7,7 @@ import '../config/api_config.dart';
 import '../main.dart' show navigatorKey;
 import '../models/user_model.dart';
 import '../screens/splash_screen.dart';
+import 'auth_token_notifier.dart';
 import 'device_identity_service.dart';
 import 'fcm_service.dart';
 
@@ -100,6 +101,7 @@ class AuthService {
     await prefs.remove(_userNameKey);
     await prefs.remove(_userPhoneKey);
     await prefs.remove(_userIdKey);
+    AuthTokenNotifier.instance.notifyChanged(reason: 'session_cleared');
   }
 
   static Future<bool> rehydrateStoredSession({bool refreshProfile = true}) async {
@@ -265,6 +267,7 @@ class AuthService {
         await saveToken(data['token'].toString());
         await saveRefreshToken(data['refreshToken']?.toString());
         await saveUser((data['user'] ?? data) as Map<String, dynamic>);
+        AuthTokenNotifier.instance.notifyChanged(reason: 'login');
         FcmService().onLoginSuccess().catchError((_) {});
       }
       return data;
@@ -319,6 +322,7 @@ class AuthService {
         await saveToken(data['token'].toString());
         await saveRefreshToken(data['refreshToken']?.toString());
         await saveUser((data['user'] ?? data) as Map<String, dynamic>);
+        AuthTokenNotifier.instance.notifyChanged(reason: 'registration');
         FcmService().onLoginSuccess().catchError((_) {});
       }
       return data;
@@ -405,6 +409,7 @@ class AuthService {
       if (res.statusCode == 200 && data['token'] != null) {
         await saveToken(data['token'].toString());
         await saveRefreshToken(data['refreshToken']?.toString());
+        AuthTokenNotifier.instance.notifyChanged(reason: 'refresh');
         return true;
       }
     } on TimeoutException {
