@@ -10,6 +10,7 @@ import { z } from "zod";
 import crypto from "crypto";
 import { createRequire } from "module";
 import multer from "multer";
+import { fileURLToPath } from "url";
 const _require = createRequire(import.meta.url);
 import path from "path";
 import fs from "fs";
@@ -15212,34 +15213,70 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.use("/flutter", express.static(path.join(process.cwd(), "public", "flutter")));
 
   // ========== APK DOWNLOADS ==========
-  const apkDir = path.join(process.cwd(), "public", "apks");
+  const routesModuleDir = path.dirname(fileURLToPath(import.meta.url));
+  const apkDirs = [
+    // Production build: dist/routes.js sits beside dist/public.
+    path.resolve(routesModuleDir, "public", "apks"),
+    // Local app workspace.
+    path.resolve(process.cwd(), "dist", "public", "apks"),
+    path.resolve(process.cwd(), "public", "apks"),
+    // DigitalOcean root workspace fallback when run command references app dir.
+    path.resolve(process.cwd(), "jago_app-main", "dist", "public", "apks"),
+    path.resolve(process.cwd(), "app", "dist", "public", "apks"),
+  ];
   const apkLatestPrefixes: Record<string, string> = {
     "jago-customer-latest.apk": "jago-customer-v",
     "jago-driver-latest.apk": "jago-driver-v",
     "jago-pilot-latest.apk": "jago-pilot-v",
   };
 
-  function resolveLatestApkFile(alias: string) {
+  function resolveApkFile(alias: string): { dir: string; file: string; isLatestAlias: boolean } | null {
+    const safeName = path.basename(alias);
+    if (safeName !== alias || !safeName.endsWith(".apk")) return null;
+
+    for (const dir of apkDirs) {
+      const exactPath = path.join(dir, safeName);
+      if (fs.existsSync(exactPath)) {
+        return { dir, file: safeName, isLatestAlias: safeName.endsWith("-latest.apk") };
+      }
+    }
+
     const prefix = apkLatestPrefixes[alias];
     if (!prefix) return null;
-    try {
-      const candidates = fs
-        .readdirSync(apkDir)
-        .filter((file) => file.startsWith(prefix) && file.endsWith(".apk"))
-        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
-      return candidates.at(-1) ?? null;
-    } catch {
-      return null;
+
+    for (const dir of apkDirs) {
+      try {
+        const candidates = fs
+          .readdirSync(dir)
+          .filter((file) => file.startsWith(prefix) && file.endsWith(".apk"))
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+        const file = candidates.at(-1);
+        if (file) return { dir, file, isLatestAlias: true };
+      } catch {
+        // Try the next known artifact directory.
+      }
     }
+
+    return null;
   }
 
   app.get("/apks/:fileName", (req, res, next) => {
-    const target = resolveLatestApkFile(req.params.fileName);
+    const target = resolveApkFile(req.params.fileName);
     if (!target) return next();
-    return res.sendFile(path.join(apkDir, target));
+    res.setHeader("Content-Type", "application/vnd.android.package-archive");
+    res.setHeader("Content-Disposition", `attachment; filename="${req.params.fileName}"`);
+    res.setHeader(
+      "Cache-Control",
+      target.isLatestAlias ? "no-store, no-cache, must-revalidate" : "public, max-age=31536000, immutable",
+    );
+    return res.sendFile(path.join(target.dir, target.file));
   });
 
-  app.use("/apks", express.static(apkDir));
+  for (const dir of apkDirs) {
+    if (fs.existsSync(dir)) {
+      app.use("/apks", express.static(dir, { fallthrough: true, maxAge: 0 }));
+    }
+  }
 
   // Download page ï¿½ jagopro.org/download
   app.get("/download", (_req, res) => {
