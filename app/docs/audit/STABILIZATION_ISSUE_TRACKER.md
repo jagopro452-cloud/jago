@@ -114,11 +114,11 @@ Verification:
 ### P0-002 - Pilot Online State Can Lie
 
 Priority: P0
-Status: Open
+Status: Fixed in code - verification pending
 System: Pilot app, backend online status, dispatch
 
 Root cause:
-The pilot app updates `_isOnline` optimistically and starts location, heatmap, idle timer, and parcel polling before backend and socket confirmation. Network/backend failures are swallowed with a testing comment.
+The pilot app updated `_isOnline` optimistically and started location, heatmap, idle timer, and parcel polling before backend/socket confirmation. Network/backend failures were swallowed with a testing comment. Backend socket and location paths could also recreate online supply from reconnect/location side effects instead of an explicit online ACK.
 
 Affected files:
 - `flutter_apps/driver_app/lib/screens/home/home_screen.dart`
@@ -146,11 +146,12 @@ Scalability risk:
 Extra polling and location posts from clients not actually online.
 
 Fix strategy:
-- Remove forced testing online behavior.
-- Backend/socket ACK must be required before UI shows online.
-- If backend update fails, rollback UI and stop timers.
-- Add explicit online state: `offline`, `connecting`, `online`, `failed`.
-- Store backend-authoritative online status on app resume.
+- Removed forced testing online behavior.
+- UI now shows online only after fresh GPS, HTTP online success, and socket ACK.
+- Backend rejects online without fresh coordinates and rejects socket online if driver/category/account eligibility is invalid.
+- Location posts and socket reconnects can refresh coordinates/rooms but cannot create online supply.
+- Break-mode auto-go-online was removed; driver must pass the same online checks again.
+- Heartbeat/location stale events force local rollback and backend offline sync.
 
 Test checklist:
 - Online with no internet.
@@ -159,6 +160,16 @@ Test checklist:
 - Online on weak network.
 - Offline while socket disconnected.
 - App kill/reopen should restore server online status, not stale local state.
+
+Verification completed:
+- `flutter analyze` passed in `flutter_apps/driver_app`.
+- `npm run check` passed.
+- `npm run build` passed.
+- `flutter build apk --release` passed in `flutter_apps/driver_app`.
+- Fresh pilot APK copied to `C:\Users\kiran\Downloads\jago-Updates-23-04-jago\pilot-apks`.
+
+Verification blocked:
+- Real Android device validation is pending; `flutter devices` only detected Windows, Chrome, and Edge, and `adb.exe` is not on PATH.
 
 ---
 

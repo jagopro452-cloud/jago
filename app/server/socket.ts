@@ -316,16 +316,12 @@ export function setupSocket(httpServer: HttpServer) {
         console.log(`[SOCKET] Driver ${userId} reconnected within grace window — offline timer cancelled`);
       }
 
-      // Re-sync driver_locations.is_online with users.is_online.
-      // When the app restarts after a crash/kill, is_online may be true in users table
-      // but driver_locations.is_online was set false by the previous disconnect handler.
-      // This ensures dispatch finds them immediately without waiting for the first location update.
-      rawDb.execute(rawSql`
-        UPDATE driver_locations SET is_online=true, updated_at=NOW()
-        WHERE driver_id=${userId}::uuid
-          AND (SELECT is_online FROM users WHERE id=${userId}::uuid LIMIT 1) = true
-          AND is_online = false
-      `).catch(() => { });
+      console.log(`[ONLINE_RECONNECT_RECOVERY] ${JSON.stringify({
+        ts: new Date().toISOString(),
+        driverId: userId,
+        socketId: socket.id,
+        action: "await_explicit_online_ack",
+      })}`);
 
       const currentTripR = await rawDb.execute(rawSql`
         SELECT current_trip_id FROM users WHERE id=${userId}::uuid LIMIT 1
@@ -387,12 +383,24 @@ export function setupSocket(httpServer: HttpServer) {
         try {
           const { lat, lng, heading = 0, speed = 0 } = data;
           if (!lat || !lng || !isFinite(lat) || !isFinite(lng)) return; // ignore invalid GPS
-          // Update location; also set is_online=true — active location streaming means driver IS online
+          const onlineStateR = await rawDb.execute(rawSql`
+            SELECT is_online FROM users WHERE id=${userId}::uuid LIMIT 1
+          `).catch(() => ({ rows: [] as any[] }));
+          const backendOnline = (onlineStateR.rows[0] as any)?.is_online === true;
+          if (!backendOnline) {
+            console.warn(`[ONLINE_LOCATION_IGNORED_OFFLINE] ${JSON.stringify({
+              ts: new Date().toISOString(),
+              driverId: userId,
+              socketId: socket.id,
+              reason: "backend_user_offline",
+            })}`);
+          }
+          // Location updates may refresh coordinates, but they cannot create online supply.
           await rawDb.execute(rawSql`
             INSERT INTO driver_locations (driver_id, lat, lng, heading, speed, is_online, updated_at)
-            VALUES (${userId}::uuid, ${lat}, ${lng}, ${heading}, ${speed}, true, NOW())
+            VALUES (${userId}::uuid, ${lat}, ${lng}, ${heading}, ${speed}, ${backendOnline}, NOW())
             ON CONFLICT (driver_id) DO UPDATE
-              SET lat=${lat}, lng=${lng}, heading=${heading}, speed=${speed}, is_online=true, updated_at=NOW()
+              SET lat=${lat}, lng=${lng}, heading=${heading}, speed=${speed}, is_online=${backendOnline}, updated_at=NOW()
           `);
           const tripR = await rawDb.execute(rawSql`
             SELECT current_trip_id FROM users WHERE id=${userId}::uuid
@@ -498,11 +506,74 @@ export function setupSocket(httpServer: HttpServer) {
         });
       });
 
-      socket.on("driver:online", async (data: { isOnline: boolean; lat?: number; lng?: number }) => {
+      socket.on("driver:online", async (
+        data: { isOnline: boolean; lat?: number; lng?: number; source?: string },
+        ack?: (payload: any) => void,
+      ) => {
+        const respond = (payload: Record<string, unknown>) => {
+          try { ack?.(payload); } catch { }
+          try { socket.emit("driver:online_ack", payload); } catch { }
+        };
         try {
-          const { isOnline, lat, lng } = data;
+          const { isOnline, lat, lng, source = "socket" } = data;
           noteSocketActivity({ userId, userType: "driver" });
           const hasValidCoords = lat != null && lng != null && isFinite(lat) && isFinite(lng) && (lat !== 0 || lng !== 0);
+          console.log(`[ONLINE_REQUEST] ${JSON.stringify({
+            ts: new Date().toISOString(),
+            driverId: userId,
+            socketId: socket.id,
+            source,
+            isOnline,
+            hasValidCoords,
+          })}`);
+
+          if (isOnline && !hasValidCoords) {
+            console.warn(`[ONLINE_FAIL] ${JSON.stringify({
+              ts: new Date().toISOString(),
+              driverId: userId,
+              socketId: socket.id,
+              source,
+              reason: "LOCATION_REQUIRED",
+            })}`);
+            respond({ success: false, ok: false, isOnline: false, code: "LOCATION_REQUIRED" });
+            return;
+          }
+
+          if (isOnline) {
+            const eligibilityR = await rawDb.execute(rawSql`
+              SELECT
+                u.verification_status,
+                u.is_locked,
+                u.model_selected_at,
+                dd.vehicle_category_id,
+                COALESCE(vc.is_active, false) AS category_active
+              FROM users u
+              LEFT JOIN driver_details dd ON dd.user_id = u.id
+              LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
+              WHERE u.id=${userId}::uuid
+              LIMIT 1
+            `);
+            const eligibility = eligibilityR.rows[0] as any;
+            const rejectCode =
+              !eligibility ? "DRIVER_NOT_FOUND" :
+              !["approved", "verified"].includes(String(eligibility.verification_status || "")) ? "DRIVER_NOT_APPROVED" :
+              eligibility.is_locked === true ? "ACCOUNT_LOCKED" :
+              !eligibility.model_selected_at ? "REVENUE_MODEL_REQUIRED" :
+              !eligibility.vehicle_category_id ? "VEHICLE_CATEGORY_REQUIRED" :
+              eligibility.category_active !== true ? "VEHICLE_CATEGORY_INACTIVE" :
+              null;
+            if (rejectCode) {
+              console.warn(`[ONLINE_FAIL] ${JSON.stringify({
+                ts: new Date().toISOString(),
+                driverId: userId,
+                socketId: socket.id,
+                source,
+                reason: rejectCode,
+              })}`);
+              respond({ success: false, ok: false, isOnline: false, code: rejectCode });
+              return;
+            }
+          }
 
           // UPSERT — creates the row if it doesn't exist (new drivers have no row yet)
           // Only write lat/lng if we have a valid GPS fix; never store 0,0 as it breaks radius search
@@ -528,13 +599,26 @@ export function setupSocket(httpServer: HttpServer) {
                 current_lng=COALESCE(${lng ?? null}, current_lng)
             WHERE id=${userId}::uuid
           `);
-          socket.emit("driver:online_ack", { isOnline });
+          await rawDb.execute(rawSql`
+            UPDATE driver_details
+            SET availability_status=${isOnline ? "online" : "offline"}, is_online=${isOnline}
+            WHERE user_id=${userId}::uuid
+          `).catch(() => {});
+          respond({ success: true, ok: true, isOnline });
           // If driver explicitly went offline, cancel any pending grace-period timer
           if (!isOnline) {
             const pending = pendingOfflineTimers.get(userId);
             if (pending) { clearTimeout(pending); pendingOfflineTimers.delete(userId); }
           }
-          console.log(`[SOCKET] Driver ${userId} ${isOnline ? "ONLINE" : "offline"} lat=${lat} lng=${lng}`);
+          console.log(`[ONLINE_SUCCESS] ${JSON.stringify({
+            ts: new Date().toISOString(),
+            driverId: userId,
+            socketId: socket.id,
+            source,
+            isOnline,
+            lat: hasValidCoords ? lat : null,
+            lng: hasValidCoords ? lng : null,
+          })}`);
 
           // If driver just came online, check for searching trips nearby
           if (isOnline && hasValidCoords && lat != null && lng != null) {
@@ -549,6 +633,7 @@ export function setupSocket(httpServer: HttpServer) {
           }
         } catch (e: any) {
           console.error("[SOCKET] driver:online error:", e.message);
+          respond({ success: false, ok: false, isOnline: false, code: "ONLINE_SOCKET_ERROR" });
         }
       });
 
@@ -1865,6 +1950,15 @@ export function setupSocket(httpServer: HttpServer) {
             rawDb.execute(rawSql`
               UPDATE users SET is_online=false WHERE id=${userId}::uuid
             `).catch(() => { });
+            rawDb.execute(rawSql`
+              UPDATE driver_details SET availability_status='offline', is_online=false
+              WHERE user_id=${userId}::uuid
+            `).catch(() => { });
+            console.warn(`[ONLINE_FORCE_OFFLINE] ${JSON.stringify({
+              ts: new Date().toISOString(),
+              driverId: userId,
+              reason: "socket_presence_grace_expired",
+            })}`);
             console.log(`[SOCKET] Driver ${userId} offline (grace period expired, reason=${reason})`);
           }).catch(() => {});
         }, DRIVER_OFFLINE_GRACE_MS);

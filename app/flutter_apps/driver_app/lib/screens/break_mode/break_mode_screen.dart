@@ -86,7 +86,7 @@ class _BreakModeScreenState extends State<BreakModeScreen> {
         });
         _startCountdown();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Break started for $_selectedMinutes minutes. Auto go-online after break.'),
+          content: Text('Break started for $_selectedMinutes minutes. Go online manually after break.'),
           backgroundColor: Colors.blue,
         ));
       }
@@ -149,7 +149,7 @@ class _BreakModeScreenState extends State<BreakModeScreen> {
         const SizedBox(height: 32),
         const Text('You\'re on break', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w500)),
         const SizedBox(height: 8),
-        const Text('No new trips will be assigned.\nWe\'ll auto go-online after break.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+        const Text('No new trips will be assigned.\nGo online manually after break.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
         if (_breakUntil != null) ...[
           const SizedBox(height: 12),
           Text('Back at: ${_breakUntil!.substring(11, 16)}', style: const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w500)),
@@ -228,7 +228,7 @@ class _BreakModeScreenState extends State<BreakModeScreen> {
             children: const [
               _InfoRow(icon: Icons.block, text: 'No new trip requests during break'),
               SizedBox(height: 8),
-              _InfoRow(icon: Icons.play_circle_outline, text: 'Auto go-online after break ends'),
+              _InfoRow(icon: Icons.play_circle_outline, text: 'Manual online check after break ends'),
               SizedBox(height: 8),
               _InfoRow(icon: Icons.timer_off_outlined, text: 'End break early anytime'),
             ],

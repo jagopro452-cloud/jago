@@ -313,6 +313,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       if (connected) _fetchPendingParcelOffer();
     }));
 
+    _subs.add(_socket.onOnlineState.listen((state) {
+      if (!mounted) return;
+      final online = state['isOnline'] == true;
+      if (!online && _isOnline) {
+        setState(() {
+          _isOnline = false;
+          _toggling = false;
+        });
+        _stopLocationStreaming();
+        _stopHeatmap();
+        _parcelRecoveryTimer?.cancel();
+        _parcelRecoveryTimer = null;
+        _showSnack('You are offline because connection or GPS is unhealthy', error: true);
+      }
+    }));
+
     _subs.add(_socket.onNewTrip.listen((trip) async {
       if (!mounted) return;
       await _showIncomingTripAfterServerValidation(
@@ -475,12 +491,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   Future<void> _refreshLocationAfterResume() async {
     await _getLocation();
     if (!mounted || !_isOnline || !_hasValidLocationFix || !_hasLiveLocationAccess) return;
-    _startLocationStreaming();
-    _socket.setOnlineStatus(
-      isOnline: true,
-      lat: _center.latitude,
-      lng: _center.longitude,
-    );
+    unawaited(_recoverOnlineAfterBackendState('app_resume'));
   }
 
   void _applyLocationFix(Position pos, {bool animate = true}) {
@@ -552,11 +563,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     setState(() => _isOnline = false);
     _stopLocationStreaming();
     _stopHeatmap();
-    _socket.setOnlineStatus(
+    unawaited(_socket.setOnlineStatus(
       isOnline: false,
       lat: _center.latitude,
       lng: _center.longitude,
-    );
+      requireAck: false,
+      reason: 'service_disabled',
+    ));
     _showSnack('Your service is temporarily unavailable by admin', error: true);
     try {
       final headers = await AuthService.getHeaders();
@@ -702,8 +715,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body);
         if (!mounted) return;
+        final backendOnline = data['isOnline'] == true;
         setState(() {
-          _isOnline = data['isOnline'] ?? false;
+          _isOnline = false;
           _walletBalance = (data['walletBalance'] ?? 0).toDouble();
           _tripsToday = data['tripsToday'] ?? 0;
           _earningsToday = (data['earningsToday'] ?? 0).toDouble();
@@ -723,12 +737,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           // after app restart/crash where socket disconnect handler had set it false.
           // Without this, dispatch won't find driver until first GPS update arrives (3s delay).
           if (_hasValidLocationFix && _hasLiveLocationAccess) {
-            _socket.setOnlineStatus(
+            unawaited(_socket.setOnlineStatus(
               isOnline: true,
               lat: _center.latitude,
               lng: _center.longitude,
-            );
+              requireAck: true,
+              reason: 'dashboard_legacy_guard',
+            ));
           }
+        }
+        if (backendOnline) {
+          setState(() => _isOnline = true);
+          unawaited(_recoverOnlineAfterBackendState('dashboard'));
         }
       } else if (res.statusCode == 401) {
         _handleSessionExpired();
@@ -1169,64 +1189,352 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     ));
   }
 
+  String _onlineTraceId() => 'online_${DateTime.now().millisecondsSinceEpoch}';
+
+  void _onlineLog(String event, Map<String, Object?> data) {
+    try {
+      debugPrint('[ONLINE_EVENT] ${jsonEncode({
+        'event': event,
+        'ts': DateTime.now().toIso8601String(),
+        ...data,
+      })}');
+    } catch (_) {
+      debugPrint('[ONLINE_EVENT] $event');
+    }
+  }
+
+  bool _isUsableOnlinePosition(Position pos) {
+    final lat = pos.latitude;
+    final lng = pos.longitude;
+    final ageSeconds = DateTime.now().difference(pos.timestamp).inSeconds.abs();
+    return lat.isFinite &&
+        lng.isFinite &&
+        (lat != 0 || lng != 0) &&
+        pos.accuracy <= 200 &&
+        ageSeconds <= 120;
+  }
+
+  Future<Position?> _requireFreshOnlinePosition(
+    String traceId, {
+    bool silent = false,
+  }) async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      _hasLiveLocationAccess = false;
+      _onlineLog('ONLINE_FAIL', {
+        'traceId': traceId,
+        'reason': 'gps_disabled',
+      });
+      if (!silent) _showSnack('Turn on GPS to go online.', error: true);
+      return null;
+    }
+
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) {
+      perm = await Geolocator.requestPermission();
+    }
+    if (perm == LocationPermission.denied ||
+        perm == LocationPermission.deniedForever) {
+      _hasLiveLocationAccess = false;
+      _onlineLog('ONLINE_FAIL', {
+        'traceId': traceId,
+        'reason': 'location_permission_denied',
+      });
+      if (!silent) {
+        await _showLocationRequiredDialog(
+          title: 'Location Required',
+          message: 'Location access is required before going online.',
+          openSettings: Geolocator.openAppSettings,
+        );
+      }
+      return null;
+    }
+
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 12),
+        ),
+      );
+      if (!_isUsableOnlinePosition(pos)) {
+        _onlineLog('ONLINE_FAIL', {
+          'traceId': traceId,
+          'reason': 'gps_fix_unusable',
+          'accuracy': pos.accuracy,
+          'ageSeconds': DateTime.now().difference(pos.timestamp).inSeconds.abs(),
+        });
+        if (!silent) {
+          _showSnack('Waiting for a fresh GPS fix. Try again in a moment.', error: true);
+        }
+        return null;
+      }
+      _hasLiveLocationAccess = true;
+      _applyLocationFix(pos);
+      _onlineLog('ONLINE_LOCATION_READY', {
+        'traceId': traceId,
+        'lat': pos.latitude,
+        'lng': pos.longitude,
+        'accuracy': pos.accuracy,
+      });
+      return pos;
+    } catch (e) {
+      _onlineLog('ONLINE_FAIL', {
+        'traceId': traceId,
+        'reason': 'fresh_location_failed',
+        'error': e.toString(),
+      });
+      if (!silent) {
+        _showSnack('Unable to confirm live GPS. Please try again.', error: true);
+      }
+      return null;
+    }
+  }
+
+  String _onlineErrorMessage(http.Response res) {
+    try {
+      final body = jsonDecode(res.body);
+      final message = body['message'] ?? body['error'] ?? body['code'];
+      if (message != null && message.toString().trim().isNotEmpty) {
+        return message.toString();
+      }
+    } catch (_) {}
+    return 'Unable to go online right now.';
+  }
+
+  void _setOfflineLocal({bool stopAll = true}) {
+    if (!mounted) return;
+    setState(() {
+      _isOnline = false;
+      _toggling = false;
+    });
+    if (stopAll) {
+      _stopLocationStreaming();
+      _stopHeatmap();
+      _parcelRecoveryTimer?.cancel();
+      _parcelRecoveryTimer = null;
+    }
+  }
+
+  Future<bool> _patchBackendOnlineStatus({
+    required bool isOnline,
+    required Position? pos,
+    required String traceId,
+  }) async {
+    final headers = await AuthService.getHeaders();
+    final res = await http
+        .patch(
+          Uri.parse(ApiConfig.driverOnlineStatus),
+          headers: headers,
+          body: jsonEncode({
+            'isOnline': isOnline,
+            if (pos != null) 'lat': pos.latitude,
+            if (pos != null) 'lng': pos.longitude,
+            'traceId': traceId,
+          }),
+        )
+        .timeout(const Duration(seconds: 8));
+    if (res.statusCode == 401) {
+      _handleSessionExpired();
+      return false;
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      _onlineLog('ONLINE_FAIL', {
+        'traceId': traceId,
+        'reason': 'backend_rejected',
+        'statusCode': res.statusCode,
+        'message': _onlineErrorMessage(res),
+      });
+      return false;
+    }
+    _onlineLog('ONLINE_BACKEND_ACK', {
+      'traceId': traceId,
+      'isOnline': isOnline,
+    });
+    return true;
+  }
+
+  Future<void> _recoverOnlineAfterBackendState(String source) async {
+    if (!mounted || !_isOnline) return;
+    final traceId = _onlineTraceId();
+    _onlineLog('ONLINE_RECONNECT_RECOVERY', {
+      'traceId': traceId,
+      'source': source,
+    });
+    if (!_socket.isConnected) {
+      await _socket.reconnectWithLatestToken(reason: 'online_recovery_$source');
+      await Future.delayed(const Duration(milliseconds: 600));
+    }
+    final pos = await _requireFreshOnlinePosition(traceId, silent: true);
+    if (!mounted || pos == null || !_socket.isConnected) {
+      _setOfflineLocal();
+      unawaited(_socket.setOnlineStatus(
+        isOnline: false,
+        requireAck: false,
+        reason: 'online_recovery_failed',
+      ));
+      return;
+    }
+    final backendOk = await _patchBackendOnlineStatus(
+      isOnline: true,
+      pos: pos,
+      traceId: traceId,
+    ).catchError((_) => false);
+    if (!backendOk || !mounted) {
+      _setOfflineLocal();
+      return;
+    }
+    final socketOk = await _socket.setOnlineStatus(
+      isOnline: true,
+      lat: pos.latitude,
+      lng: pos.longitude,
+      requireAck: true,
+      reason: 'online_recovery_$source',
+    );
+    if (!socketOk || !mounted) {
+      _setOfflineLocal();
+      return;
+    }
+    setState(() => _isOnline = true);
+    _startLocationStreaming();
+    _startHeatmapRefresh();
+    _startIdleTimer();
+    _startParcelRecoveryPolling();
+    _onlineLog('ONLINE_SUCCESS', {
+      'traceId': traceId,
+      'source': source,
+    });
+  }
+
 
   Future<void> _toggleOnline() async {
+    if (_toggling) return;
     HapticFeedback.mediumImpact();
-    final newStatus = !_isOnline;
-    if (newStatus && !_isDriverVehicleActive) {
+    final nextOnline = !_isOnline;
+    final traceId = _onlineTraceId();
+    _onlineLog('ONLINE_REQUEST', {
+      'traceId': traceId,
+      'target': nextOnline ? 'online' : 'offline',
+    });
+    setState(() => _toggling = true);
+
+    if (nextOnline && !_isDriverVehicleActive) {
+      setState(() => _toggling = false);
+      _onlineLog('ONLINE_FAIL', {
+        'traceId': traceId,
+        'reason': 'vehicle_service_disabled',
+      });
       _showSnack('Your service is temporarily unavailable by admin', error: true);
       return;
     }
 
-    // 1. INSTANT OPTIMISTIC UI UPDATE
-    setState(() {
-      _isOnline = newStatus;
-      _toggling = false; // No buffering
-    });
+    if (!nextOnline) {
+      _setOfflineLocal();
+      _stopLocationStreaming();
+      _stopHeatmap();
+      _parcelRecoveryTimer?.cancel();
+      _parcelRecoveryTimer = null;
+      _showSnack('You are offline');
+      try {
+        await _socket.setOnlineStatus(
+          isOnline: false,
+          lat: _center.latitude,
+          lng: _center.longitude,
+          requireAck: false,
+          reason: 'manual_offline',
+        );
+        await _patchBackendOnlineStatus(
+          isOnline: false,
+          pos: _lastPosition,
+          traceId: traceId,
+        );
+      } catch (e) {
+        _onlineLog('ONLINE_ROLLBACK', {
+          'traceId': traceId,
+          'reason': 'offline_sync_failed',
+          'error': e.toString(),
+        });
+      }
+      return;
+    }
 
-    if (newStatus) {
+    try {
+      if (!_socket.isConnected) {
+        await _socket.reconnectWithLatestToken(reason: 'manual_online');
+        await Future.delayed(const Duration(milliseconds: 600));
+      }
+      if (!_socket.isConnected) {
+        _setOfflineLocal();
+        _onlineLog('ONLINE_FAIL', {
+          'traceId': traceId,
+          'reason': 'socket_not_authenticated',
+        });
+        _showSnack('Connection not ready. Please retry.', error: true);
+        return;
+      }
+
+      final pos = await _requireFreshOnlinePosition(traceId);
+      if (pos == null || !mounted) {
+        _setOfflineLocal();
+        return;
+      }
+
+      final backendOk = await _patchBackendOnlineStatus(
+        isOnline: true,
+        pos: pos,
+        traceId: traceId,
+      );
+      if (!backendOk || !mounted) {
+        _setOfflineLocal();
+        _showSnack('Unable to go online. Backend rejected the request.', error: true);
+        return;
+      }
+
+      final socketOk = await _socket.setOnlineStatus(
+        isOnline: true,
+        lat: pos.latitude,
+        lng: pos.longitude,
+        requireAck: true,
+        reason: 'manual_online',
+      );
+      if (!socketOk || !mounted) {
+        _setOfflineLocal();
+        unawaited(_patchBackendOnlineStatus(
+          isOnline: false,
+          pos: pos,
+          traceId: traceId,
+        ));
+        _onlineLog('ONLINE_ROLLBACK', {
+          'traceId': traceId,
+          'reason': 'socket_ack_failed',
+        });
+        _showSnack('Unable to confirm realtime connection. Staying offline.', error: true);
+        return;
+      }
+
+      setState(() {
+        _isOnline = true;
+        _toggling = false;
+      });
       _startLocationStreaming();
       _startHeatmapRefresh();
       _startIdleTimer();
+      _startParcelRecoveryPolling();
       _fetchPendingParcelOffer();
-      _showSnack('Online forced for Testing! ✓');
-    } else {
-      _stopLocationStreaming();
-      _stopHeatmap();
-      _showSnack('Offline అయ్యారు');
+      _onlineLog('ONLINE_SUCCESS', {
+        'traceId': traceId,
+        'source': 'manual_toggle',
+      });
+      _showSnack('You are online');
+    } catch (e) {
+      _setOfflineLocal();
+      _onlineLog('ONLINE_FAIL', {
+        'traceId': traceId,
+        'reason': 'unexpected_online_error',
+        'error': e.toString(),
+      });
+      _showSnack('Unable to go online. Please retry.', error: true);
     }
-
-    // 2. BACKGROUND PROCESSING
-    Future.microtask(() async {
-      try {
-        if (newStatus) {
-          await _getLocation();
-        }
-
-        _socket.setOnlineStatus(
-          isOnline: newStatus,
-          lat: _center.latitude,
-          lng: _center.longitude,
-        );
-
-        final headers = await AuthService.getHeaders();
-        final res = await http.patch(
-          Uri.parse(ApiConfig.driverOnlineStatus),
-          headers: headers,
-          body: jsonEncode({
-            'isOnline': newStatus,
-            'lat': _center.latitude,
-            'lng': _center.longitude,
-          }),
-        ).timeout(const Duration(seconds: 4)); // Fast fail timeout
-
-        if (res.statusCode == 401) {
-          _handleSessionExpired();
-        }
-      } catch (e) {
-        // Silently ignore network failures to keep the UI in the "ON" state for testing.
-      }
-    });
   }
 
 

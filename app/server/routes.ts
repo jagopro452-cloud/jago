@@ -8938,7 +8938,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // isOnline defaults to true ï¿½ if you're sending location, you are online.
       // Fallback chain: body.isOnline ? true (never false here; going offline is via online-status endpoint)
-      const effectiveOnline = isOnline !== undefined ? Boolean(isOnline) : true;
+      const onlineStateR = await rawDb.execute(rawSql`
+        SELECT is_online FROM users WHERE id=${driver.id}::uuid LIMIT 1
+      `);
+      const backendOnline = (onlineStateR.rows[0] as any)?.is_online === true;
+      const requestedOnline = isOnline !== undefined ? Boolean(isOnline) : backendOnline;
+      const effectiveOnline = requestedOnline && backendOnline;
+      if (requestedOnline && !backendOnline) {
+        console.warn(`[ONLINE_LOCATION_IGNORED_OFFLINE] ${JSON.stringify({
+          ts: new Date().toISOString(),
+          driverId: driver.id,
+          reason: "location_update_cannot_create_online_supply",
+        })}`);
+      }
 
       // Upsert location ï¿½ always include updated_at=NOW() in both INSERT and ON CONFLICT
       await rawDb.execute(rawSql`
@@ -8948,7 +8960,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           is_online=${effectiveOnline}, updated_at=NOW()
       `);
       // Also update users table
-      await rawDb.execute(rawSql`UPDATE users SET is_online=${effectiveOnline}, current_lat=${coords.lat}, current_lng=${coords.lng} WHERE id=${driver.id}::uuid`);
+      await rawDb.execute(rawSql`
+        UPDATE users
+        SET current_lat=${coords.lat},
+            current_lng=${coords.lng},
+            is_online=${effectiveOnline}
+        WHERE id=${driver.id}::uuid
+      `);
       // Auto-detect and update driver zone from GPS position
       const autoZoneId = await detectZoneId(coords.lat, coords.lng);
       if (autoZoneId) {
@@ -8963,8 +8981,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.patch("/api/app/driver/online-status", authApp, requireDriver, async (req, res) => {
     try {
       const driver = (req as any).currentUser;
-      const { isOnline } = req.body;
+      const { isOnline, traceId } = req.body;
+      const lat = req.body.lat;
+      const lng = req.body.lng;
+      const hasValidCoords = lat != null && lng != null && isFinite(Number(lat)) && isFinite(Number(lng)) && (Number(lat) !== 0 || Number(lng) !== 0);
+      console.log(`[ONLINE_REQUEST] ${JSON.stringify({
+        ts: new Date().toISOString(),
+        traceId: traceId || null,
+        driverId: driver.id,
+        source: "http",
+        isOnline: Boolean(isOnline),
+        hasValidCoords,
+      })}`);
       if (isOnline) {
+        if (!hasValidCoords) {
+          console.warn(`[ONLINE_FAIL] ${JSON.stringify({
+            ts: new Date().toISOString(),
+            traceId: traceId || null,
+            driverId: driver.id,
+            source: "http",
+            reason: "LOCATION_REQUIRED",
+          })}`);
+          return res.status(400).json({
+            success: false,
+            message: "Fresh GPS location is required before going online.",
+            code: "LOCATION_REQUIRED",
+          });
+        }
         // Check verification status FIRST
         const verR = await rawDb.execute(rawSql`SELECT verification_status, rejection_note FROM users WHERE id=${driver.id}::uuid`);
         const vs = (verR.rows[0] as any)?.verification_status;
@@ -9090,10 +9133,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         }
       }
-      const lat = req.body.lat;
-      const lng = req.body.lng;
-      const hasValidCoords = lat != null && lng != null && isFinite(Number(lat)) && isFinite(Number(lng)) && (Number(lat) !== 0 || Number(lng) !== 0);
-      await rawDb.execute(rawSql`UPDATE users SET is_online=${isOnline} WHERE id=${driver.id}::uuid`);
+      await rawDb.execute(rawSql`
+        UPDATE users
+        SET is_online=${isOnline},
+            current_lat=COALESCE(${hasValidCoords ? Number(lat) : null}, current_lat),
+            current_lng=COALESCE(${hasValidCoords ? Number(lng) : null}, current_lng)
+        WHERE id=${driver.id}::uuid
+      `);
       // UPSERT driver_locations ï¿½ only update lat/lng if we have a real GPS fix; never write 0,0
       if (hasValidCoords) {
         await rawDb.execute(rawSql`
@@ -9108,7 +9154,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ON CONFLICT (driver_id) DO UPDATE SET is_online=${isOnline}, updated_at=NOW()
         `);
       }
-      res.json({ success: true, isOnline });
+      await rawDb.execute(rawSql`
+        UPDATE driver_details
+        SET availability_status=${isOnline ? "online" : "offline"}, is_online=${isOnline}
+        WHERE user_id=${driver.id}::uuid
+      `).catch(dbCatch("db"));
+      console.log(`[ONLINE_${isOnline ? "SUCCESS" : "BACKEND_ACK"}] ${JSON.stringify({
+        ts: new Date().toISOString(),
+        traceId: traceId || null,
+        driverId: driver.id,
+        source: "http",
+        isOnline: Boolean(isOnline),
+      })}`);
+      res.json({ success: true, isOnline, traceId: traceId || null });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -15767,15 +15825,36 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       if (!minutes || minutes < 1 || minutes > 120) return res.status(400).json({ message: "Break: 1ï¿½120 minutes only" });
       const breakUntil = new Date(Date.now() + minutes * 60 * 1000);
       await rawDb.execute(rawSql`UPDATE users SET break_until=${breakUntil.toISOString()}, is_online=false WHERE id=${user.id}::uuid`);
-      res.json({ success: true, breakUntil: breakUntil.toISOString(), message: `Break set for ${minutes} minutes. You'll auto go-online after break.` });
+      await rawDb.execute(rawSql`
+        UPDATE driver_locations SET is_online=false, updated_at=NOW()
+        WHERE driver_id=${user.id}::uuid
+      `).catch(dbCatch("db"));
+      await rawDb.execute(rawSql`
+        UPDATE driver_details SET availability_status='offline', is_online=false
+        WHERE user_id=${user.id}::uuid
+      `).catch(dbCatch("db"));
+      res.json({ success: true, breakUntil: breakUntil.toISOString(), message: `Break set for ${minutes} minutes. Go online manually after break.` });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
   app.delete("/api/app/driver/break", async (req, res) => {
     try {
       const user = await requireAppAuth(req, res); if (!user) return;
-      await rawDb.execute(rawSql`UPDATE users SET break_until=NULL, is_online=true WHERE id=${user.id}::uuid`);
-      res.json({ success: true, message: "Break ended! You are now online." });
+      await rawDb.execute(rawSql`UPDATE users SET break_until=NULL, is_online=false WHERE id=${user.id}::uuid`);
+      await rawDb.execute(rawSql`
+        UPDATE driver_locations SET is_online=false, updated_at=NOW()
+        WHERE driver_id=${user.id}::uuid
+      `).catch(dbCatch("db"));
+      await rawDb.execute(rawSql`
+        UPDATE driver_details SET availability_status='offline', is_online=false
+        WHERE user_id=${user.id}::uuid
+      `).catch(dbCatch("db"));
+      console.warn(`[ONLINE_FORCE_OFFLINE] ${JSON.stringify({
+        ts: new Date().toISOString(),
+        driverId: user.id,
+        reason: "break_ended_requires_manual_online_ack",
+      })}`);
+      res.json({ success: true, message: "Break ended. Go online again after GPS and realtime checks pass." });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -15786,7 +15865,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       const breakUntil = (dbRes.rows[0] as any)?.break_until;
       if (!breakUntil || new Date(breakUntil) < new Date()) {
         // Auto end break if time passed
-        if (breakUntil) await rawDb.execute(rawSql`UPDATE users SET break_until=NULL, is_online=true WHERE id=${user.id}::uuid`);
+        if (breakUntil) {
+          await rawDb.execute(rawSql`UPDATE users SET break_until=NULL, is_online=false WHERE id=${user.id}::uuid`);
+          await rawDb.execute(rawSql`
+            UPDATE driver_locations SET is_online=false, updated_at=NOW()
+            WHERE driver_id=${user.id}::uuid
+          `).catch(dbCatch("db"));
+          await rawDb.execute(rawSql`
+            UPDATE driver_details SET availability_status='offline', is_online=false
+            WHERE user_id=${user.id}::uuid
+          `).catch(dbCatch("db"));
+        }
         return res.json({ onBreak: false });
       }
       const minsLeft = Math.ceil((new Date(breakUntil).getTime() - Date.now()) / 60000);

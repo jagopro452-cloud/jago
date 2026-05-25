@@ -53,6 +53,7 @@ class SocketService {
   final _callEndedController = StreamController<Map<String, dynamic>>.broadcast();
   final _callRejectedController = StreamController<Map<String, dynamic>>.broadcast();
   final _callErrorController = StreamController<Map<String, dynamic>>.broadcast();
+  final _onlineStateController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onNewTrip => _newTripController.stream;
   Stream<Map<String, dynamic>> get onTripCancelled => _tripCancelledController.stream;
@@ -77,6 +78,7 @@ class SocketService {
   Stream<Map<String, dynamic>> get onCallEnded => _callEndedController.stream;
   Stream<Map<String, dynamic>> get onCallRejected => _callRejectedController.stream;
   Stream<Map<String, dynamic>> get onCallError => _callErrorController.stream;
+  Stream<Map<String, dynamic>> get onOnlineState => _onlineStateController.stream;
   bool get isConnected => _isConnected;
 
   void _socketLog(String event, Map<String, Object?> data) {
@@ -90,6 +92,20 @@ class SocketService {
     } catch (_) {
       debugPrint('[SOCKET_EVENT] $event');
     }
+  }
+
+  void _emitOnlineState({
+    required bool isOnline,
+    required String source,
+    String? reason,
+  }) {
+    if (_onlineStateController.isClosed) return;
+    _onlineStateController.add({
+      'isOnline': isOnline,
+      'source': source,
+      if (reason != null) 'reason': reason,
+      'ts': DateTime.now().toIso8601String(),
+    });
   }
 
   void _bindAuthTokenListener() {
@@ -275,10 +291,9 @@ class SocketService {
         'reason': 'already_connected_same_identity',
       });
       if (_wasOnline) {
-        _socket!.emit('driver:online', {
-          'isOnline': true,
-          if (_lastLat != null) 'lat': _lastLat,
-          if (_lastLng != null) 'lng': _lastLng,
+        _socketLog('ONLINE_RECONNECT_RECOVERY', {
+          'phase': 'duplicate_connect_blocked',
+          'action': 'awaiting_ui_backend_validation',
         });
       }
       _emitActiveTripRejoin();
@@ -319,10 +334,9 @@ class SocketService {
     void restoreRoomsAndState(String source) {
       if (socketEpoch != _socketEpoch) return;
       if (_wasOnline) {
-        socket.emit('driver:online', {
-          'isOnline': true,
-          if (_lastLat != null) 'lat': _lastLat,
-          if (_lastLng != null) 'lng': _lastLng,
+        _socketLog('ONLINE_RECONNECT_RECOVERY', {
+          'source': source,
+          'action': 'awaiting_ui_backend_validation',
         });
       }
       if (_activeTripId != null) {
@@ -546,9 +560,21 @@ class SocketService {
       if (last == null) return;
       final stale = DateTime.now().difference(last).inSeconds >= 15;
       if (stale && _isConnected) {
-        // GPS failed or app went background — mark driver offline
-        _socket!.emit('driver:online', {'isOnline': false});
         _wasOnline = false;
+        _socketLog('ONLINE_HEARTBEAT_FAIL', {
+          'reason': 'location_stale',
+          'lastLocationSentAt': last.toIso8601String(),
+        });
+        _emitOnlineState(
+          isOnline: false,
+          source: 'heartbeat',
+          reason: 'location_stale',
+        );
+        unawaited(setOnlineStatus(
+          isOnline: false,
+          requireAck: false,
+          reason: 'location_stale',
+        ));
       }
     });
   }
@@ -635,28 +661,117 @@ class SocketService {
     }
   }
 
-  void setOnlineStatus({required bool isOnline, double? lat, double? lng}) {
-    _wasOnline = isOnline;
+  Future<bool> setOnlineStatus({
+    required bool isOnline,
+    double? lat,
+    double? lng,
+    bool requireAck = true,
+    String reason = 'manual',
+  }) async {
     if (lat != null) _lastLat = lat;
     if (lng != null) _lastLng = lng;
-    if (_isConnected) {
-      _socket!.emit('driver:online', {
+
+    if (isOnline && !_isConnected) {
+      _wasOnline = false;
+      _socketLog('ONLINE_FAIL', {
+        'reason': 'socket_disconnected',
+        'source': reason,
+      });
+      _emitOnlineState(
+        isOnline: false,
+        source: reason,
+        reason: 'socket_disconnected',
+      );
+      return false;
+    }
+
+    if (_isConnected && _socket != null) {
+      final payload = {
         'isOnline': isOnline,
         if (lat != null) 'lat': lat,
         if (lng != null) 'lng': lng,
-      });
-    } else {
-      // Socket not connected — use HTTP fallback so go-online always works
-      _setOnlineViaHttp(isOnline: isOnline, lat: lat, lng: lng);
+        'source': reason,
+      };
+      final completer = Completer<bool>();
+      void finish(bool value) {
+        if (!completer.isCompleted) completer.complete(value);
+      }
+
+      try {
+        _socket!.emitWithAck('driver:online', payload, ack: (data) {
+          if (data is Map) {
+            final ok = data['success'] == true || data['ok'] == true;
+            final ackOnline = data['isOnline'] == isOnline;
+            if (!ok) {
+              _socketLog('ONLINE_FAIL', {
+                'reason': data['code']?.toString() ?? 'socket_ack_rejected',
+                'source': reason,
+              });
+            }
+            finish(ok && ackOnline);
+            return;
+          }
+          finish(!requireAck);
+        });
+
+        final ackOk = await completer.future.timeout(
+          const Duration(seconds: 8),
+          onTimeout: () {
+            _socketLog('ONLINE_FAIL', {
+              'reason': 'socket_ack_timeout',
+              'source': reason,
+            });
+            return false;
+          },
+        );
+        if (ackOk) {
+          _wasOnline = isOnline;
+          _socketLog('ONLINE_SOCKET_ACK', {
+            'isOnline': isOnline,
+            'source': reason,
+          });
+          _emitOnlineState(isOnline: isOnline, source: reason);
+          return true;
+        }
+      } catch (e) {
+        _socketLog('ONLINE_FAIL', {
+          'reason': 'socket_emit_failed',
+          'source': reason,
+          'error': e.toString(),
+        });
+      }
     }
+
+    if (!isOnline) {
+      final httpOk = await _setOnlineViaHttp(
+        isOnline: false,
+        lat: lat,
+        lng: lng,
+      );
+      _wasOnline = false;
+      _emitOnlineState(
+        isOnline: false,
+        source: reason,
+        reason: httpOk ? null : 'offline_http_fallback_failed',
+      );
+      return true;
+    }
+
+    _wasOnline = false;
+    _emitOnlineState(
+      isOnline: false,
+      source: reason,
+      reason: 'online_not_confirmed',
+    );
+    return false;
   }
 
-  Future<void> _setOnlineViaHttp({required bool isOnline, double? lat, double? lng}) async {
+  Future<bool> _setOnlineViaHttp({required bool isOnline, double? lat, double? lng}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('auth_token');
-      if (token == null) return;
-      await http.patch(
+      if (token == null) return false;
+      final res = await http.patch(
         Uri.parse(ApiConfig.driverOnlineStatus),
         headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
         body: jsonEncode({
@@ -665,11 +780,13 @@ class SocketService {
           if (lng != null) 'lng': lng,
         }),
       ).timeout(const Duration(seconds: 10));
+      return res.statusCode >= 200 && res.statusCode < 300;
     } catch (e) {
       _socketLog('SOCKET_RECONNECT_FAILED', {
         'reason': 'online_http_fallback_failed',
         'error': e.toString(),
       });
+      return false;
     }
   }
 
@@ -791,5 +908,6 @@ class SocketService {
     _callEndedController.close();
     _callRejectedController.close();
     _callErrorController.close();
+    _onlineStateController.close();
   }
 }
