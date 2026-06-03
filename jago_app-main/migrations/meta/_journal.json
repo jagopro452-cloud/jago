@@ -29,6 +29,13 @@
       "when": 1741996800000,
       "tag": "0003_otp_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1748908800000,
+      "tag": "0009_production_hardening",
+      "breakpoints": true
     }
   ]
 }

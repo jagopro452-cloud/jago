@@ -324,9 +324,13 @@ export function setupSocket(httpServer: HttpServer) {
           }
 
           // Verify trip is still in searching/driver_assigned state
+          // NOTE: explicitly alias both category IDs to avoid t.* overwrite by dd.vehicle_category_id
           const tripR = await rawDb.execute(rawSql`
-            SELECT t.*, u.full_name as customer_name, u.fcm_token as customer_fcm,
-              dd.vehicle_category_id, dl.lat as driver_lat, dl.lng as driver_lng
+            SELECT t.*,
+              t.vehicle_category_id as trip_vehicle_category_id,
+              u.full_name as customer_name, u.fcm_token as customer_fcm,
+              dd.vehicle_category_id as driver_vehicle_category_id,
+              dl.lat as driver_lat, dl.lng as driver_lng
             FROM trip_requests t
             JOIN users u ON u.id = t.customer_id
             LEFT JOIN driver_details dd ON dd.user_id=${userId}::uuid
@@ -338,6 +342,17 @@ export function setupSocket(httpServer: HttpServer) {
             return;
           }
           const trip = camelize(tripR.rows[0]) as any;
+
+          // Vehicle category enforcement: bike stays bike, auto stays auto, car stays car
+          const tripCatId = trip.tripVehicleCategoryId as string | null;
+          const driverCatId = trip.driverVehicleCategoryId as string | null;
+          if (tripCatId && driverCatId && tripCatId !== driverCatId) {
+            socket.emit("driver:accept_trip_error", {
+              message: "Vehicle category mismatch: your vehicle does not match this trip requirement",
+              code: "VEHICLE_MISMATCH",
+            });
+            return;
+          }
 
           // Atomically claim the trip — only if still available (prevents race condition)
           const claimed = await rawDb.execute(rawSql`

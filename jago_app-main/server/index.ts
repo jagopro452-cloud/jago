@@ -214,6 +214,9 @@ app.use((req, res, next) => {
           "twilio_auth_token",
           "twilio_phone_number",
           "anthropic_api_key",
+          "smslogin_api_key",
+          "smslogin_sender_id",
+          "smslogin_username",
         ]]
       );
       const ENV_MAP: Record<string, string> = {
@@ -227,6 +230,9 @@ app.use((req, res, next) => {
         twilio_auth_token: "TWILIO_AUTH_TOKEN",
         twilio_phone_number: "TWILIO_PHONE_NUMBER",
         anthropic_api_key: "ANTHROPIC_API_KEY",
+        smslogin_api_key: "SMSLOGIN_API_KEY",
+        smslogin_sender_id: "SMSLOGIN_SENDER_ID",
+        smslogin_username: "SMSLOGIN_USERNAME",
       };
       for (const row of settingsRes.rows as any[]) {
         const envKey = ENV_MAP[row.key_name];

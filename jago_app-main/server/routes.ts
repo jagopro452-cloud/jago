@@ -6614,7 +6614,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
         return res.status(409).json({ message: "Not enough seats available", available: ride.available_seats });
       }
-      res.json({ success: true, booking: camelize(bookingRes.rows[0]) });
+      const newBooking = camelize(bookingRes.rows[0]) as any;
+      // Notify driver of new booking in real-time
+      if (io) {
+        const driverRes = await rawDb.execute(rawSql`
+          SELECT driver_id FROM outstation_pool_rides WHERE id = ${rideId}::uuid LIMIT 1
+        `).catch(() => ({ rows: [] as any[] }));
+        const driverId = (driverRes.rows[0] as any)?.driver_id;
+        if (driverId) {
+          io.to(`driver:${driverId}`).emit('pool:new_booking', {
+            rideId,
+            bookingId: newBooking.id,
+            seatsBooked: seats,
+            totalFare: newBooking.totalFare,
+            from: newBooking.fromCity,
+            to: newBooking.toCity,
+          });
+        }
+      }
+      res.json({ success: true, booking: newBooking });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -8201,10 +8219,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         console.log(`[DRIVER_ACCEPT] Driver ${driver.id} - Locked, but ALLOWING for test`);
       }
 
+      // Vehicle category enforcement: bike → bike only, auto → auto only, car → car only
+      const catCheck = await rawDb.execute(rawSql`
+        SELECT t.vehicle_category_id as trip_cat, dd.vehicle_category_id as driver_cat
+        FROM trip_requests t
+        LEFT JOIN driver_details dd ON dd.user_id = ${driver.id}::uuid
+        WHERE t.id = ${tripId}::uuid
+        LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      if (catCheck.rows.length) {
+        const { trip_cat, driver_cat } = catCheck.rows[0] as any;
+        if (trip_cat && driver_cat && trip_cat !== driver_cat) {
+          return res.status(403).json({
+            message: 'Vehicle category mismatch: your vehicle does not match this trip requirement',
+            code: 'VEHICLE_MISMATCH',
+          });
+        }
+      }
+
       // Generate pickup OTP
       const otp = Math.floor(1000 + Math.random() * 9000).toString();
 
-      // Atomically claim trip � busy check embedded in WHERE to prevent TOCTOU race:
+      // Atomically claim trip� busy check embedded in WHERE to prevent TOCTOU race:
       // if driver already has an active trip this UPDATE returns 0 rows.
       const r = await rawDb.execute(rawSql`
         UPDATE trip_requests
@@ -13616,11 +13652,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         RETURNING id
       `);
       if (!bookingR.rows.length) {
-        // Seats were taken between our check and insert � refund the wallet deduction
+        // Seats were taken between our check and insert� refund the wallet deduction
         await rawDb.execute(rawSql`UPDATE users SET wallet_balance = wallet_balance + ${totalFare} WHERE id=${user.id}::uuid`);
         return res.status(409).json({ message: 'No seats available. Please try again.' });
       }
-      res.json({ success: true, message: seats + ' seat(s) booked for ?' + totalFare + '. Deducted from wallet.', totalFare });
+      // Notify driver of new booking in real-time
+      if (io && (ride as any).driverId) {
+        io.to(`driver:${(ride as any).driverId}`).emit('pool:new_booking', {
+          rideId,
+          bookingId: (bookingR.rows[0] as any).id,
+          seatsBooked: seats,
+          totalFare,
+        });
+      }
+      res.json({ success: true, message: seats + ' seat(s) booked for ₹' + totalFare + '. Deducted from wallet.', totalFare });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
@@ -17015,6 +17060,287 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   app.get("/api/admin/ai-brain/status", requireAdminAuth, async (_req, res) => {
     try {
       res.json(getBrainStatus());
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DRIVER: Car-Sharing (City Pool) — full lifecycle
+  // ══════════════════════════════════════════════════════════════════════════
+
+  app.post('/api/app/driver/car-sharing/create', authApp, requireDriver, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { fromLocation, toLocation, departureTime, seatPrice, maxSeats,
+              vehicleCategoryId, vehicleNumber, vehicleModel, notes } = req.body;
+      if (!fromLocation || !toLocation || !departureTime || !seatPrice || !maxSeats) {
+        return res.status(400).json({ message: 'fromLocation, toLocation, departureTime, seatPrice, maxSeats required' });
+      }
+      const seats = Math.max(1, Math.min(parseInt(maxSeats, 10) || 4, 8));
+      const price = parseFloat(seatPrice);
+      if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ message: 'seatPrice must be a positive number' });
+      const r = await rawDb.execute(rawSql`
+        INSERT INTO car_sharing_rides
+          (driver_id, vehicle_category_id, from_location, to_location, departure_time,
+           seat_price, max_seats, seats_booked, vehicle_number, vehicle_model, notes, status)
+        VALUES
+          (${driver.id}::uuid,
+           ${vehicleCategoryId || null}::uuid,
+           ${fromLocation}, ${toLocation}, ${departureTime}::timestamptz,
+           ${price}, ${seats}, 0,
+           ${vehicleNumber || null}, ${vehicleModel || null}, ${notes || null},
+           'active')
+        RETURNING *
+      `);
+      res.json({ success: true, ride: camelize(r.rows[0]) });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  app.get('/api/app/driver/car-sharing/rides', authApp, requireDriver, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const r = await rawDb.execute(rawSql`
+        SELECT cs.*,
+          vc.name as vehicle_name,
+          GREATEST(0, cs.max_seats - COALESCE((
+            SELECT SUM(b.seats_booked) FROM car_sharing_bookings b
+            WHERE b.ride_id = cs.id AND b.status != 'cancelled'
+          ), 0)) as available_seats,
+          COALESCE((
+            SELECT COUNT(*) FROM car_sharing_bookings b
+            WHERE b.ride_id = cs.id AND b.status != 'cancelled'
+          ), 0) as booking_count,
+          COALESCE((
+            SELECT SUM(b.total_fare) FROM car_sharing_bookings b
+            WHERE b.ride_id = cs.id AND b.status = 'confirmed'
+          ), 0) as total_earnings
+        FROM car_sharing_rides cs
+        LEFT JOIN vehicle_categories vc ON vc.id = cs.vehicle_category_id
+        WHERE cs.driver_id = ${driver.id}::uuid
+        ORDER BY cs.departure_time DESC
+      `);
+      res.json({ data: camelize(r.rows), total: r.rows.length });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  app.get('/api/app/driver/car-sharing/rides/:id/manifest', authApp, requireDriver, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { id } = req.params;
+      const rideCheck = await rawDb.execute(rawSql`
+        SELECT id FROM car_sharing_rides WHERE id = ${id}::uuid AND driver_id = ${driver.id}::uuid LIMIT 1
+      `);
+      if (!rideCheck.rows.length) return res.status(404).json({ message: 'Ride not found' });
+      const r = await rawDb.execute(rawSql`
+        SELECT b.id, b.seats_booked, b.total_fare, b.status, b.created_at,
+          b.pickup_address, b.dropoff_address, b.notes,
+          u.full_name as passenger_name, u.phone as passenger_phone
+        FROM car_sharing_bookings b
+        LEFT JOIN users u ON u.id = b.customer_id
+        WHERE b.ride_id = ${id}::uuid AND b.status != 'cancelled'
+        ORDER BY b.created_at ASC
+      `);
+      res.json({ passengers: camelize(r.rows), total: r.rows.length });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  app.post('/api/app/driver/car-sharing/rides/:id/start', authApp, requireDriver, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { id } = req.params;
+      const r = await rawDb.execute(rawSql`
+        UPDATE car_sharing_rides SET status = 'in_progress', updated_at = NOW()
+        WHERE id = ${id}::uuid AND driver_id = ${driver.id}::uuid AND status = 'active'
+        RETURNING id
+      `);
+      if (!r.rows.length) return res.status(400).json({ message: 'Ride not found or cannot be started (must be active)' });
+      // Notify passengers
+      const bookings = await rawDb.execute(rawSql`
+        SELECT customer_id FROM car_sharing_bookings WHERE ride_id = ${id}::uuid AND status = 'confirmed'
+      `).catch(() => ({ rows: [] as any[] }));
+      if (io) {
+        (bookings.rows as any[]).forEach(b => {
+          io!.to(`user:${b.customer_id}`).emit('pool:ride_started', { rideId: id });
+        });
+      }
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  app.post('/api/app/driver/car-sharing/rides/:id/complete', authApp, requireDriver, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { id } = req.params;
+      // Atomic completion guard — prevents double settlement
+      const rideR = await rawDb.execute(rawSql`
+        UPDATE car_sharing_rides SET status = 'completed', updated_at = NOW()
+        WHERE id = ${id}::uuid AND driver_id = ${driver.id}::uuid
+          AND status NOT IN ('completed', 'cancelled')
+        RETURNING id
+      `);
+      if (!rideR.rows.length) return res.status(400).json({ message: 'Ride not found or already completed' });
+      const bookings = await rawDb.execute(rawSql`
+        SELECT customer_id FROM car_sharing_bookings WHERE ride_id = ${id}::uuid AND status = 'confirmed'
+      `).catch(() => ({ rows: [] as any[] }));
+      if (io) {
+        (bookings.rows as any[]).forEach(b => {
+          io!.to(`user:${b.customer_id}`).emit('pool:ride_completed', { rideId: id });
+        });
+      }
+      res.json({ success: true, totalPassengers: bookings.rows.length });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  app.post('/api/app/driver/car-sharing/rides/:id/cancel', authApp, requireDriver, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { id } = req.params;
+      const { reason } = req.body;
+      const rideR = await rawDb.execute(rawSql`
+        UPDATE car_sharing_rides SET status = 'cancelled', updated_at = NOW()
+        WHERE id = ${id}::uuid AND driver_id = ${driver.id}::uuid
+          AND status NOT IN ('completed', 'cancelled')
+        RETURNING id
+      `);
+      if (!rideR.rows.length) return res.status(400).json({ message: 'Ride not found or cannot be cancelled' });
+      // Refund all confirmed passengers
+      const bookings = await rawDb.execute(rawSql`
+        SELECT id, customer_id, total_fare FROM car_sharing_bookings
+        WHERE ride_id = ${id}::uuid AND status = 'confirmed'
+      `).catch(() => ({ rows: [] as any[] }));
+      let refundedCount = 0;
+      for (const b of bookings.rows as any[]) {
+        await rawDb.execute(rawSql`
+          UPDATE car_sharing_bookings SET status = 'cancelled', updated_at = NOW() WHERE id = ${b.id}::uuid
+        `).catch(() => {});
+        const fare = parseFloat(b.total_fare || '0');
+        if (fare > 0) {
+          await rawDb.execute(rawSql`
+            UPDATE users SET wallet_balance = wallet_balance + ${fare} WHERE id = ${b.customer_id}::uuid
+          `).catch(() => {});
+        }
+        if (io) {
+          io.to(`user:${b.customer_id}`).emit('pool:booking_cancelled', {
+            rideId: id, bookingId: b.id, refundAmount: fare,
+            reason: reason || 'Driver cancelled the ride',
+          });
+        }
+        refundedCount++;
+      }
+      res.json({ success: true, refundedCount });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // Customer: cancel car-sharing booking with wallet refund
+  app.post('/api/app/customer/car-sharing/bookings/:id/cancel', authApp, async (req, res) => {
+    try {
+      const user = (req as any).currentUser;
+      const { id } = req.params;
+      const bookingR = await rawDb.execute(rawSql`
+        SELECT b.id, b.ride_id, b.total_fare, b.seats_booked, cs.driver_id, cs.status as ride_status
+        FROM car_sharing_bookings b
+        LEFT JOIN car_sharing_rides cs ON cs.id = b.ride_id
+        WHERE b.id = ${id}::uuid AND b.customer_id = ${user.id}::uuid AND b.status = 'confirmed'
+        LIMIT 1
+      `);
+      if (!bookingR.rows.length) return res.status(404).json({ message: 'Booking not found or already cancelled' });
+      const booking = camelize(bookingR.rows[0]) as any;
+      if (booking.rideStatus === 'completed') {
+        return res.status(400).json({ message: 'Cannot cancel a completed ride' });
+      }
+      await rawDb.execute(rawSql`
+        UPDATE car_sharing_bookings SET status = 'cancelled', updated_at = NOW() WHERE id = ${id}::uuid
+      `);
+      const refund = parseFloat(booking.totalFare || '0');
+      if (refund > 0) {
+        await rawDb.execute(rawSql`
+          UPDATE users SET wallet_balance = wallet_balance + ${refund} WHERE id = ${user.id}::uuid
+        `);
+      }
+      if (io && booking.driverId) {
+        io.to(`driver:${booking.driverId}`).emit('pool:booking_cancelled', {
+          bookingId: id, rideId: booking.rideId, seatsFreed: booking.seatsBooked,
+        });
+      }
+      res.json({ success: true, refundAmount: refund, message: refund > 0 ? `₹${refund.toFixed(0)} refunded to wallet` : 'Booking cancelled' });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DRIVER: Outstation Pool — passenger manifest
+  // ══════════════════════════════════════════════════════════════════════════
+
+  app.get('/api/app/driver/outstation-pool/rides/:id/bookings', authApp, async (req, res) => {
+    try {
+      const driver = (req as any).currentUser;
+      const { id } = req.params;
+      const rideCheck = await rawDb.execute(rawSql`
+        SELECT id FROM outstation_pool_rides WHERE id = ${id}::uuid AND driver_id = ${driver.id}::uuid LIMIT 1
+      `);
+      if (!rideCheck.rows.length) return res.status(404).json({ message: 'Ride not found' });
+      const r = await rawDb.execute(rawSql`
+        SELECT b.id, b.seats_booked, b.total_fare, b.status, b.payment_method, b.payment_status,
+          b.pickup_address, b.dropoff_address, b.created_at,
+          u.full_name as passenger_name, u.phone as passenger_phone
+        FROM outstation_pool_bookings b
+        LEFT JOIN users u ON u.id = b.customer_id
+        WHERE b.ride_id = ${id}::uuid AND b.status != 'cancelled'
+        ORDER BY b.created_at ASC
+      `);
+      res.json({ passengers: camelize(r.rows), total: r.rows.length });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // Customer: cancel outstation pool booking with atomic seat restoration + refund
+  app.post('/api/app/customer/outstation-pool/bookings/:id/cancel', authApp, async (req, res) => {
+    try {
+      const customer = (req as any).currentUser;
+      const { id } = req.params;
+      const bookingR = await rawDb.execute(rawSql`
+        SELECT b.id, b.ride_id, b.seats_booked, b.total_fare, b.payment_method,
+          opr.driver_id, opr.status as ride_status
+        FROM outstation_pool_bookings b
+        LEFT JOIN outstation_pool_rides opr ON opr.id = b.ride_id
+        WHERE b.id = ${id}::uuid AND b.customer_id = ${customer.id}::uuid AND b.status = 'confirmed'
+        LIMIT 1
+      `);
+      if (!bookingR.rows.length) return res.status(404).json({ message: 'Booking not found or already cancelled' });
+      const booking = camelize(bookingR.rows[0]) as any;
+      if (booking.rideStatus === 'completed') {
+        return res.status(400).json({ message: 'Cannot cancel a completed ride' });
+      }
+      // Atomically cancel booking AND restore seats in one CTE
+      await rawDb.execute(rawSql`
+        WITH cancel_booking AS (
+          UPDATE outstation_pool_bookings
+          SET status = 'cancelled', updated_at = NOW()
+          WHERE id = ${id}::uuid AND status = 'confirmed'
+          RETURNING seats_booked, ride_id
+        )
+        UPDATE outstation_pool_rides
+        SET available_seats = available_seats + (SELECT seats_booked FROM cancel_booking),
+            updated_at = NOW()
+        WHERE id = (SELECT ride_id FROM cancel_booking)
+      `);
+      // Wallet refund only for wallet-paid bookings
+      const refund = (booking.paymentMethod === 'wallet') ? parseFloat(booking.totalFare || '0') : 0;
+      if (refund > 0) {
+        await rawDb.execute(rawSql`
+          UPDATE users SET wallet_balance = wallet_balance + ${refund} WHERE id = ${customer.id}::uuid
+        `);
+      }
+      if (io && booking.driverId) {
+        io.to(`driver:${booking.driverId}`).emit('pool:booking_cancelled', {
+          bookingId: id, rideId: booking.rideId,
+          seatsFreed: booking.seatsBooked,
+        });
+      }
+      res.json({
+        success: true,
+        refundAmount: refund,
+        message: refund > 0
+          ? `₹${refund.toFixed(0)} refunded to wallet`
+          : 'Booking cancelled. Collect cash refund from driver if applicable.',
+      });
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
