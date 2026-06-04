@@ -17368,13 +17368,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       password              VARCHAR(255) NOT NULL,
       phone                 VARCHAR(20),
       zone_id               UUID REFERENCES zones(id) ON DELETE SET NULL,
+      commission_type       VARCHAR(20) NOT NULL DEFAULT 'percentage',
       commission_percent    NUMERIC(5,2) NOT NULL DEFAULT 10.00,
+      commission_flat       NUMERIC(10,2) NOT NULL DEFAULT 0.00,
       is_active             BOOLEAN NOT NULL DEFAULT true,
       auth_token            TEXT,
       auth_token_expires_at TIMESTAMP,
       last_login_at         TIMESTAMP,
       created_at            TIMESTAMP DEFAULT NOW()
-    )
+    );
+    ALTER TABLE franchisees ADD COLUMN IF NOT EXISTS commission_type VARCHAR(20) NOT NULL DEFAULT 'percentage';
+    ALTER TABLE franchisees ADD COLUMN IF NOT EXISTS commission_flat NUMERIC(10,2) NOT NULL DEFAULT 0.00
   `).catch(() => {});
 
   // List all franchisees
@@ -17385,7 +17389,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           (SELECT COUNT(*) FROM trip_requests t WHERE t.zone_id = f.zone_id AND t.current_status = 'completed') as total_trips,
           (SELECT COUNT(DISTINCT t.driver_id) FROM trip_requests t WHERE t.zone_id = f.zone_id) as total_drivers,
           (SELECT COUNT(DISTINCT t.customer_id) FROM trip_requests t WHERE t.zone_id = f.zone_id) as total_customers,
-          (SELECT COALESCE(SUM(t.total_fare * f.commission_percent / 100), 0)
+          (SELECT COALESCE(
+            CASE
+              WHEN f.commission_type = 'flat'
+                THEN COUNT(*) * f.commission_flat
+              ELSE SUM(t.total_fare * f.commission_percent / 100)
+            END, 0)
            FROM trip_requests t WHERE t.zone_id = f.zone_id AND t.current_status = 'completed') as total_earnings
         FROM franchisees f
         LEFT JOIN zones z ON z.id = f.zone_id
@@ -17398,13 +17407,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   // Create franchisee
   app.post("/api/admin/franchisees", requireAdminAuth, async (req, res) => {
     try {
-      const { name, ownerName, email, password, phone, zoneId, commissionPercent } = req.body;
+      const { name, ownerName, email, password, phone, zoneId, commissionType, commissionPercent, commissionFlat } = req.body;
       if (!name || !ownerName || !email || !password) return res.status(400).json({ message: "name, ownerName, email, password required" });
       const hashed = await hashPassword(password);
       const result = await rawDb.execute(rawSql`
-        INSERT INTO franchisees (name, owner_name, email, password, phone, zone_id, commission_percent)
+        INSERT INTO franchisees (name, owner_name, email, password, phone, zone_id, commission_type, commission_percent, commission_flat)
         VALUES (${name}, ${ownerName}, ${email}, ${hashed}, ${phone || null},
-          ${zoneId || null}::uuid, ${commissionPercent || 10})
+          ${zoneId || null}::uuid, ${commissionType || 'percentage'}, ${commissionPercent || 0}, ${commissionFlat || 0})
         RETURNING *
       `);
       res.status(201).json(result.rows[0]);
@@ -17417,7 +17426,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   // Update franchisee
   app.put("/api/admin/franchisees/:id", requireAdminAuth, async (req, res) => {
     try {
-      const { name, ownerName, email, phone, zoneId, commissionPercent, isActive, password } = req.body;
+      const { name, ownerName, email, phone, zoneId, commissionType, commissionPercent, commissionFlat, isActive, password } = req.body;
       const id = req.params.id;
       if (password) {
         const hashed = await hashPassword(password);
@@ -17430,7 +17439,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           email = COALESCE(${email}, email),
           phone = COALESCE(${phone}, phone),
           zone_id = COALESCE(${zoneId || null}::uuid, zone_id),
+          commission_type = COALESCE(${commissionType}, commission_type),
           commission_percent = COALESCE(${commissionPercent}, commission_percent),
+          commission_flat = COALESCE(${commissionFlat}, commission_flat),
           is_active = COALESCE(${isActive}, is_active)
         WHERE id = ${id}::uuid RETURNING *
       `);
@@ -17461,7 +17472,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
             COUNT(*) FILTER (WHERE current_status='completed') as completed_trips,
             COUNT(*) FILTER (WHERE current_status='cancelled') as cancelled_trips,
             COALESCE(SUM(total_fare) FILTER (WHERE current_status='completed'), 0) as total_revenue,
-            COALESCE(SUM(total_fare * ${f.commission_percent} / 100) FILTER (WHERE current_status='completed'), 0) as franchise_earnings,
+            COALESCE(
+              CASE WHEN ${f.commission_type} = 'flat'
+                THEN COUNT(*) FILTER (WHERE current_status='completed') * ${f.commission_flat}
+                ELSE SUM(total_fare * ${f.commission_percent} / 100) FILTER (WHERE current_status='completed')
+              END, 0) as franchise_earnings,
             COUNT(DISTINCT driver_id) as active_drivers,
             COUNT(DISTINCT customer_id) as active_customers
           FROM trip_requests WHERE zone_id=${f.zone_id}::uuid
@@ -17514,8 +17529,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
             COUNT(*) FILTER (WHERE current_status='cancelled') as cancelled_trips,
             COUNT(*) FILTER (WHERE DATE(created_at)=CURRENT_DATE) as today_trips,
             COALESCE(SUM(total_fare) FILTER (WHERE current_status='completed'), 0) as total_revenue,
-            COALESCE(SUM(total_fare * ${f.commission_percent} / 100) FILTER (WHERE current_status='completed'), 0) as my_earnings,
-            COALESCE(SUM(total_fare * ${f.commission_percent} / 100) FILTER (WHERE current_status='completed' AND DATE(created_at)=CURRENT_DATE), 0) as today_earnings,
+            COALESCE(
+              CASE WHEN ${f.commission_type} = 'flat'
+                THEN COUNT(*) FILTER (WHERE current_status='completed') * ${f.commission_flat}
+                ELSE SUM(total_fare * ${f.commission_percent} / 100) FILTER (WHERE current_status='completed')
+              END, 0) as my_earnings,
+            COALESCE(
+              CASE WHEN ${f.commission_type} = 'flat'
+                THEN COUNT(*) FILTER (WHERE current_status='completed' AND DATE(created_at)=CURRENT_DATE) * ${f.commission_flat}
+                ELSE SUM(total_fare * ${f.commission_percent} / 100) FILTER (WHERE current_status='completed' AND DATE(created_at)=CURRENT_DATE)
+              END, 0) as today_earnings,
             COUNT(DISTINCT driver_id) as total_drivers,
             COUNT(DISTINCT customer_id) as total_customers
           FROM trip_requests WHERE zone_id=${f.zone_id}::uuid
@@ -17541,7 +17564,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         `),
       ]);
       res.json({
-        franchisee: { name: f.name, ownerName: f.owner_name, commissionPercent: f.commission_percent },
+        franchisee: { name: f.name, ownerName: f.owner_name, commissionType: f.commission_type, commissionPercent: f.commission_percent, commissionFlat: f.commission_flat },
         zone: zone.rows[0] || null,
         summary: summary.rows[0],
         recentTrips: recentTrips.rows,
