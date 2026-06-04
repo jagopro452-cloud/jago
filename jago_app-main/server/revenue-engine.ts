@@ -92,13 +92,22 @@ function getModuleName(serviceCategory: ServiceCategory): string {
 /** Load per-module config from service_revenue_config (null if not found) */
 async function loadModuleConfig(serviceCategory: ServiceCategory): Promise<{
   revenueModel: string;
+  commissionType: "percentage" | "flat";
   commissionPct: number;
-  commissionGstPct: number;   // GST on commission amount (e.g. 18%)
+  commissionFlat: number;
+  commissionGstPct: number;
   isActive: boolean;
 } | null> {
   const moduleName = getModuleName(serviceCategory);
+  // Add columns if not yet present (safe no-op if already exist)
+  await rawDb.execute(rawSql`
+    ALTER TABLE service_revenue_config
+      ADD COLUMN IF NOT EXISTS commission_type VARCHAR(20) DEFAULT 'percentage',
+      ADD COLUMN IF NOT EXISTS commission_flat_amount NUMERIC(10,2) DEFAULT 0
+  `).catch(() => {});
   const r = await rawDb.execute(rawSql`
-    SELECT revenue_model, commission_percentage, commission_gst_percentage, is_active
+    SELECT revenue_model, commission_type, commission_percentage, commission_flat_amount,
+           commission_gst_percentage, is_active
     FROM service_revenue_config
     WHERE module_name = ${moduleName}
     LIMIT 1
@@ -107,7 +116,9 @@ async function loadModuleConfig(serviceCategory: ServiceCategory): Promise<{
   if (!row) return null;
   return {
     revenueModel: row.revenue_model || "commission",
+    commissionType: (row.commission_type === "flat") ? "flat" : "percentage",
     commissionPct: parseFloat(row.commission_percentage) || 0,
+    commissionFlat: parseFloat(row.commission_flat_amount) || 0,
     commissionGstPct: parseFloat(row.commission_gst_percentage) || 18,
     isActive: row.is_active !== false,
   };
@@ -198,14 +209,23 @@ export async function calculateRevenueBreakdown(
       fareBeforeDeduction: fare, driverEarnings: (farePaise - deductPaise) / 100,
     };
   } else if (activeModel === "commission") {
-    // COMMISSION MODEL: commission% + GST-on-commission + insurance → ALL go to admin
-    // Rates: per-module config takes priority over global settings
-    const commPct = modCfg?.commissionPct ?? parseFloat(s.commission_pct || "15");
+    // COMMISSION MODEL: (percentage OR flat) + GST + insurance → ALL go to admin
     const gstOnCommPct = modCfg?.commissionGstPct ?? parseFloat(s.commission_gst_on_comm || "18");
-    const commPctX100 = Math.round(commPct * 100);
-    const commPaise = Math.round(farePaise * commPctX100 / 10000);
-    const gstPaise  = Math.round(commPaise * Math.round(gstOnCommPct * 100) / 10000); // GST on commission
-    deductPaise = commPaise + gstPaise + insPaise; // ALL THREE → admin
+    let commPaise: number;
+    let commPct: number;
+
+    if (modCfg?.commissionType === "flat") {
+      // Flat amount per ride (e.g. ₹1, ₹5)
+      commPaise = Math.round((modCfg.commissionFlat) * 100);
+      commPct = fare > 0 ? (modCfg.commissionFlat / fare) * 100 : 0;
+    } else {
+      // Percentage based
+      commPct = modCfg?.commissionPct ?? parseFloat(s.commission_pct || "15");
+      commPaise = Math.round(farePaise * Math.round(commPct * 100) / 10000);
+    }
+
+    const gstPaise = Math.round(commPaise * Math.round(gstOnCommPct * 100) / 10000);
+    deductPaise = commPaise + gstPaise + insPaise;
 
     breakdown = {
       model: "commission",

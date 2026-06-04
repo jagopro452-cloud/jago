@@ -5752,7 +5752,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const r = row as any;
         config[r.module_name] = {
           revenueModel: r.revenue_model,
+          commissionType: r.commission_type || 'percentage',
           commissionPercentage: parseFloat(r.commission_percentage),
+          commissionFlatAmount: parseFloat(r.commission_flat_amount || '0'),
           commissionGstPercentage: parseFloat(r.commission_gst_percentage),
           subscriptionRequired: r.subscription_required,
           isActive: r.is_active,
@@ -5776,16 +5778,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const module = req.params.module as string;
       const ALLOWED = ['ride', 'parcel', 'carpool', 'outstation', 'b2b'];
       if (!ALLOWED.includes(module)) return res.status(400).json({ message: "Invalid module name" });
-      const { revenueModel, commissionPercentage, commissionGstPercentage, subscriptionRequired, isActive, notes } = req.body;
+      const { revenueModel, commissionType, commissionPercentage, commissionFlatAmount, commissionGstPercentage, subscriptionRequired, isActive, notes } = req.body;
+      // Ensure new columns exist
+      await rawDb.execute(rawSql`
+        ALTER TABLE service_revenue_config
+          ADD COLUMN IF NOT EXISTS commission_type VARCHAR(20) DEFAULT 'percentage',
+          ADD COLUMN IF NOT EXISTS commission_flat_amount NUMERIC(10,2) DEFAULT 0
+      `).catch(() => {});
       await rawDb.execute(rawSql`
         INSERT INTO service_revenue_config
-          (module_name, revenue_model, commission_percentage, commission_gst_percentage, subscription_required, is_active, notes, updated_at)
+          (module_name, revenue_model, commission_type, commission_percentage, commission_flat_amount, commission_gst_percentage, subscription_required, is_active, notes, updated_at)
         VALUES
-          (${module}, ${revenueModel || 'commission'}, ${commissionPercentage ?? 15}::numeric, ${commissionGstPercentage ?? 18}::numeric,
+          (${module}, ${revenueModel || 'commission'}, ${commissionType || 'percentage'},
+           ${commissionPercentage ?? 15}::numeric, ${commissionFlatAmount ?? 0}::numeric,
+           ${commissionGstPercentage ?? 18}::numeric,
            ${subscriptionRequired ?? false}::boolean, ${isActive ?? true}::boolean, ${notes || null}, NOW())
         ON CONFLICT (module_name) DO UPDATE SET
           revenue_model             = EXCLUDED.revenue_model,
+          commission_type           = EXCLUDED.commission_type,
           commission_percentage     = EXCLUDED.commission_percentage,
+          commission_flat_amount    = EXCLUDED.commission_flat_amount,
           commission_gst_percentage = EXCLUDED.commission_gst_percentage,
           subscription_required     = EXCLUDED.subscription_required,
           is_active                 = EXCLUDED.is_active,
