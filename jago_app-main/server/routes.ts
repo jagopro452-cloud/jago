@@ -17344,5 +17344,199 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
   });
 
+  // ── FRANCHISE MANAGEMENT ────────────────────────────────────────────────────
+
+  // Run migration on startup
+  rawDb.execute(rawSql`
+    CREATE TABLE IF NOT EXISTS franchisees (
+      id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name                  VARCHAR(255) NOT NULL,
+      owner_name            VARCHAR(255) NOT NULL,
+      email                 VARCHAR(191) NOT NULL UNIQUE,
+      password              VARCHAR(255) NOT NULL,
+      phone                 VARCHAR(20),
+      zone_id               UUID REFERENCES zones(id) ON DELETE SET NULL,
+      commission_percent    NUMERIC(5,2) NOT NULL DEFAULT 10.00,
+      is_active             BOOLEAN NOT NULL DEFAULT true,
+      auth_token            TEXT,
+      auth_token_expires_at TIMESTAMP,
+      last_login_at         TIMESTAMP,
+      created_at            TIMESTAMP DEFAULT NOW()
+    )
+  `).catch(() => {});
+
+  // List all franchisees
+  app.get("/api/admin/franchisees", requireAdminAuth, async (_req, res) => {
+    try {
+      const result = await rawDb.execute(rawSql`
+        SELECT f.*, z.name as zone_name,
+          (SELECT COUNT(*) FROM trip_requests t WHERE t.zone_id = f.zone_id AND t.current_status = 'completed') as total_trips,
+          (SELECT COUNT(DISTINCT t.driver_id) FROM trip_requests t WHERE t.zone_id = f.zone_id) as total_drivers,
+          (SELECT COUNT(DISTINCT t.customer_id) FROM trip_requests t WHERE t.zone_id = f.zone_id) as total_customers,
+          (SELECT COALESCE(SUM(t.total_fare * f.commission_percent / 100), 0)
+           FROM trip_requests t WHERE t.zone_id = f.zone_id AND t.current_status = 'completed') as total_earnings
+        FROM franchisees f
+        LEFT JOIN zones z ON z.id = f.zone_id
+        ORDER BY f.created_at DESC
+      `);
+      res.json(result.rows);
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // Create franchisee
+  app.post("/api/admin/franchisees", requireAdminAuth, async (req, res) => {
+    try {
+      const { name, ownerName, email, password, phone, zoneId, commissionPercent } = req.body;
+      if (!name || !ownerName || !email || !password) return res.status(400).json({ message: "name, ownerName, email, password required" });
+      const hashed = await hashPassword(password);
+      const result = await rawDb.execute(rawSql`
+        INSERT INTO franchisees (name, owner_name, email, password, phone, zone_id, commission_percent)
+        VALUES (${name}, ${ownerName}, ${email}, ${hashed}, ${phone || null},
+          ${zoneId || null}::uuid, ${commissionPercent || 10})
+        RETURNING *
+      `);
+      res.status(201).json(result.rows[0]);
+    } catch (e: any) {
+      if ((e as any)?.message?.includes("unique")) return res.status(409).json({ message: "Email already exists" });
+      res.status(500).json({ message: safeErrMsg(e) });
+    }
+  });
+
+  // Update franchisee
+  app.put("/api/admin/franchisees/:id", requireAdminAuth, async (req, res) => {
+    try {
+      const { name, ownerName, email, phone, zoneId, commissionPercent, isActive, password } = req.body;
+      const id = req.params.id;
+      if (password) {
+        const hashed = await hashPassword(password);
+        await rawDb.execute(rawSql`UPDATE franchisees SET password=${hashed} WHERE id=${id}::uuid`);
+      }
+      const result = await rawDb.execute(rawSql`
+        UPDATE franchisees SET
+          name = COALESCE(${name}, name),
+          owner_name = COALESCE(${ownerName}, owner_name),
+          email = COALESCE(${email}, email),
+          phone = COALESCE(${phone}, phone),
+          zone_id = COALESCE(${zoneId || null}::uuid, zone_id),
+          commission_percent = COALESCE(${commissionPercent}, commission_percent),
+          is_active = COALESCE(${isActive}, is_active)
+        WHERE id = ${id}::uuid RETURNING *
+      `);
+      if (!result.rows.length) return res.status(404).json({ message: "Franchisee not found" });
+      res.json(result.rows[0]);
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // Delete franchisee
+  app.delete("/api/admin/franchisees/:id", requireAdminAuth, async (req, res) => {
+    try {
+      await rawDb.execute(rawSql`DELETE FROM franchisees WHERE id=${req.params.id}::uuid`);
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // Franchisee zone stats (for admin detail view)
+  app.get("/api/admin/franchisees/:id/stats", requireAdminAuth, async (req, res) => {
+    try {
+      const fr = await rawDb.execute(rawSql`SELECT * FROM franchisees WHERE id=${req.params.id}::uuid LIMIT 1`);
+      if (!fr.rows.length) return res.status(404).json({ message: "Not found" });
+      const f = fr.rows[0] as any;
+      if (!f.zone_id) return res.json({ trips: [], summary: {} });
+
+      const [summary, recentTrips] = await Promise.all([
+        rawDb.execute(rawSql`
+          SELECT
+            COUNT(*) FILTER (WHERE current_status='completed') as completed_trips,
+            COUNT(*) FILTER (WHERE current_status='cancelled') as cancelled_trips,
+            COALESCE(SUM(total_fare) FILTER (WHERE current_status='completed'), 0) as total_revenue,
+            COALESCE(SUM(total_fare * ${f.commission_percent} / 100) FILTER (WHERE current_status='completed'), 0) as franchise_earnings,
+            COUNT(DISTINCT driver_id) as active_drivers,
+            COUNT(DISTINCT customer_id) as active_customers
+          FROM trip_requests WHERE zone_id=${f.zone_id}::uuid
+        `),
+        rawDb.execute(rawSql`
+          SELECT t.ref_id, t.current_status, t.total_fare, t.created_at,
+            u.full_name as customer_name, t.pickup_address, t.destination_address
+          FROM trip_requests t
+          LEFT JOIN users u ON u.id = t.customer_id
+          WHERE t.zone_id = ${f.zone_id}::uuid
+          ORDER BY t.created_at DESC LIMIT 20
+        `),
+      ]);
+      res.json({ summary: summary.rows[0], recentTrips: recentTrips.rows });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // Franchisee login
+  app.post("/api/franchise/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) return res.status(400).json({ message: "Email and password required" });
+      const result = await rawDb.execute(rawSql`SELECT * FROM franchisees WHERE email=${email} AND is_active=true LIMIT 1`);
+      if (!result.rows.length) return res.status(401).json({ message: "Invalid credentials" });
+      const f = result.rows[0] as any;
+      const valid = await verifyPassword(password, f.password);
+      if (!valid) return res.status(401).json({ message: "Invalid credentials" });
+      const token = require("crypto").randomBytes(32).toString("hex");
+      const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await rawDb.execute(rawSql`UPDATE franchisees SET auth_token=${token}, auth_token_expires_at=${expires.toISOString()}, last_login_at=NOW() WHERE id=${f.id}::uuid`);
+      res.json({ token, franchisee: { id: f.id, name: f.name, ownerName: f.owner_name, email: f.email, zoneId: f.zone_id, commissionPercent: f.commission_percent } });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
+  // Franchisee dashboard (authenticated)
+  app.get("/api/franchise/dashboard", async (req, res) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) return res.status(401).json({ message: "Unauthorized" });
+      const fr = await rawDb.execute(rawSql`SELECT * FROM franchisees WHERE auth_token=${token} AND auth_token_expires_at > NOW() AND is_active=true LIMIT 1`);
+      if (!fr.rows.length) return res.status(401).json({ message: "Session expired" });
+      const f = fr.rows[0] as any;
+      if (!f.zone_id) return res.json({ summary: {}, recentTrips: [], zone: null });
+
+      const [zone, summary, recentTrips, topDrivers] = await Promise.all([
+        rawDb.execute(rawSql`SELECT id, name, surge_factor FROM zones WHERE id=${f.zone_id}::uuid LIMIT 1`),
+        rawDb.execute(rawSql`
+          SELECT
+            COUNT(*) FILTER (WHERE current_status='completed') as completed_trips,
+            COUNT(*) FILTER (WHERE current_status='cancelled') as cancelled_trips,
+            COUNT(*) FILTER (WHERE DATE(created_at)=CURRENT_DATE) as today_trips,
+            COALESCE(SUM(total_fare) FILTER (WHERE current_status='completed'), 0) as total_revenue,
+            COALESCE(SUM(total_fare * ${f.commission_percent} / 100) FILTER (WHERE current_status='completed'), 0) as my_earnings,
+            COALESCE(SUM(total_fare * ${f.commission_percent} / 100) FILTER (WHERE current_status='completed' AND DATE(created_at)=CURRENT_DATE), 0) as today_earnings,
+            COUNT(DISTINCT driver_id) as total_drivers,
+            COUNT(DISTINCT customer_id) as total_customers
+          FROM trip_requests WHERE zone_id=${f.zone_id}::uuid
+        `),
+        rawDb.execute(rawSql`
+          SELECT t.ref_id, t.current_status, t.total_fare, t.created_at,
+            u.full_name as customer_name, t.pickup_address, t.destination_address,
+            (t.total_fare * ${f.commission_percent} / 100) as my_commission
+          FROM trip_requests t
+          LEFT JOIN users u ON u.id = t.customer_id
+          WHERE t.zone_id = ${f.zone_id}::uuid
+          ORDER BY t.created_at DESC LIMIT 10
+        `),
+        rawDb.execute(rawSql`
+          SELECT d.full_name, d.phone,
+            COUNT(t.id) as trips,
+            COALESCE(SUM(t.total_fare), 0) as revenue
+          FROM trip_requests t
+          JOIN users d ON d.id = t.driver_id
+          WHERE t.zone_id = ${f.zone_id}::uuid AND t.current_status='completed'
+          GROUP BY d.id, d.full_name, d.phone
+          ORDER BY trips DESC LIMIT 5
+        `),
+      ]);
+      res.json({
+        franchisee: { name: f.name, ownerName: f.owner_name, commissionPercent: f.commission_percent },
+        zone: zone.rows[0] || null,
+        summary: summary.rows[0],
+        recentTrips: recentTrips.rows,
+        topDrivers: topDrivers.rows,
+      });
+    } catch (e: any) { res.status(500).json({ message: safeErrMsg(e) }); }
+  });
+
   return httpServer;
 }

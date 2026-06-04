@@ -63,6 +63,7 @@ import PopularLocationsAdmin from "@/pages/admin/popular-locations";
 import CityServices from "@/pages/admin/city-services";
 import ParcelVehiclesAdmin from "@/pages/admin/parcel-vehicles";
 import AIBrainDashboard from "@/pages/admin/ai-brain-dashboard";
+import FranchiseesPage from "@/pages/admin/franchisees";
 
 export default function AdminRoutes() {
   return (
@@ -131,6 +132,7 @@ export default function AdminRoutes() {
         <Route path="/admin/city-services" component={CityServices} />
         <Route path="/admin/parcel-vehicle-types" component={ParcelVehiclesAdmin} />
         <Route path="/admin/ai-brain" component={AIBrainDashboard} />
+        <Route path="/admin/franchisees" component={FranchiseesPage} />
         <Route><Redirect to="/admin/dashboard" /></Route>
       </Switch>
     </AdminLayout>
