@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import AdminLayout from "./layout";
+import { adminFetch, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { AdminModal } from "./components/AdminPrimitives";
 
 interface HealthData {
   timestamp: string;
@@ -37,6 +39,15 @@ interface HealthData {
   };
 }
 
+interface VehicleStatus {
+  key: "bike" | "auto" | "cab" | "premium";
+  name: string;
+  active: boolean;
+  icon: string;
+  updatedAt: string | null;
+  updatedBy?: string | null;
+}
+
 const SERVICE_ICONS: Record<string, string> = {
   bike_ride:       "🏍️",
   auto_ride:       "🛺",
@@ -48,6 +59,73 @@ const SERVICE_ICONS: Record<string, string> = {
   outstation_pool: "🗺️",
   parcel_delivery: "📦",
 };
+
+const VEHICLE_ICONS: Record<string, string> = {
+  bike: "🏍️",
+  auto: "🛺",
+  cab: "🚗",
+  premium: "✨",
+};
+
+const VEHICLE_COLORS: Record<string, string> = {
+  bike: "#2563EB",
+  auto: "#F59E0B",
+  cab: "#10B981",
+  premium: "#111827",
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+function asNumber(value: unknown): number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function normalizeHealthData(payload: unknown): HealthData {
+  const root = asRecord(payload);
+  const trips = asRecord(root.trips);
+  const parcels = asRecord(root.parcels);
+  const drivers = asRecord(root.drivers);
+  const gstWallet = asRecord(root.gstWallet);
+
+  return {
+    timestamp: typeof root.timestamp === "string" ? root.timestamp : new Date().toISOString(),
+    status: typeof root.status === "string" ? root.status : "degraded",
+    services: Array.isArray(root.services) ? root.services as HealthData["services"] : [],
+    trips: {
+      active: asNumber(trips.active),
+      completedToday: asNumber(trips.completedToday),
+      cancelledToday: asNumber(trips.cancelledToday),
+      staleSearching: asNumber(trips.staleSearching),
+    },
+    parcels: {
+      active: asNumber(parcels.active),
+      completedToday: asNumber(parcels.completedToday),
+      commissionToday: asNumber(parcels.commissionToday),
+    },
+    drivers: {
+      online: asNumber(drivers.online),
+      locked: asNumber(drivers.locked),
+      onTrip: asNumber(drivers.onTrip),
+      activeSubscriptions: asNumber(drivers.activeSubscriptions),
+      subscribedDrivers: asNumber(drivers.subscribedDrivers),
+    },
+    gstWallet: {
+      balance: asNumber(gstWallet.balance),
+      totalCollected: asNumber(gstWallet.totalCollected),
+      totalTrips: asNumber(gstWallet.totalTrips),
+    },
+  };
+}
+
+function normalizeVehicleData(payload: unknown): { vehicles: VehicleStatus[] } {
+  const root = asRecord(payload);
+  return {
+    vehicles: Array.isArray(root.vehicles) ? root.vehicles as VehicleStatus[] : [],
+  };
+}
 
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -70,6 +148,7 @@ function KpiCard({ icon, label, value, sub, accent }: { icon: string; label: str
       background: "#fff", borderRadius: 16, padding: "18px 20px",
       boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: "1px solid #F3F4F6",
       display: "flex", gap: 14, alignItems: "center",
+      minHeight: 96,
     }}>
       <div style={{ width: 46, height: 46, borderRadius: 13, background: `${color}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>
         {icon}
@@ -85,15 +164,80 @@ function KpiCard({ icon, label, value, sub, accent }: { icon: string; label: str
 
 export default function SystemHealthPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [confirmServiceToggle, setConfirmServiceToggle] = useState<{ serviceKey: string; currentStatus: string; nextStatus: string } | null>(null);
+  const { toast } = useToast();
 
   const { data, isLoading, error, refetch, dataUpdatedAt } = useQuery<HealthData>({
     queryKey: ["/api/admin/system-health"],
-    queryFn: () => fetch("/api/admin/system-health").then(r => {
+    queryFn: () => adminFetch("/api/admin/system-health").then(r => {
       if (!r.ok) throw new Error("Health check failed");
       return r.json();
-    }).then(d => (d && !d.message && !d.error) ? d : (() => { throw new Error("Invalid health data"); })()),
+    }).then(normalizeHealthData),
     refetchInterval: autoRefresh ? 15000 : false,
   });
+
+  const {
+    data: vehicleData,
+    isLoading: vehiclesLoading,
+    error: vehiclesError,
+    refetch: refetchVehicles,
+  } = useQuery<{ vehicles: VehicleStatus[] }>({
+    queryKey: ["/api/admin/vehicle-status"],
+    queryFn: (): Promise<{ vehicles: VehicleStatus[] }> => adminFetch("/api/admin/vehicle-status").then(r => {
+      if (!r.ok) throw new Error("Vehicle status unavailable");
+      return r.json();
+    }).then(normalizeVehicleData),
+    refetchInterval: 5000,
+  });
+  const vehicles = Array.isArray(vehicleData?.vehicles) ? vehicleData.vehicles : [];
+
+  const [toggling, setToggling] = useState<string | null>(null);
+  const [vehicleToggling, setVehicleToggling] = useState<string | null>(null);
+
+  const toggleService = async (serviceKey: string, currentStatus: string) => {
+    const newStatus = currentStatus === "active" ? "inactive" : "active";
+    setConfirmServiceToggle({ serviceKey, currentStatus, nextStatus: newStatus });
+  };
+
+  const confirmToggleService = async () => {
+    if (!confirmServiceToggle) return;
+    const { serviceKey, nextStatus } = confirmServiceToggle;
+    setConfirmServiceToggle(null);
+    setToggling(serviceKey);
+    try {
+      await apiRequest("POST", "/api/admin/services/toggle", { serviceKey, status: nextStatus });
+      await refetch();
+    } catch (e: any) {
+      toast({
+        title: "Action failed",
+        description: e.message || "Could not toggle service",
+        variant: "destructive",
+      });
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  const toggleVehicle = async (vehicle: VehicleStatus) => {
+    const active = !vehicle.active;
+    setVehicleToggling(vehicle.key);
+    try {
+      await apiRequest("PATCH", `/api/admin/vehicle-status/${vehicle.key}`, { active });
+      await refetchVehicles();
+      toast({
+        title: "Vehicle availability updated",
+        description: `${vehicle.name} is now ${active ? "Active" : "Inactive"}. Customer and driver apps sync live.`,
+      });
+    } catch (e: any) {
+      toast({
+        title: "Update failed",
+        description: e.message || "Could not update vehicle status",
+        variant: "destructive",
+      });
+    } finally {
+      setVehicleToggling(null);
+    }
+  };
 
   const lastUpdated = dataUpdatedAt
     ? new Date(dataUpdatedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
@@ -103,8 +247,8 @@ export default function SystemHealthPage() {
   const hasStaleTrips = (data?.trips.staleSearching ?? 0) > 0;
 
   return (
-    <AdminLayout>
-      <div style={{ padding: "28px 32px", maxWidth: 1200 }}>
+      <>
+      <div style={{ padding: "28px 32px", maxWidth: 1280, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
 
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28, flexWrap: "wrap", gap: 12 }}>
@@ -173,31 +317,180 @@ export default function SystemHealthPage() {
                   {isOk && !hasStaleTrips ? "All Systems Operational" : hasStaleTrips ? "Warning: Stale searching trips detected" : "System Error Detected"}
                 </div>
                 <div style={{ fontSize: 12, color: "#6B7280" }}>
-                  Bike Ride + Parcel Delivery active · Subscription gate enforced · Commission model active
+                  Live Platform Control active · Individual service toggles enabled · Real-time Flutter sync
+                </div>
+              </div>
+            </div>
+
+            {/* Vehicle Control Management */}
+            <div style={{
+              background: "linear-gradient(135deg,#0F172A 0%,#1E3A8A 52%,#0891B2 100%)",
+              borderRadius: 22,
+              padding: 1,
+              marginBottom: 28,
+              boxShadow: "0 18px 45px rgba(15,23,42,0.18)",
+            }}>
+              <div style={{
+                background: "rgba(255,255,255,0.96)",
+                borderRadius: 21,
+                overflow: "hidden",
+              }}>
+                <div style={{
+                  padding: "22px 24px",
+                  background: "linear-gradient(135deg,rgba(15,23,42,0.96),rgba(30,58,138,0.92))",
+                  color: "#fff",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 14,
+                  flexWrap: "wrap",
+                }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 5 }}>
+                      <span style={{ width: 38, height: 38, borderRadius: 12, background: "rgba(255,255,255,0.16)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                        ⚙️
+                      </span>
+                      <h5 style={{ margin: 0, fontWeight: 900, letterSpacing: -0.4 }}>Vehicle Control Management</h5>
+                    </div>
+                    <p style={{ margin: 0, color: "rgba(255,255,255,0.74)", fontSize: 13 }}>
+                      Firestore live controls for Customer Booking and Driver ride eligibility.
+                    </p>
+                  </div>
+                  <StatusPill ok={!vehiclesError} label={vehiclesError ? "Firebase Offline" : "Realtime Sync"} />
+                </div>
+
+                {vehiclesError && (
+                  <div style={{ margin: 18, padding: 14, borderRadius: 14, background: "#FEF2F2", color: "#B91C1C", border: "1px solid #FECACA", fontWeight: 700 }}>
+                    <i className="bi bi-exclamation-triangle-fill me-2" />
+                    {(vehiclesError as Error).message}
+                  </div>
+                )}
+
+                <div style={{ padding: 18, display: "grid", gap: 12 }}>
+                  {vehiclesLoading && !vehicles.length ? (
+                    <div style={{ padding: 36, textAlign: "center", color: "#64748B" }}>
+                      <span className="spinner-border spinner-border-sm me-2" />
+                      Loading vehicle controls...
+                    </div>
+                  ) : (
+                    vehicles.map(vehicle => {
+                      const accent = VEHICLE_COLORS[vehicle.key] || "#2563EB";
+                      const updated = vehicle.updatedAt
+                        ? new Date(vehicle.updatedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })
+                        : "Not updated yet";
+                      const disabled = vehicleToggling === vehicle.key;
+                      return (
+                        <div key={vehicle.key} style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 14,
+                          alignItems: "center",
+                          padding: "14px 16px",
+                          borderRadius: 18,
+                          background: vehicle.active ? `linear-gradient(135deg,${accent}10,#fff)` : "#F8FAFC",
+                          border: `1px solid ${vehicle.active ? `${accent}33` : "#E2E8F0"}`,
+                          boxShadow: "0 8px 22px rgba(15,23,42,0.05)",
+                        }}>
+                          <div style={{
+                            width: 52, height: 52, borderRadius: 16,
+                            background: vehicle.active ? `${accent}18` : "#E2E8F0",
+                            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 25,
+                          }}>
+                            {VEHICLE_ICONS[vehicle.key] || "🚘"}
+                          </div>
+                          <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+                            <div style={{ fontSize: 16, fontWeight: 900, color: "#0F172A" }}>{vehicle.name}</div>
+                            <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>vehicle_status/{vehicle.key}</div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12, flex: "1 1 280px", flexWrap: "wrap", justifyContent: "space-between" }}>
+                            <StatusPill ok={vehicle.active} label={vehicle.active ? "Active" : "Inactive"} />
+                            <div style={{ fontSize: 12, color: "#64748B", minWidth: 150 }}>
+                              <div style={{ fontWeight: 800, color: "#334155" }}>Updated Time</div>
+                              <div>{updated}</div>
+                            </div>
+                          </div>
+                          <label style={{
+                            width: 64, height: 34, borderRadius: 999, padding: 4,
+                            background: vehicle.active ? accent : "#CBD5E1",
+                            cursor: disabled ? "wait" : "pointer",
+                            position: "relative",
+                            transition: "all 180ms ease",
+                            opacity: disabled ? 0.65 : 1,
+                            marginLeft: "auto",
+                            flexShrink: 0,
+                          }}>
+                            <input
+                              type="checkbox"
+                              checked={vehicle.active}
+                              disabled={disabled}
+                              onChange={() => toggleVehicle(vehicle)}
+                              style={{ display: "none" }}
+                            />
+                            <span style={{
+                              width: 26, height: 26, borderRadius: "50%",
+                              background: "#fff",
+                              position: "absolute",
+                              top: 4,
+                              left: vehicle.active ? 34 : 4,
+                              transition: "all 180ms ease",
+                              boxShadow: "0 4px 10px rgba(15,23,42,0.18)",
+                            }} />
+                          </label>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Platform Services */}
             <h6 style={{ fontWeight: 800, fontSize: 13, textTransform: "uppercase", letterSpacing: 1, color: "#6B7280", marginBottom: 12 }}>
-              Platform Services
+              Platform Services (Admin Control)
             </h6>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10, marginBottom: 28 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginBottom: 28 }}>
               {data.services.map(s => (
                 <div key={s.service_key} style={{
-                  background: "#fff", borderRadius: 12, padding: "14px 16px",
-                  border: `1px solid ${s.service_status === "active" ? "#d1fae5" : "#F3F4F6"}`,
-                  boxShadow: "0 1px 6px rgba(0,0,0,0.05)",
+                  background: "#fff", borderRadius: 14, padding: "16px 18px",
+                  border: `1px solid ${s.service_status === "active" ? "#d1fae5" : "#F1F5F9"}`,
+                  boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)",
+                  transition: "all 0.3s ease",
+                  display: "flex",
+                  flexDirection: "column",
+                  minHeight: 178,
                 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                    <span style={{ fontSize: 22 }}>{SERVICE_ICONS[s.service_key] ?? "🔧"}</span>
-                    <StatusPill ok={s.service_status === "active"} label={s.service_status === "active" ? "Active" : "Inactive"} />
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: s.service_status === "active" ? "#F0FDF4" : "#F8FAFC", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                      {SERVICE_ICONS[s.service_key] ?? "🔧"}
+                    </div>
+                    <StatusPill ok={s.service_status === "active"} label={s.service_status === "active" ? "Live" : "Stopped"} />
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{s.service_name}</div>
-                  <div style={{ fontSize: 11, color: "#9CA3AF", textTransform: "capitalize" }}>
-                    {s.revenue_model}
-                    {s.revenue_model === "commission" ? ` · ${s.commission_rate}%` : ""}
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2, color: "#1E293B" }}>{s.service_name}</div>
+                  <div style={{ fontSize: 11, color: "#64748B", textTransform: "capitalize", marginBottom: 14 }}>
+                    {s.revenue_model} {s.revenue_model === "commission" ? `· ${s.commission_rate}%` : ""}
                   </div>
+                  
+                  <button
+                    disabled={toggling === s.service_key}
+                    onClick={() => toggleService(s.service_key, s.service_status)}
+                    style={{
+                      width: "100%", padding: "8px 0", borderRadius: 10, fontSize: 12, fontWeight: 700,
+                      border: "none", cursor: "pointer",
+                      background: s.service_status === "active" ? "#FEF2F2" : "#ECFDF5",
+                      color: s.service_status === "active" ? "#DC2626" : "#059669",
+                      boxShadow: s.service_status === "active" ? "0 2px 4px rgba(220,38,38,0.1)" : "0 2px 4px rgba(5,150,105,0.1)",
+                      transition: "all 0.2s",
+                      marginTop: "auto",
+                    }}
+                  >
+                    {toggling === s.service_key ? (
+                      <span className="spinner-border spinner-border-sm me-1" />
+                    ) : s.service_status === "active" ? (
+                      <><i className="bi bi-power me-1" /> Inactivate</>
+                    ) : (
+                      <><i className="bi bi-play-fill me-1" /> Activate Service</>
+                    )}
+                  </button>
                 </div>
               ))}
             </div>
@@ -234,7 +527,7 @@ export default function SystemHealthPage() {
             <h6 style={{ fontWeight: 800, fontSize: 13, textTransform: "uppercase", letterSpacing: 1, color: "#6B7280", marginBottom: 12 }}>
               Admin Revenue
             </h6>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 28 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, marginBottom: 28 }}>
               <div style={{ background: "linear-gradient(135deg,#2F7BFF,#4A90E2)", borderRadius: 16, padding: "20px 22px", color: "#fff" }}>
                 <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 4 }}>GST Wallet Balance</div>
                 <div style={{ fontSize: 28, fontWeight: 800 }}>₹{data.gstWallet.balance.toFixed(2)}</div>
@@ -329,6 +622,26 @@ export default function SystemHealthPage() {
           </>
         )}
       </div>
-    </AdminLayout>
+      <AdminModal
+        open={!!confirmServiceToggle}
+        title="Confirm service status change"
+        onClose={() => setConfirmServiceToggle(null)}
+        footer={(
+          <>
+            <button className="btn btn-outline-secondary" type="button" onClick={() => setConfirmServiceToggle(null)}>
+              Cancel
+            </button>
+            <button className="btn btn-danger" type="button" onClick={confirmToggleService}>
+              {confirmServiceToggle?.nextStatus === "active" ? "Activate" : "Inactivate"}
+            </button>
+          </>
+        )}
+      >
+        <p className="mb-0">
+          Change <strong>{confirmServiceToggle?.serviceKey.replace("_", " ")}</strong> to{" "}
+          <strong>{confirmServiceToggle?.nextStatus}</strong>? This affects live customer and driver availability.
+        </p>
+      </AdminModal>
+      </>
   );
 }

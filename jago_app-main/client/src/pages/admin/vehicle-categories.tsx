@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ImageUploader } from "@/components/image-uploader";
+import { adminConfirm } from "./components/AdminPrimitives";
 
 function VehicleModal({ open, onClose, editing, form, setForm, onSave, saving }: any) {
   if (!open) return null;
@@ -81,12 +82,14 @@ export default function VehicleCategories() {
   const remove = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/vehicle-categories/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/vehicle-categories"] }); toast({ title: "Deleted" }); },
+    onError: (e: any) => toast({ title: "Delete failed", description: e.message || "This category may be in use by fares or trips.", variant: "destructive" }),
   });
 
   const toggleStatus = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       apiRequest("PATCH", `/api/vehicle-categories/${id}`, { isActive }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/vehicle-categories"] }),
+    onError: (e: any) => { qc.invalidateQueries({ queryKey: ["/api/vehicle-categories"] }); toast({ title: "Toggle failed", description: e.message, variant: "destructive" }); },
   });
 
   const openCreate = () => { setEditing(null); setForm({ name: "", type: "car", icon: "" }); setOpen(true); };
@@ -157,7 +160,7 @@ export default function VehicleCategories() {
                       <td className="text-center">
                         <div className="d-flex justify-content-center gap-2">
                           <button className="btn btn-sm btn-outline-primary" onClick={() => openEdit(v)} data-testid={`btn-edit-vehicle-${v.id}`}><i className="bi bi-pencil-fill"></i></button>
-                          <button className="btn btn-sm btn-outline-danger" onClick={() => { if (confirm("Delete this category?")) remove.mutate(v.id); }} data-testid={`btn-delete-vehicle-${v.id}`}><i className="bi bi-trash-fill"></i></button>
+                          <button className="btn btn-sm btn-outline-danger" onClick={async () => { if (await adminConfirm("Delete this category?")) remove.mutate(v.id); }} data-testid={`btn-delete-vehicle-${v.id}`}><i className="bi bi-trash-fill"></i></button>
                         </div>
                       </td>
                     </tr>

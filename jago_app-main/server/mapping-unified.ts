@@ -16,6 +16,7 @@
 
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
+import { assertSchemaObjectsOrThrow } from "./schema-health";
 import { getDistanceWithCache, getRouteWithCache, geocodeWithCache } from "./maps-cache";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -47,11 +48,25 @@ export interface MultiWaypointRoute {
     distanceKm: number;
     durationMinutes: number;
     polyline: string;
+    steps?: RouteStep[];
   }>;
   totalDistanceKm: number;
   totalDurationMinutes: number;
   overviewPolyline: string;
   waypointOrder: number[];
+  steps: RouteStep[];
+}
+
+export interface RouteStep {
+  instruction: string;
+  plainInstruction: string;
+  maneuver: string;
+  distanceMeters: number;
+  durationSeconds: number;
+  startLocation: { lat: number; lng: number };
+  endLocation: { lat: number; lng: number };
+  polyline: string;
+  roadName: string;
 }
 
 export interface ETAResult {
@@ -75,17 +90,50 @@ export interface NearbyPlace {
 let cachedApiKey: string | null = null;
 let apiKeyFetchedAt = 0;
 
+function stripHtml(input: string): string {
+  return input
+    .replace(/<div[^>]*>/gi, " ")
+    .replace(/<\/div>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function mapRouteStep(step: any): RouteStep {
+  return {
+    instruction: step?.html_instructions || "",
+    plainInstruction: stripHtml(step?.html_instructions || ""),
+    maneuver: step?.maneuver || "continue",
+    distanceMeters: Number(step?.distance?.value || 0),
+    durationSeconds: Number(step?.duration?.value || 0),
+    startLocation: {
+      lat: Number(step?.start_location?.lat || 0),
+      lng: Number(step?.start_location?.lng || 0),
+    },
+    endLocation: {
+      lat: Number(step?.end_location?.lat || 0),
+      lng: Number(step?.end_location?.lng || 0),
+    },
+    polyline: step?.polyline?.points || "",
+    roadName: stripHtml(step?.html_instructions || "").split(" onto ").pop()?.trim() || "",
+  };
+}
+
 async function getGoogleMapsKey(): Promise<string | null> {
   if (cachedApiKey && Date.now() - apiKeyFetchedAt < 5 * 60 * 1000) return cachedApiKey;
   try {
+    const envKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+    if (envKey) {
+      cachedApiKey = envKey;
+      apiKeyFetchedAt = Date.now();
+      return cachedApiKey;
+    }
+
     const r = await rawDb.execute(rawSql`
       SELECT value FROM business_settings WHERE key_name IN ('google_maps_key', 'GOOGLE_MAPS_API_KEY') LIMIT 1
     `);
     const val = (r.rows[0] as any)?.value?.trim();
     if (val) { cachedApiKey = val; apiKeyFetchedAt = Date.now(); return cachedApiKey; }
-
-    const envKey = process.env.GOOGLE_MAPS_API_KEY;
-    if (envKey) { cachedApiKey = envKey; apiKeyFetchedAt = Date.now(); return cachedApiKey; }
     
     return cachedApiKey;
   } catch { return cachedApiKey; }
@@ -127,40 +175,263 @@ const reverseGeocodeCache = new SimpleCache<ReverseGeocodeResult>(2000, 60 * 60 
 const placesCache = new SimpleCache<PlacePrediction[]>(1000, 5 * 60 * 1000);               // 5 min
 const etaCache = new SimpleCache<ETAResult>(3000, 2 * 60 * 1000);                          // 2 min
 
+export interface LocationSelectionPayload {
+  placeId?: string;
+  queryText?: string;
+  placeLabel: string;
+  placeAddress?: string;
+  lat?: number;
+  lng?: number;
+}
+
+export async function ensureLocationIntelligenceSchema(): Promise<void> {
+  await assertSchemaObjectsOrThrow({
+    tables: ["landmark_aliases", "location_search_history", "pickup_quality_scores"],
+  });
+}
+
+function normalizeLocationQuery(query: string): string {
+  let normalized = (query || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[.,]/g, " ")
+    .replace(/\s+/g, " ");
+
+  const replacements: Array<[RegExp, string]> = [
+    [/\bvja\b/g, "vijayawada"],
+    [/\bvijywada\b/g, "vijayawada"],
+    [/\bbusstand\b/g, "bus stand"],
+    [/\bstn\b/g, "station"],
+    [/\brly\b/g, "railway"],
+    [/\bjn\b/g, "junction"],
+    [/\bopp\b/g, "opposite"],
+    [/\bnear by\b/g, "near"],
+    [/\bmy home\b/g, "home"],
+  ];
+
+  for (const [pattern, value] of replacements) {
+    normalized = normalized.replace(pattern, value);
+  }
+
+  return normalized.replace(/\s+/g, " ").trim();
+}
+
+function locationScore(
+  place: PlacePrediction,
+  normalizedQuery: string,
+  lat?: number,
+  lng?: number,
+): number {
+  const hay = `${place.mainText} ${place.secondaryText} ${place.fullDescription}`.toLowerCase();
+  let score = 0;
+
+  if (place.mainText.toLowerCase() === normalizedQuery) score += 240;
+  if (place.mainText.toLowerCase().startsWith(normalizedQuery)) score += 180;
+  if (hay.startsWith(normalizedQuery)) score += 140;
+  if (hay.includes(normalizedQuery)) score += 80;
+
+  if (place.placeId.startsWith("history:")) score += 170;
+  else if (place.placeId.startsWith("alias:")) score += 150;
+  else if (place.placeId.startsWith("local:")) score += 120;
+  else if (place.placeId.startsWith("nom:")) score += 40;
+  else score += 70;
+
+  if (lat != null && lng != null && place.lat != null && place.lng != null) {
+    const distanceKm = haversineKm(lat, lng, place.lat, place.lng);
+    score += Math.max(0, 80 - Math.min(distanceKm, 40) * 2);
+  }
+
+  return score;
+}
+
+async function searchLandmarkAliases(
+  normalizedQuery: string,
+  lat?: number,
+  lng?: number,
+): Promise<PlacePrediction[]> {
+  try {
+    const r = await rawDb.execute(rawSql`
+      SELECT alias, canonical_name, canonical_address, latitude, longitude, popularity_score
+      FROM landmark_aliases
+      WHERE is_active = true
+        AND (
+          normalized_alias LIKE ${"%" + normalizedQuery + "%"}
+          OR canonical_name ILIKE ${"%" + normalizedQuery + "%"}
+          OR COALESCE(canonical_address, '') ILIKE ${"%" + normalizedQuery + "%"}
+        )
+      ORDER BY popularity_score DESC, canonical_name ASC
+      LIMIT 8
+    `);
+
+    return r.rows
+      .map((row: any) => ({
+        placeId: `alias:${row.alias}`,
+        mainText: row.canonical_name || row.alias || "",
+        secondaryText: row.canonical_address || "",
+        fullDescription: row.canonical_address || row.canonical_name || "",
+        types: ["landmark_alias"],
+        lat: row.latitude != null ? Number(row.latitude) : undefined,
+        lng: row.longitude != null ? Number(row.longitude) : undefined,
+      }))
+      .sort((a, b) => locationScore(b, normalizedQuery, lat, lng) - locationScore(a, normalizedQuery, lat, lng))
+      .slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
+async function searchRecentLocationHistory(
+  userId: string | undefined,
+  normalizedQuery: string,
+  lat?: number,
+  lng?: number,
+): Promise<PlacePrediction[]> {
+  if (!userId) return [];
+  try {
+    const r = await rawDb.execute(rawSql`
+      SELECT place_id, place_label, place_address, latitude, longitude, use_count, last_used_at
+      FROM location_search_history
+      WHERE user_id = ${userId}::uuid
+        AND (
+          normalized_query LIKE ${"%" + normalizedQuery + "%"}
+          OR place_label ILIKE ${"%" + normalizedQuery + "%"}
+          OR COALESCE(place_address, '') ILIKE ${"%" + normalizedQuery + "%"}
+        )
+      ORDER BY use_count DESC, last_used_at DESC
+      LIMIT 8
+    `);
+
+    return r.rows
+      .map((row: any) => ({
+        placeId: `history:${row.place_id || row.place_label}`,
+        mainText: row.place_label || "",
+        secondaryText: row.place_address || "",
+        fullDescription: row.place_address || row.place_label || "",
+        types: ["recent_search"],
+        lat: row.latitude != null ? Number(row.latitude) : undefined,
+        lng: row.longitude != null ? Number(row.longitude) : undefined,
+      }))
+      .sort((a, b) => locationScore(b, normalizedQuery, lat, lng) - locationScore(a, normalizedQuery, lat, lng))
+      .slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
+function mergeAndRankPredictions(
+  normalizedQuery: string,
+  groups: PlacePrediction[][],
+  lat?: number,
+  lng?: number,
+): PlacePrediction[] {
+  const deduped = new Map<string, PlacePrediction>();
+  for (const group of groups) {
+    for (const place of group) {
+      const key = `${place.mainText}|${place.secondaryText}|${place.fullDescription}`.toLowerCase().trim();
+      if (!deduped.has(key)) deduped.set(key, place);
+    }
+  }
+  return Array.from(deduped.values())
+    .sort((a, b) => locationScore(b, normalizedQuery, lat, lng) - locationScore(a, normalizedQuery, lat, lng))
+    .slice(0, 10);
+}
+
+export async function recordLocationSelection(
+  userId: string,
+  payload: LocationSelectionPayload,
+): Promise<void> {
+  if (!userId || !payload.placeLabel?.trim()) return;
+
+  const queryText = payload.queryText?.trim() || payload.placeLabel.trim();
+  const normalizedQuery = normalizeLocationQuery(queryText);
+
+  const existing = await rawDb.execute(rawSql`
+    SELECT id FROM location_search_history
+    WHERE user_id = ${userId}::uuid
+      AND normalized_query = ${normalizedQuery}
+      AND place_label = ${payload.placeLabel}
+    LIMIT 1
+  `).catch(() => ({ rows: [] as any[] }));
+
+  if (existing.rows.length) {
+    await rawDb.execute(rawSql`
+      UPDATE location_search_history
+      SET use_count = use_count + 1,
+          last_used_at = NOW(),
+          updated_at = NOW(),
+          place_address = COALESCE(${payload.placeAddress || null}, place_address),
+          latitude = COALESCE(${payload.lat ?? null}, latitude),
+          longitude = COALESCE(${payload.lng ?? null}, longitude)
+      WHERE id = ${(existing.rows[0] as any).id}::uuid
+    `).catch(() => {});
+    return;
+  }
+
+  await rawDb.execute(rawSql`
+    INSERT INTO location_search_history
+      (user_id, place_id, query_text, normalized_query, place_label, place_address, latitude, longitude)
+    VALUES
+      (${userId}::uuid,
+       ${payload.placeId || null},
+       ${queryText},
+       ${normalizedQuery},
+       ${payload.placeLabel},
+       ${payload.placeAddress || null},
+       ${payload.lat ?? null},
+       ${payload.lng ?? null})
+  `).catch(() => {});
+}
+
 // ── 1. PLACES AUTOCOMPLETE ──────────────────────────────────────────────────
 
 /**
  * Search places with Google Places Autocomplete.
  * Uses session tokens to group autocomplete+select into one billing session.
- * Falls back to DB popular locations if API unavailable.
+ * Falls back to open geocoders when Google is unavailable instead of stale local filler data.
  */
 export async function searchPlaces(
   query: string,
   sessionToken?: string,
   lat?: number,
   lng?: number,
-  radius?: number
+  radius?: number,
+  userId?: string
 ): Promise<PlacePrediction[]> {
   if (!query || query.length < 2) return [];
 
-  const cacheKey = `places:${query.toLowerCase().trim()}:${lat?.toFixed(2)}:${lng?.toFixed(2)}`;
+  const normalizedQuery = normalizeLocationQuery(query);
+  const cacheKey = `places:${normalizedQuery}:${lat?.toFixed(2)}:${lng?.toFixed(2)}:${userId || "anon"}`;
   const cached = placesCache.get(cacheKey);
   if (cached) return cached;
 
+  const [recentMatches, aliasMatches, popularMatches] = await Promise.all([
+    searchRecentLocationHistory(userId, normalizedQuery, lat, lng),
+    searchLandmarkAliases(normalizedQuery, lat, lng),
+    searchPopularLocations(normalizedQuery),
+  ]);
+
+  const mergeAndStore = (groups: PlacePrediction[][]): PlacePrediction[] => {
+    const merged = mergeAndRankPredictions(normalizedQuery, groups, lat, lng);
+    placesCache.set(cacheKey, merged);
+    return merged;
+  };
+
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) {
-    // Fallback: search from popular_locations DB
-    return searchPopularLocations(query);
+    const fallback = await searchNominatimFallback(normalizedQuery, lat, lng);
+    return mergeAndStore([recentMatches, aliasMatches, popularMatches, fallback]);
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 4000);
 
   try {
-    let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&key=${apiKey}`;
+    let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(normalizedQuery)}&key=${apiKey}`;
+    url += `&components=country:in&region=in`;
 
     if (lat && lng) {
       url += `&location=${lat},${lng}&radius=${radius || 50000}`;
+      url += `&strictbounds=true`;
     }
     if (sessionToken) {
       url += `&sessiontoken=${encodeURIComponent(sessionToken)}`;
@@ -173,43 +444,61 @@ export async function searchPlaces(
     });
     if (!r.ok) {
         console.error(`[mapping] Google API returned status ${r.status}`);
-        return searchPopularLocations(query);
+        const fallback = await searchNominatimFallback(normalizedQuery, lat, lng);
+        return mergeAndStore([recentMatches, aliasMatches, popularMatches, fallback]);
     }
     const data = await r.json() as any;
     console.log(`[mapping] Google response status: ${data.status}`);
 
     if (data?.status !== "OK") {
-      console.warn(`[mapping-unified:searchPlaces] API Status: ${data?.status}, Msg: ${data?.error_message || 'none'}`);
-      return searchPopularLocations(query);
+      console.warn(`[mapping-unified:searchPlaces] Google API Status: ${data?.status}, Msg: ${data?.error_message || 'none'}. Falling back to Nominatim/Local.`);
+      const fallback = await searchNominatimFallback(normalizedQuery, lat, lng);
+      return mergeAndStore([recentMatches, aliasMatches, popularMatches, fallback]);
     }
 
     if (!data.predictions?.length) {
-      return searchNominatimFallback(query);
+      console.log(`[mapping-unified:searchPlaces] Google returned 0 results. Trying Nominatim fallback.`);
+      const fallback = await searchNominatimFallback(normalizedQuery, lat, lng);
+      return mergeAndStore([recentMatches, aliasMatches, popularMatches, fallback]);
     }
 
-    const results: PlacePrediction[] = data.predictions.map((p: any) => ({
+    const googleResults: PlacePrediction[] = data.predictions
+      .filter((p: any) => {
+        const hay = `${p.description || ""} ${p.structured_formatting?.secondary_text || ""}`.toLowerCase();
+        return hay.includes("india") || (!hay.includes("usa") && !hay.includes("united states"));
+      })
+      .map((p: any) => ({
       placeId: p.place_id,
       mainText: p.structured_formatting?.main_text || p.description?.split(",")[0] || "",
       secondaryText: p.structured_formatting?.secondary_text || "",
       fullDescription: p.description || "",
+      description: p.description || "", // Backward compatibility
       types: p.types || [],
     }));
 
-    placesCache.set(cacheKey, results);
-    return results;
+    return mergeAndStore([recentMatches, aliasMatches, popularMatches, googleResults]);
   } catch (e: any) {
     console.error(`[mapping-unified:searchPlaces] Failed:`, e.message || e);
-    return searchNominatimFallback(query);
+    const fallback = await searchNominatimFallback(normalizedQuery, lat, lng);
+    return mergeAndStore([recentMatches, aliasMatches, popularMatches, fallback]);
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function searchNominatimFallback(query: string): Promise<PlacePrediction[]> {
+async function searchNominatimFallback(query: string, lat?: number, lng?: number): Promise<PlacePrediction[]> {
   try {
     const nomController = new AbortController();
     const nomTimeout = setTimeout(() => nomController.abort(), 4000);
-    const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=15`;
+    const indiaQuery = query.toLowerCase().includes('india') ? query : `${query}, India`;
+    let nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(indiaQuery)}&countrycodes=in&addressdetails=1&limit=15`;
+    if (lat && lng) {
+      const left = (lng - 1.2).toFixed(4);
+      const right = (lng + 1.2).toFixed(4);
+      const top = (lat + 1.2).toFixed(4);
+      const bottom = (lat - 1.2).toFixed(4);
+      nomUrl += `&viewbox=${left},${top},${right},${bottom}&bounded=1`;
+    }
     
     const nr = await fetch(nomUrl, {
       signal: nomController.signal,
@@ -230,6 +519,7 @@ async function searchNominatimFallback(query: string): Promise<PlacePrediction[]
             mainText: main,
             secondaryText: sec,
             fullDescription: p.display_name || "",
+            description: p.display_name || "", // Backward compatibility
             types: [p.type || "point_of_interest"],
             lat: parseFloat(p.lat) || 0,
             lng: parseFloat(p.lon) || 0,
@@ -242,13 +532,18 @@ async function searchNominatimFallback(query: string): Promise<PlacePrediction[]
           const key = (res.mainText + res.secondaryText).toLowerCase();
           if (!unique.has(key)) unique.set(key, res);
         }
-        return Array.from(unique.values()).slice(0, 8);
+        return Array.from(unique.values())
+          .filter((res) => {
+            const hay = `${res.fullDescription} ${res.secondaryText}`.toLowerCase();
+            return hay.includes('india');
+          })
+          .slice(0, 8);
       }
     }
   } catch(e) {
     console.error("[mapping-unified] Nominatim fallback failed:", e);
   }
-  return searchPopularLocations(query);
+  return [];
 }
 
 /**
@@ -292,7 +587,8 @@ export async function getPlaceDetails(
   }
 }
 
-// Fallback: search popular_locations table
+// Legacy admin-maintained fallback: still available for internal tooling, but
+// customer-facing search should prefer live geocoders to avoid stale filler results.
 async function searchPopularLocations(query: string): Promise<PlacePrediction[]> {
   try {
     const r = await rawDb.execute(rawSql`
@@ -309,6 +605,7 @@ async function searchPopularLocations(query: string): Promise<PlacePrediction[]>
       mainText: row.name,
       secondaryText: row.full_address || "",
       fullDescription: `${row.name}, ${row.full_address || ""}`,
+      description: `${row.name}, ${row.full_address || ""}`, // Backward compatibility
       types: ["popular_location"],
       lat: parseFloat(String(row.latitude)) || 0,
       lng: parseFloat(String(row.longitude)) || 0,
@@ -475,28 +772,38 @@ export async function getMultiWaypointRoute(
   waypoints: Array<{ lat: number; lng: number }>,
   optimize: boolean = true
 ): Promise<MultiWaypointRoute | null> {
-  // If no waypoints, use simple route
-  if (!waypoints.length) {
-    const route = await getRouteWithCache(origin.lat, origin.lng, destination.lat, destination.lng);
-    if (!route) return null;
-    return {
-      legs: [{
-        originAddress: "",
-        destAddress: "",
-        distanceKm: route.distanceKm,
-        durationMinutes: route.durationMinutes,
-        polyline: route.polyline,
-      }],
-      totalDistanceKm: route.distanceKm,
-      totalDurationMinutes: route.durationMinutes,
-      overviewPolyline: route.polyline,
-      waypointOrder: [],
-    };
-  }
-
   const apiKey = await getGoogleMapsKey();
   if (!apiKey) {
-    // Haversine fallback for multi-waypoint
+    if (!waypoints.length) {
+      const route = await getRouteWithCache(origin.lat, origin.lng, destination.lat, destination.lng);
+      if (!route) return null;
+      const fallbackStep: RouteStep = {
+        instruction: "Head to destination",
+        plainInstruction: "Head to destination",
+        maneuver: "continue",
+        distanceMeters: Math.round(route.distanceKm * 1000),
+        durationSeconds: Math.round(route.durationMinutes * 60),
+        startLocation: { lat: origin.lat, lng: origin.lng },
+        endLocation: { lat: destination.lat, lng: destination.lng },
+        polyline: route.polyline,
+        roadName: "",
+      };
+      return {
+        legs: [{
+          originAddress: "",
+          destAddress: "",
+          distanceKm: route.distanceKm,
+          durationMinutes: route.durationMinutes,
+          polyline: route.polyline,
+          steps: [fallbackStep],
+        }],
+        totalDistanceKm: route.distanceKm,
+        totalDurationMinutes: route.durationMinutes,
+        overviewPolyline: route.polyline,
+        waypointOrder: [],
+        steps: [fallbackStep],
+      };
+    }
     return haversineMultiRoute(origin, destination, waypoints);
   }
 
@@ -522,16 +829,21 @@ export async function getMultiWaypointRoute(
     }
 
     const route = data.routes[0];
-    const legs = (route.legs || []).map((leg: any) => ({
-      originAddress: leg.start_address || "",
-      destAddress: leg.end_address || "",
-      distanceKm: Math.round((leg.distance?.value || 0) / 1000 * 100) / 100,
-      durationMinutes: Math.round((leg.duration?.value || 0) / 60),
-      polyline: leg.steps?.map((s: any) => s.polyline?.points || "").join("") || "",
-    }));
+    const legs = (route.legs || []).map((leg: any) => {
+      const steps = (leg.steps || []).map((step: any) => mapRouteStep(step));
+      return {
+        originAddress: leg.start_address || "",
+        destAddress: leg.end_address || "",
+        distanceKm: Math.round((leg.distance?.value || 0) / 1000 * 100) / 100,
+        durationMinutes: Math.round((leg.duration?.value || 0) / 60),
+        polyline: leg.steps?.map((s: any) => s.polyline?.points || "").join("") || "",
+        steps,
+      };
+    });
 
     const totalDist = legs.reduce((sum: number, l: any) => sum + l.distanceKm, 0);
     const totalDur = legs.reduce((sum: number, l: any) => sum + l.durationMinutes, 0);
+    const steps = legs.flatMap((leg: any) => leg.steps || []);
 
     return {
       legs,
@@ -539,6 +851,7 @@ export async function getMultiWaypointRoute(
       totalDurationMinutes: totalDur,
       overviewPolyline: route.overview_polyline?.points || "",
       waypointOrder: route.waypoint_order || [],
+      steps,
     };
   } catch {
     return haversineMultiRoute(origin, destination, waypoints);
@@ -574,6 +887,17 @@ function haversineMultiRoute(
       distanceKm: Math.round(d * 100) / 100,
       durationMinutes: dur,
       polyline: "",
+      steps: [{
+        instruction: "Continue to next stop",
+        plainInstruction: "Continue to next stop",
+        maneuver: "continue",
+        distanceMeters: Math.round(d * 1000),
+        durationSeconds: dur * 60,
+        startLocation: { lat: allPoints[i].lat, lng: allPoints[i].lng },
+        endLocation: { lat: allPoints[i + 1].lat, lng: allPoints[i + 1].lng },
+        polyline: "",
+        roadName: "",
+      }],
     });
     totalDist += d;
     totalDur += dur;
@@ -585,6 +909,7 @@ function haversineMultiRoute(
     totalDurationMinutes: totalDur,
     overviewPolyline: "",
     waypointOrder: waypoints.map((_, i) => i),
+    steps: legs.flatMap((leg: any) => leg.steps || []),
   };
 }
 

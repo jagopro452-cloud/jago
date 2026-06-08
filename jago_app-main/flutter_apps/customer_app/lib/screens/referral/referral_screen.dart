@@ -66,7 +66,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
   void _shareCode() {
     if (_code.isEmpty) return;
-    final shareText = 'JAGO Pro download చేయండి! నా referral code: $_code\n'
+    final shareText = 'Jago download చేయండి! నా referral code: $_code\n'
         'Download: https://jagopro.org/download';
     Clipboard.setData(ClipboardData(text: shareText));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -122,7 +122,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                         children: [
                           const Icon(Icons.card_giftcard_rounded, color: Colors.white, size: 50),
                           const SizedBox(height: 12),
-                          const Text('Friends కి JAGO Pro చెప్పండి!',
+                          const Text('Friends కి Jago చెప్పండి!',
                               style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w500)),
                           const SizedBox(height: 6),
                           const Text(
@@ -214,7 +214,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                         children: [
                           _howStep('1', 'మీ referral code share చేయండి', Icons.share_rounded, _blue),
                           _dividerLine(cardBg),
-                          _howStep('2', 'Friend JAGO Pro download చేసి signup చేయాలి', Icons.person_add_alt_1_rounded, Colors.purple),
+                          _howStep('2', 'Friend Jago download చేసి signup చేయాలి', Icons.person_add_alt_1_rounded, Colors.purple),
                           _dividerLine(cardBg),
                           _howStep('3', 'First trip complete అవగానే reward!', Icons.star_rounded, Colors.amber),
                         ],

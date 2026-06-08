@@ -1,7 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { adminFetch, queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { adminConfirm } from "./components/AdminPrimitives";
 
 const TABS = [
   { key: "category", label: "Parcel Categories", icon: "bi-tags-fill", color: "#7c3aed", desc: "Types of parcels: Documents, Fragile, Electronics, etc." },
@@ -147,7 +148,7 @@ export default function ParcelAttributesPage() {
 
   const { data = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/parcel-attributes", tab],
-    queryFn: () => fetch(`/api/parcel-attributes?type=${tab}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
+    queryFn: () => adminFetch(`/api/parcel-attributes?type=${tab}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
   });
 
   const save = useMutation({
@@ -165,11 +166,13 @@ export default function ParcelAttributesPage() {
   const remove = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/parcel-attributes/${id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/parcel-attributes"] }); toast({ title: "Deleted" }); },
+    onError: (e: any) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
   });
 
   const toggle = useMutation({
     mutationFn: ({ id, isActive }: any) => apiRequest("PUT", `/api/parcel-attributes/${id}`, { isActive, type: tab }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/parcel-attributes"] }),
+    onError: (e: any) => { queryClient.invalidateQueries({ queryKey: ["/api/parcel-attributes"] }); toast({ title: "Toggle failed", description: e.message, variant: "destructive" }); },
   });
 
   const seedDefaults = () => DEFAULT_CATEGORIES.forEach((cat, i) =>
@@ -311,7 +314,7 @@ export default function ParcelAttributesPage() {
                           <i className="bi bi-pencil-fill"></i>
                         </button>
                         <button className="btn btn-sm btn-outline-danger" style={{ borderRadius: 8 }}
-                          onClick={() => { if (confirm(`Delete "${item.name}"?`)) remove.mutate(item.id); }}
+                          onClick={async () => { if (await adminConfirm(`Delete "${item.name}"?`)) remove.mutate(item.id); }}
                           data-testid={`btn-delete-attr-${item.id}`}>
                           <i className="bi bi-trash-fill"></i>
                         </button>

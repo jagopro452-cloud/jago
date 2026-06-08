@@ -3,6 +3,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { ImageUploader } from "@/components/image-uploader";
+import { adminConfirm } from "./components/AdminPrimitives";
 
 export default function BannersPage() {
   const { toast } = useToast();
@@ -25,7 +26,7 @@ export default function BannersPage() {
       setEditing(null);
       setForm({ title: "", imageUrl: "", redirectUrl: "", zone: "", isActive: true });
     },
-    onError: () => toast({ title: "Failed to save banner", variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Failed to save banner", description: e.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -34,12 +35,13 @@ export default function BannersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/banners"] });
       toast({ title: "Banner deleted" });
     },
-    onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Failed to delete", description: e.message, variant: "destructive" }),
   });
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, isActive }: any) => apiRequest("PUT", `/api/banners/${id}`, { isActive }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/banners"] }),
+    onError: (e: any) => { queryClient.invalidateQueries({ queryKey: ["/api/banners"] }); toast({ title: "Toggle failed", description: e.message, variant: "destructive" }); },
   });
 
   const openEdit = (b: any) => {
@@ -125,7 +127,7 @@ export default function BannersPage() {
                         </button>
                         <button
                           className="btn btn-sm btn-outline-danger"
-                          onClick={() => { if (confirm("Delete this banner?")) deleteMutation.mutate(b.id); }}
+                          onClick={async () => { if (await adminConfirm("Delete this banner?")) deleteMutation.mutate(b.id); }}
                           data-testid={`btn-delete-banner-${b.id}`}
                         >
                           <i className="bi bi-trash-fill"></i>

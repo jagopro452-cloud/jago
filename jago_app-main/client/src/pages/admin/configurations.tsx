@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -22,6 +22,217 @@ const CONFIG_TABS = [
   { id: "maps", label: "Google Maps", icon: "bi-map-fill", color: "#059669", bg: "#f0fdf4" },
   { id: "ai", label: "Claude AI", icon: "bi-stars", color: "#7c3aed", bg: "#f5f3ff" },
 ];
+
+const CHANGE_META: Record<string, { label: string; area: string; risk: "high" | "medium" | "low"; note: string }> = {
+  otp_pickup_enabled: { label: "Pickup OTP Verification", area: "OTP Setup", risk: "high", note: "Disabling pickup OTP reduces rider-driver handoff safety." },
+  otp_drop_enabled: { label: "Drop-off OTP Verification", area: "OTP Setup", risk: "high", note: "Disabling drop OTP weakens trip completion confirmation." },
+  otp_length: { label: "OTP Length", area: "OTP Setup", risk: "medium", note: "Changing OTP length affects app verification flow." },
+  razorpay_enabled: { label: "Razorpay Gateway", area: "Payment Gateway", risk: "high", note: "Changing the gateway affects live checkout availability." },
+  razorpay_mode: { label: "Razorpay Mode", area: "Payment Gateway", risk: "high", note: "Moving to live mode will charge real customer payments." },
+  razorpay_key_id: { label: "Razorpay Key ID", area: "Payment Gateway", risk: "high", note: "Publishing a new payment key changes the active processor identity." },
+  razorpay_key_secret: { label: "Razorpay Key Secret", area: "Payment Gateway", risk: "high", note: "A new secret immediately changes payment authentication." },
+  cash_enabled: { label: "Cash Payment", area: "Payment Gateway", risk: "medium", note: "Turning cash off changes customer payment fallback behavior." },
+  wallet_enabled: { label: "Wallet Payment", area: "Payment Gateway", risk: "medium", note: "Turning wallet off affects stored-balance settlement flows." },
+  driver_commission_percent: { label: "Driver Commission Percent", area: "Commission", risk: "high", note: "Commission changes affect every newly completed ride." },
+  b2b_commission_percent: { label: "B2B Commission Percent", area: "Commission", risk: "high", note: "B2B commission changes affect enterprise delivery settlement." },
+  acceptance_timeout_sec: { label: "Acceptance Timeout", area: "Dispatch Settings", risk: "medium", note: "Shorter timers can reduce assignment quality during peak load." },
+  max_drivers_to_notify: { label: "Max Drivers to Notify", area: "Dispatch Settings", risk: "medium", note: "Broadcast size changes dispatch reach and notification volume." },
+  broadcast_radius_km: { label: "Broadcast Radius", area: "Dispatch Settings", risk: "medium", note: "This changes the search scope for driver assignment." },
+  first_accept_wins: { label: "First Accept Wins", area: "Dispatch Settings", risk: "high", note: "Changing dispatch winner logic can alter ride assignment outcomes." },
+  auto_assign_on_cancel: { label: "Auto Assign on Cancel", area: "Dispatch Settings", risk: "medium", note: "This changes how the system recovers from driver cancellations." },
+  sequential_dispatch: { label: "Sequential Dispatch Mode", area: "Dispatch Settings", risk: "high", note: "Sequential dispatch can slow assignment speed if enabled broadly." },
+  group_broadcast: { label: "Driver Group Broadcast", area: "Dispatch Settings", risk: "high", note: "Broadcast behavior changes how quickly rides become visible to drivers." },
+  helper_booking_enabled: { label: "Helper Booking Enabled", area: "Dispatch Settings", risk: "medium", note: "This affects parcel and porter booking availability." },
+  intercity_driver_verification: { label: "Intercity Driver Verification", area: "Dispatch Settings", risk: "high", note: "Turning this off may allow unverified drivers on intercity trips." },
+  firebase_enabled: { label: "Firebase Notifications", area: "Firebase & SMS", risk: "medium", note: "This impacts push delivery for app alerts and fallback flows." },
+  sms_provider: { label: "SMS Provider", area: "Firebase & SMS", risk: "high", note: "Provider changes immediately alter OTP delivery routing." },
+  sms_api_key: { label: "SMS API Key", area: "Firebase & SMS", risk: "high", note: "Publishing a new key changes the active OTP delivery credential." },
+  google_maps_key: { label: "Google Maps Key", area: "Google Maps", risk: "high", note: "Maps key changes affect pickup search, routing and app geolocation." },
+  anthropic_api_key: { label: "Anthropic API Key", area: "Claude AI", risk: "medium", note: "This changes live AI routing for voice booking requests." },
+  sound_sos: { label: "SOS Alert Sound", area: "Sound Alerts", risk: "high", note: "Disabling this reduces urgency signalling for active safety incidents." },
+  sound_repeat_count: { label: "Alert Sound Repeat Count", area: "Sound Alerts", risk: "medium", note: "This affects how strongly incoming ride alerts are surfaced." },
+};
+
+type ReviewMode = "publish" | "discard" | "navigate";
+type ReviewState = { mode: ReviewMode; href?: string } | null;
+type ChangeSummary = {
+  key: string;
+  label: string;
+  area: string;
+  risk: "high" | "medium" | "low";
+  note: string;
+  previous: string;
+  next: string;
+};
+
+function humanizeSettingKey(key: string) {
+  return key
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatSettingValue(value: string | undefined) {
+  if (value === undefined || value === "") return "Not set";
+  if (value === "true") return "Enabled";
+  if (value === "false") return "Disabled";
+  return value;
+}
+
+function buildChangeSummary(key: string, previous: string | undefined, next: string | undefined): ChangeSummary {
+  const meta = CHANGE_META[key];
+  return {
+    key,
+    label: meta?.label || humanizeSettingKey(key),
+    area: meta?.area || "Configurations",
+    risk: meta?.risk || "low",
+    note: meta?.note || "This setting changes operational behavior after publish.",
+    previous: formatSettingValue(previous),
+    next: formatSettingValue(next),
+  };
+}
+
+function ReviewModal({
+  state,
+  changes,
+  warnings,
+  onClose,
+  onConfirm,
+  pending,
+}: {
+  state: ReviewState;
+  changes: ChangeSummary[];
+  warnings: string[];
+  onClose: () => void;
+  onConfirm: () => void;
+  pending: boolean;
+}) {
+  if (!state) return null;
+
+  const isPublish = state.mode === "publish";
+  const isDiscard = state.mode === "discard";
+  const isNavigate = state.mode === "navigate";
+  const title = isPublish
+    ? "Review and Publish Runtime Changes"
+    : isDiscard
+      ? "Discard Staged Changes"
+      : "Leave Without Publishing";
+  const description = isPublish
+    ? "Confirm the operational impact before these staged settings go live."
+    : isDiscard
+      ? "This will roll back all staged edits on this page to the last saved values."
+      : "You have staged changes that are not yet published. Leaving now will discard them.";
+
+  return (
+    <div className="modal-backdrop-jago" onClick={onClose}>
+      <div className="modal-jago" style={{ maxWidth: 760 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-jago-header">
+          <div>
+            <h5 className="modal-jago-title">{title}</h5>
+            <div className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>{description}</div>
+          </div>
+          <button className="modal-jago-close" onClick={onClose} aria-label="Close review modal">
+            <i className="bi bi-x-lg"></i>
+          </button>
+        </div>
+
+        <div style={{ paddingTop: 20 }}>
+          {(isPublish || isNavigate) && changes.length > 0 && (
+            <div className={`card border-0 shadow-sm mb-3 ops-safety-panel${warnings.length ? " is-danger" : ""}`}>
+              <div className="card-body">
+                <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>Scope of this publish</div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>
+                      {changes.length} change{changes.length === 1 ? "" : "s"} across {new Set(changes.map((item) => item.area)).size} operational area{new Set(changes.map((item) => item.area)).size === 1 ? "" : "s"}.
+                    </div>
+                  </div>
+                  <span className="ops-chip">
+                    <i className="bi bi-shield-check"></i>
+                    Review required
+                  </span>
+                </div>
+
+                {warnings.length > 0 && (
+                  <div className="mb-3" style={{ fontSize: 12, color: "#991b1b" }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>Operational warnings</div>
+                    {warnings.map((warning) => (
+                      <div key={warning} className="d-flex align-items-start gap-2" style={{ marginBottom: 6 }}>
+                        <i className="bi bi-exclamation-triangle-fill" style={{ marginTop: 2 }}></i>
+                        <span>{warning}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <ul className="ops-impact-list">
+                  {changes.map((change) => (
+                    <li key={change.key} className={`ops-impact-item${change.risk === "high" ? " is-high" : change.risk === "medium" ? " is-medium" : ""}`}>
+                      <i
+                        className={`bi ${
+                          change.risk === "high"
+                            ? "bi-exclamation-diamond-fill text-danger"
+                            : change.risk === "medium"
+                              ? "bi-exclamation-circle-fill text-warning"
+                              : "bi-check-circle-fill text-success"
+                        }`}
+                        style={{ marginTop: 2 }}
+                      ></i>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{change.label}</span>
+                          <span className="ops-chip">{change.area}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: "#475569", marginBottom: 4 }}>
+                          <strong>{change.previous}</strong> to <strong>{change.next}</strong>
+                        </div>
+                        <div style={{ fontSize: 11.5, color: "#64748b" }}>{change.note}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {(isDiscard || isNavigate) && (
+            <div className="card border-0 shadow-sm mb-3">
+              <div className="card-body">
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>What happens next</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>
+                  {isNavigate
+                    ? "Your staged edits will be cleared and the page will switch to the destination you selected."
+                    : "All staged values on this page will be cleared and the last saved configuration will remain active."}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="d-flex gap-2 justify-content-end flex-wrap" style={{ paddingTop: 4, paddingBottom: 20 }}>
+          <button className="btn btn-outline-secondary" onClick={onClose} disabled={pending}>
+            Stay Here
+          </button>
+          <button
+            className={`btn ${isPublish ? "btn-primary" : "btn-danger"}`}
+            onClick={onConfirm}
+            disabled={pending}
+            data-testid={isPublish ? "btn-confirm-publish" : isNavigate ? "btn-confirm-leave" : "btn-confirm-discard"}
+          >
+            {pending
+              ? "Processing..."
+              : isPublish
+                ? "Publish Changes"
+                : isNavigate
+                  ? "Discard and Leave"
+                  : "Discard Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Toggle({ label, desc, value, onChange, id }: any) {
   return (
@@ -79,8 +290,12 @@ function NumberField({ label, desc, value, onChange, min, max, suffix, id }: any
 
 export default function ConfigurationsPage() {
   const { toast } = useToast();
+  const [location, setLocation] = useLocation();
   const [tab, setTab] = useState("otp");
   const [local, setLocal] = useState<Record<string, string>>({});
+  const [reviewState, setReviewState] = useState<ReviewState>(null);
+  const [lastPublishedAt, setLastPublishedAt] = useState<string | null>(null);
+  const [lastPublishedCount, setLastPublishedCount] = useState(0);
 
   const { data: settingsData = [] } = useQuery<any[]>({
     queryKey: ["/api/business-settings"],
@@ -97,6 +312,26 @@ export default function ConfigurationsPage() {
   const set = (key: string) => (val: string) => setLocal(p => ({ ...p, [key]: val }));
 
   const hasChanges = Object.keys(local).length > 0;
+  const changedSettings = Object.keys(local)
+    .map((key) => buildChangeSummary(key, dbMap[key], local[key]))
+    .sort((a, b) => {
+      const riskWeight = { high: 0, medium: 1, low: 2 };
+      return riskWeight[a.risk] - riskWeight[b.risk] || a.area.localeCompare(b.area) || a.label.localeCompare(b.label);
+    });
+  const changedAreas = Array.from(new Set(changedSettings.map((item) => item.area)));
+  const criticalCount = changedSettings.filter((item) => item.risk === "high").length;
+  const currentOtpEnabled = get("otp_pickup_enabled") === "true" || get("otp_drop_enabled") === "true";
+  const currentLivePayments = get("razorpay_enabled") === "true" && get("razorpay_mode") === "live";
+  const runtimeWarnings = [
+    currentLivePayments ? "Razorpay is staged in live mode. Real customer payments will be charged after publish." : "",
+    !currentOtpEnabled ? "Both pickup and drop OTP are disabled in the staged state." : "",
+    currentOtpEnabled && !get("sms_api_key") ? "OTP is enabled but the staged configuration does not include an SMS API key." : "",
+    get("sound_sos") === "false" ? "SOS alert sound is staged as disabled, which lowers visibility for active safety incidents." : "",
+    get("intercity_driver_verification") === "false" ? "Intercity verification is staged as disabled, which broadens eligible driver scope." : "",
+    get("sequential_dispatch") === "true" && get("group_broadcast") !== "true"
+      ? "Sequential dispatch is enabled without group broadcast, which may slow ride allocation during peak demand."
+      : "",
+  ].filter(Boolean);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -106,33 +341,108 @@ export default function ConfigurationsPage() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [hasChanges]);
 
+  useEffect(() => {
+    if (!hasChanges) return;
+
+    const handleDocumentClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      const anchor = target?.closest("a[href]") as HTMLAnchorElement | null;
+      if (!anchor) return;
+      const href = anchor.getAttribute("href");
+      if (!href || !href.startsWith("/admin/") || href === location) return;
+      event.preventDefault();
+      setReviewState({ mode: "navigate", href });
+    };
+
+    document.addEventListener("click", handleDocumentClick, true);
+    return () => document.removeEventListener("click", handleDocumentClick, true);
+  }, [hasChanges, location]);
+
   const save = useMutation({
     mutationFn: () => apiRequest("PUT", "/api/business-settings", local),
     onSuccess: () => {
+      const publishedCount = Object.keys(local).length;
       queryClient.invalidateQueries({ queryKey: ["/api/business-settings"] });
       setLocal({});
+      setLastPublishedAt(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
+      setLastPublishedCount(publishedCount);
+      setReviewState(null);
       toast({ title: "Settings saved successfully" });
     },
-    onError: () => toast({ title: "Failed to save settings", variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Failed to save settings", description: e.message, variant: "destructive" }),
   });
 
   const curTab = CONFIG_TABS.find(t => t.id === tab)!;
+  const openPublishReview = () => {
+    if (!hasChanges) return;
+    setReviewState({ mode: "publish" });
+  };
+  const openDiscardReview = () => {
+    if (!hasChanges) return;
+    setReviewState({ mode: "discard" });
+  };
+  const handlePageTabClick = (href: string) => {
+    if (href === location) return;
+    if (hasChanges) {
+      setReviewState({ mode: "navigate", href });
+      return;
+    }
+    setLocation(href);
+  };
+  const handleReviewConfirm = () => {
+    if (!reviewState) return;
+    if (reviewState.mode === "publish") {
+      save.mutate();
+      return;
+    }
+    if (reviewState.mode === "discard") {
+      setLocal({});
+      setReviewState(null);
+      toast({ title: "Staged changes discarded" });
+      return;
+    }
+    if (reviewState.mode === "navigate" && reviewState.href) {
+      const destination = reviewState.href;
+      setLocal({});
+      setReviewState(null);
+      setLocation(destination);
+    }
+  };
 
   return (
     <div className="container-fluid">
       {/* Header */}
-      <div className="d-flex align-items-center justify-content-between mb-4">
+      <div className="ops-page-header">
         <div>
           <h4 className="fw-bold mb-0">Configurations</h4>
           <div className="text-muted small">OTP setup, payment gateway, commission rates and feature toggles</div>
+          <div className="ops-page-header__meta">
+            <span className="ops-chip">
+              <i className="bi bi-diagram-3"></i>
+              {changedAreas.length || 1} operational area{changedAreas.length === 1 ? "" : "s"}
+            </span>
+            <span className="ops-chip">
+              <i className="bi bi-shield-exclamation"></i>
+              {criticalCount} critical change{criticalCount === 1 ? "" : "s"}
+            </span>
+            <span className="ops-chip">
+              <i className="bi bi-clock-history"></i>
+              {lastPublishedAt ? `Last published ${lastPublishedAt}` : "No publish in this session"}
+            </span>
+          </div>
         </div>
-        {hasChanges && (
-          <button className="btn btn-primary" onClick={() => save.mutate()} disabled={save.isPending}
+        {hasChanges ? (
+          <button className="btn btn-primary" onClick={openPublishReview} disabled={save.isPending}
             data-testid="btn-save-settings">
             {save.isPending
               ? <><span className="spinner-border spinner-border-sm me-2"></span>Saving…</>
-              : <><i className="bi bi-save-fill me-1"></i>Save Changes ({Object.keys(local).length})</>}
+              : <><i className="bi bi-send-check-fill me-1"></i>Review and Publish</>}
           </button>
+        ) : (
+          <div className="ops-chip">
+            <i className="bi bi-check2-circle text-success"></i>
+            Runtime config is stable
+          </div>
         )}
       </div>
 
@@ -142,9 +452,9 @@ export default function ConfigurationsPage() {
           <ul className="nav nav--tabs p-1 rounded bg-light">
             {PAGE_TABS.map(t => (
               <li key={t.href} className="nav-item">
-                <Link href={t.href} className={`nav-link${t.href === "/admin/configurations" ? " active" : ""}`}>
+                <button type="button" className={`nav-link${t.href === location ? " active" : ""}`} onClick={() => handlePageTabClick(t.href)}>
                   {t.label}
-                </Link>
+                </button>
               </li>
             ))}
           </ul>
@@ -152,19 +462,52 @@ export default function ConfigurationsPage() {
       </div>
 
       {/* Config section tabs — horizontal, icon-based */}
-      <div className="row g-2 mb-4">
+      <div className={`card border-0 shadow-sm mb-4 ops-safety-panel${runtimeWarnings.length ? " is-danger" : ""}`} style={{ borderRadius: 14 }}>
+        <div className="card-body">
+          <div className="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>Runtime governance safety</div>
+              <div className="text-muted" style={{ fontSize: 12 }}>
+                Staged edits do not go live until you publish them. Review scope, impact and warnings before applying operational changes.
+              </div>
+            </div>
+            <div className="d-flex flex-wrap gap-2">
+              <span className="ops-chip">
+                <i className="bi bi-layers"></i>
+                {hasChanges ? `${changedSettings.length} staged` : "No staged changes"}
+              </span>
+              <span className="ops-chip">
+                <i className="bi bi-arrow-counterclockwise"></i>
+                {hasChanges ? "Discard restores last saved state" : `Last publish touched ${lastPublishedCount || 0} setting${lastPublishedCount === 1 ? "" : "s"}`}
+              </span>
+            </div>
+          </div>
+          {runtimeWarnings.length > 0 && (
+            <div className="mt-3" style={{ fontSize: 12, color: "#991b1b" }}>
+              {runtimeWarnings.map((warning) => (
+                <div key={warning} className="d-flex align-items-start gap-2" style={{ marginBottom: 6 }}>
+                  <i className="bi bi-exclamation-triangle-fill" style={{ marginTop: 2 }}></i>
+                  <span>{warning}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="ops-section-grid mb-4">
         {CONFIG_TABS.map(ct => (
-          <div key={ct.id} className="col-6 col-md-4 col-xl-2">
+          <div key={ct.id}>
             <button
               onClick={() => setTab(ct.id)}
-              className="w-100 text-start border-0"
+              className="w-100 text-start border-0 ops-section-card"
               style={{
                 background: tab === ct.id ? ct.color : "#fff",
                 color: tab === ct.id ? "#fff" : "#475569",
-                borderRadius: 12,
-                padding: "12px 14px",
+                borderRadius: 14,
+                padding: "14px 15px",
                 cursor: "pointer",
-                boxShadow: tab === ct.id ? `0 4px 14px ${ct.color}44` : "0 1px 4px rgba(0,0,0,0.07)",
+                boxShadow: tab === ct.id ? `0 8px 20px ${ct.color}2f` : "0 1px 4px rgba(0,0,0,0.05)",
                 transition: "all .15s",
                 border: `1.5px solid ${tab === ct.id ? ct.color : "#e2e8f0"}`,
               }}
@@ -431,8 +774,8 @@ export default function ConfigurationsPage() {
             <div>
               <div className="row g-3 mb-4">
                 {[
-                  { key: "intercity_enabled", label: "Intercity Car Sharing", icon: "bi-signpost-2-fill", color: "#1a73e8" },
-                  { key: "car_sharing_enabled", label: "City Car Sharing", icon: "bi-people-fill", color: "#7c3aed" },
+                  { key: "intercity_enabled", label: "Intercity Pool", icon: "bi-signpost-2-fill", color: "#1a73e8" },
+                  { key: "car_sharing_enabled", label: "Local Pool", icon: "bi-people-fill", color: "#7c3aed" },
                   { key: "parcel_subscription_enabled", label: "Parcel Subscriptions", icon: "bi-box-seam-fill", color: "#16a34a" },
                   { key: "ride_subscription_enabled", label: "Ride Subscriptions", icon: "bi-car-front-fill", color: "#d97706" },
                   { key: "surge_pricing_enabled", label: "Surge Pricing", icon: "bi-lightning-charge-fill", color: "#dc2626" },
@@ -785,24 +1128,31 @@ export default function ConfigurationsPage() {
 
       {/* Bottom save bar */}
       {hasChanges && (
-        <div style={{
-          position: "fixed", bottom: 24, right: 24, left: "auto", zIndex: 999,
-          background: "#0f172a", borderRadius: 14, padding: "14px 20px",
-          display: "flex", alignItems: "center", gap: 12,
-          boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
-        }}>
-          <div style={{ fontSize: 13, color: "#94a3b8" }}>
-            <span style={{ color: "#fff", fontWeight: 700 }}>{Object.keys(local).length}</span> unsaved changes
+        <div className="ops-savebar">
+          <div className="ops-savebar__summary">
+            <strong>{Object.keys(local).length} staged change{Object.keys(local).length === 1 ? "" : "s"} ready for review</strong>
+            <span>
+              Scope: {changedAreas.join(", ")}
+              {runtimeWarnings.length ? ` • ${runtimeWarnings.length} warning${runtimeWarnings.length === 1 ? "" : "s"}` : " • No active warnings"}
+            </span>
           </div>
           <button className="btn btn-sm" style={{ background: "#475569", color: "#fff", borderRadius: 8, fontSize: 12, border: "none" }}
-            onClick={() => setLocal({})}>Discard</button>
+            onClick={openDiscardReview}>Discard</button>
           <button className="btn btn-sm btn-primary" style={{ borderRadius: 8, fontSize: 12 }}
-            onClick={() => save.mutate()} disabled={save.isPending}
+            onClick={openPublishReview} disabled={save.isPending}
             data-testid="btn-save-float">
             {save.isPending ? "Saving…" : "Save Changes"}
           </button>
         </div>
       )}
+      <ReviewModal
+        state={reviewState}
+        changes={changedSettings}
+        warnings={runtimeWarnings}
+        onClose={() => setReviewState(null)}
+        onConfirm={handleReviewConfirm}
+        pending={save.isPending}
+      />
     </div>
   );
 }

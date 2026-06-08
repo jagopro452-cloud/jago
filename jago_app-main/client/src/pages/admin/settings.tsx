@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
-import { apiRequest } from "@/lib/queryClient";
+import { adminFetch, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 type Setting = { keyName: string; value: string; settingsType: string };
@@ -35,28 +35,15 @@ function PasswordChangePanel() {
 
     setLoading(true);
     try {
-      const admin = JSON.parse(localStorage.getItem("jago-admin") || "{}");
-      const res = await fetch("/api/admin/change-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${admin.token}`,
-        },
-        body: JSON.stringify({
-          currentPassword: form.currentPassword,
-          newPassword: form.newPassword,
-          confirmPassword: form.confirmPassword,
-        }),
+      await apiRequest("POST", "/api/admin/change-password", {
+        currentPassword: form.currentPassword,
+        newPassword: form.newPassword,
+        confirmPassword: form.confirmPassword,
       });
-      const data = await res.json();
-      if (res.ok) {
-        toast({ title: "Password changed successfully" });
-        setForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
-      } else {
-        toast({ title: data.message || "Failed to change password", variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "Connection error", variant: "destructive" });
+      toast({ title: "Password changed successfully" });
+      setForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    } catch (error: any) {
+      toast({ title: error?.message || "Failed to change password", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -163,7 +150,13 @@ const settingGroups = [
       { key: "razorpay_key_id", label: "Razorpay Key ID" },
       { key: "razorpay_key_secret", label: "Razorpay Key Secret" },
       { key: "payment_gateway_mode", label: "Mode (test / live)" },
-      { key: "fast2sms_api_key", label: "Fast2SMS API Key (OTP)" },
+      { key: "fast2sms_api_key", label: "Fast2SMS API Key (OTP Fallback)" },
+      { key: "smslogin_api_url", label: "SMSLogin API URL" },
+      { key: "smslogin_api_key", label: "SMSLogin API Key" },
+      { key: "smslogin_sender_id", label: "SMSLogin Sender ID" },
+      { key: "smslogin_route", label: "SMSLogin Route (Optional)" },
+      { key: "smslogin_template_id", label: "SMSLogin Template ID (Optional)" },
+      { key: "smslogin_entity_id", label: "SMSLogin Entity ID (Optional)" },
     ],
   },
   {
@@ -202,7 +195,7 @@ function OtpSettingsPanel() {
 
   const { data, isLoading } = useQuery<OtpSettings>({
     queryKey: ["/api/otp-settings"],
-    queryFn: () => fetch("/api/otp-settings").then(r => r.json()),
+    queryFn: () => adminFetch("/api/otp-settings").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })),
   });
 
   const [form, setForm] = useState<OtpSettings>({
@@ -222,7 +215,7 @@ function OtpSettingsPanel() {
       qc.invalidateQueries({ queryKey: ["/api/otp-settings"] });
       toast({ title: "OTP settings saved" });
     },
-    onError: () => toast({ title: "Error saving OTP settings", variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Error saving OTP settings", description: e.message, variant: "destructive" }),
   });
 
   if (isLoading) return <div className="d-flex justify-content-center py-4"><div className="spinner-border text-primary" role="status"></div></div>;
@@ -254,7 +247,7 @@ function OtpSettingsPanel() {
         <label className="form-label fw-semibold fs-14">Primary OTP Provider</label>
         <div className="row g-3">
           {[
-            { val: "sms", icon: "bi-chat-dots-fill", label: "SMS OTP", desc: "Send OTP via Fast2SMS / Twilio" },
+            { val: "sms", icon: "bi-chat-dots-fill", label: "SMS OTP", desc: "Send OTP via SMSLogin, Twilio or Fast2SMS" },
             { val: "firebase", icon: "bi-phone-vibrate-fill", label: "Firebase OTP", desc: "Use Firebase Phone Authentication" },
           ].map(opt => (
             <div key={opt.val} className="col-md-6">
@@ -279,7 +272,7 @@ function OtpSettingsPanel() {
       {/* Enable/Disable toggles */}
       <div className="mb-4">
         <label className="form-label fw-semibold fs-14">Provider Controls</label>
-        <Toggle label="SMS OTP Enabled" desc="Allow OTP delivery via SMS providers (Fast2SMS / Twilio)" field="smsEnabled" />
+        <Toggle label="SMS OTP Enabled" desc="Allow OTP delivery via SMS providers (SMSLogin / Twilio / Fast2SMS)" field="smsEnabled" />
         <Toggle label="Firebase OTP Enabled" desc="Allow Firebase Phone Authentication as OTP method" field="firebaseEnabled" />
         <Toggle label="Auto-Fallback Enabled" desc="If primary provider fails, automatically switch to the other provider" field="fallbackEnabled" />
       </div>
@@ -353,7 +346,7 @@ export default function Settings() {
 
   const { data: settings, isLoading } = useQuery<Setting[]>({
     queryKey: ["/api/settings"],
-    queryFn: () => fetch("/api/settings").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
+    queryFn: () => adminFetch("/api/settings").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
   });
 
   useEffect(() => {
@@ -370,7 +363,7 @@ export default function Settings() {
       qc.invalidateQueries({ queryKey: ["/api/settings"] });
       toast({ title: "Settings saved successfully" });
     },
-    onError: () => toast({ title: "Error saving settings", variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Error saving settings", description: e.message, variant: "destructive" }),
   });
 
   const activeGroupData = settingGroups.find(g => g.type === activeGroup);

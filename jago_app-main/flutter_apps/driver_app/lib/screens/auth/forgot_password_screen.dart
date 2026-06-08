@@ -1,13 +1,13 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
+
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
-import '../../services/firebase_otp_service.dart';
-import 'login_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
+
   @override
   State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
@@ -15,236 +15,301 @@ class ForgotPasswordScreen extends StatefulWidget {
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _phoneCtrl = TextEditingController();
   final _otpCtrl = TextEditingController();
-  final _newPassCtrl = TextEditingController();
-  final _confirmCtrl = TextEditingController();
-  bool _loading = false;
-  bool _showNewPass = false;
-  bool _showConfirm = false;
-  int _step = 0;
-  String? _firebaseVerificationId;
-  String? _firebaseIdToken;
-  int _seconds = 0;
-  Timer? _timer;
+  final _newPasswordCtrl = TextEditingController();
+  final _confirmPasswordCtrl = TextEditingController();
+
+  bool _sending = false;
+  bool _resetting = false;
+  bool _otpSent = false;
+  bool _hidePassword = true;
+  bool _hideConfirmPassword = true;
+
+  static const _blue = JT.primary;
 
   @override
   void dispose() {
-    _timer?.cancel();
-    _phoneCtrl.dispose(); _otpCtrl.dispose();
-    _newPassCtrl.dispose(); _confirmCtrl.dispose();
+    _phoneCtrl.dispose();
+    _otpCtrl.dispose();
+    _newPasswordCtrl.dispose();
+    _confirmPasswordCtrl.dispose();
     super.dispose();
   }
 
-  void _showSnack(String msg, {bool error = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(fontWeight: FontWeight.w400, color: Colors.white)),
-      backgroundColor: error ? JT.error : JT.primary,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    ));
-  }
-
-  void _startTimer() {
-    _timer?.cancel();
-    _seconds = 30;
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted || _seconds == 0) { t.cancel(); return; }
-      setState(() => _seconds--);
-    });
+  void _snack(String msg, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          msg,
+          style: GoogleFonts.poppins(color: Colors.white, fontSize: 13),
+        ),
+        backgroundColor: error ? JT.error : JT.success,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
   }
 
   Future<void> _sendOtp() async {
     final phone = _phoneCtrl.text.trim();
-    if (phone.length != 10) { _showSnack('Enter a valid 10-digit phone number', error: true); return; }
-    setState(() => _loading = true);
-    await FirebaseOtpService.sendOtp(
-      phoneNumber: '+91$phone',
-      onCodeSent: (vId) {
-        if (!mounted) return;
-        _firebaseVerificationId = vId;
-        setState(() { _loading = false; _step = 1; });
-        _startTimer();
-        _showSnack('OTP sent to +91$phone');
-      },
-      onError: (err) {
-        if (!mounted) return;
-        setState(() => _loading = false);
-        _showSnack(err, error: true);
-      },
-      onAutoVerify: (idToken) {
-        if (!mounted) return;
-        _firebaseIdToken = idToken;
-        setState(() { _loading = false; _step = 2; });
-      },
+    if (phone.length != 10) {
+      _snack('Enter a valid 10-digit mobile number', error: true);
+      return;
+    }
+
+    setState(() => _sending = true);
+    final res = await AuthService.forgotPassword(phone);
+    if (!mounted) return;
+    setState(() => _sending = false);
+
+    if (res['success'] == true) {
+      setState(() => _otpSent = true);
+      _snack(res['message']?.toString() ?? 'OTP sent successfully');
+      return;
+    }
+
+    _snack(
+      res['message']?.toString() ?? 'Unable to send OTP right now.',
+      error: true,
     );
   }
 
-  Future<void> _verifyOtpStep() async {
+  Future<void> _resetPassword() async {
+    final phone = _phoneCtrl.text.trim();
     final otp = _otpCtrl.text.trim();
-    if (otp.length != 6) { _showSnack('Enter the 6-digit OTP', error: true); return; }
-    setState(() => _loading = true);
-    try {
-      final idToken = await FirebaseOtpService.verifyOtp(
-          smsCode: otp, verificationId: _firebaseVerificationId);
-      if (!mounted) return;
-      _firebaseIdToken = idToken;
-      setState(() { _loading = false; _step = 2; });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      _showSnack(e.toString().replaceAll('Exception: ', ''), error: true);
+    final password = _newPasswordCtrl.text;
+    final confirm = _confirmPasswordCtrl.text;
+
+    if (phone.length != 10) {
+      _snack('Enter a valid 10-digit mobile number', error: true);
+      return;
     }
+    if (otp.length != 6) {
+      _snack('Enter the 6-digit OTP', error: true);
+      return;
+    }
+    if (password.length < 8 ||
+        !RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$').hasMatch(password)) {
+      _snack(
+        'Password must be 8+ chars with upper, lower and number',
+        error: true,
+      );
+      return;
+    }
+    if (password != confirm) {
+      _snack('Passwords do not match', error: true);
+      return;
+    }
+
+    setState(() => _resetting = true);
+    final res = await AuthService.resetPassword(phone, otp, password);
+    if (!mounted) return;
+    setState(() => _resetting = false);
+
+    if (res['success'] == true) {
+      _snack(res['message']?.toString() ?? 'Password reset successfully');
+      Navigator.pop(context);
+      return;
+    }
+
+    _snack(
+      res['message']?.toString() ?? 'Unable to reset password.',
+      error: true,
+    );
   }
 
-  Future<void> _resetPassword() async {
-    final newPass = _newPassCtrl.text;
-    final confirm = _confirmCtrl.text;
-    if (newPass.length < 6) { _showSnack('Password must be at least 6 characters', error: true); return; }
-    if (newPass != confirm) { _showSnack('Passwords do not match', error: true); return; }
-    if (_firebaseIdToken == null) { _showSnack('Verification expired. Please restart.', error: true); return; }
-    setState(() => _loading = true);
-    final res = await AuthService.resetPasswordWithFirebase(
-        _firebaseIdToken!, _phoneCtrl.text.trim(), newPass);
-    if (!mounted) return;
-    setState(() => _loading = false);
-    if (res['success'] == true) {
-      _showSnack('Password reset successfully!');
-      await Future.delayed(const Duration(seconds: 1));
-      if (!mounted) return;
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
-    } else {
-      _showSnack(res['message'] ?? 'Reset failed. Try again.', error: true);
-    }
-  }
+  InputDecoration _decoration(String hint, IconData icon) => InputDecoration(
+    hintText: hint,
+    prefixIcon: Icon(icon, color: _blue, size: 20),
+    filled: true,
+    fillColor: const Color(0xFFF8FAFC),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(16),
+      borderSide: const BorderSide(color: _blue, width: 1.4),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
-        backgroundColor: JT.bg,
+        backgroundColor: Colors.white,
         appBar: AppBar(
-          backgroundColor: JT.bg, elevation: 0,
-          leading: IconButton(icon: Icon(Icons.arrow_back_ios_new_rounded, color: JT.textPrimary), onPressed: () => Navigator.pop(context)),
-          title: Text('Forgot Password', style: TextStyle(color: JT.textPrimary, fontWeight: FontWeight.w500)),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: Color(0xFF1A1A2E),
+            ),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: Text(
+            'Reset Driver Password',
+            style: GoogleFonts.poppins(
+              color: const Color(0xFF1A1A2E),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
-          child: _step == 0 ? _buildStep0() : _step == 1 ? _buildStep1() : _buildStep2(),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStep0() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(Icons.lock_reset_rounded, size: 56, color: JT.primary),
-      const SizedBox(height: 16),
-      Text('Reset Your Password', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w400, color: JT.textPrimary)),
-      const SizedBox(height: 8),
-      Text('Enter your registered phone number. We\'ll send you a 6-digit OTP.', style: TextStyle(color: JT.textSecondary, fontSize: 14)),
-      const SizedBox(height: 32),
-      Text('Phone Number', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: JT.textSecondary)),
-      const SizedBox(height: 8),
-      Container(
-        decoration: BoxDecoration(color: JT.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: JT.border)),
-        child: Row(children: [
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('+91', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: JT.textPrimary))),
-          Container(width: 1, height: 24, color: JT.border),
-          Expanded(child: TextField(
-            controller: _phoneCtrl, keyboardType: TextInputType.phone,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w400, color: JT.textPrimary),
-            decoration: InputDecoration(hintText: 'Enter 10-digit number', hintStyle: TextStyle(color: JT.iconInactive), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16)),
-          )),
-        ]),
-      ),
-      const SizedBox(height: 32),
-      SizedBox(
-        width: double.infinity, height: 56,
-        child: ElevatedButton(
-          onPressed: _loading ? null : _sendOtp,
-          style: ElevatedButton.styleFrom(backgroundColor: JT.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-          child: _loading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)) : const Text('Send Reset OTP', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400)),
-        ),
-      ),
-    ]);
-  }
-
-  Widget _buildStep1() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(Icons.sms_rounded, size: 56, color: JT.primary),
-      const SizedBox(height: 16),
-      Text('Enter OTP', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w400, color: JT.textPrimary)),
-      const SizedBox(height: 8),
-      Text('OTP sent to +91${_phoneCtrl.text}', style: TextStyle(color: JT.textSecondary, fontSize: 13)),
-      const SizedBox(height: 28),
-      Text('6-Digit OTP', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: JT.textSecondary)),
-      const SizedBox(height: 8),
-      Container(
-        decoration: BoxDecoration(color: JT.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: JT.border)),
-        child: TextField(
-          controller: _otpCtrl, keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w400, letterSpacing: 8, color: JT.textPrimary),
-          decoration: InputDecoration(hintText: '------', hintStyle: TextStyle(color: JT.iconInactive, letterSpacing: 8), border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(vertical: 16)),
-        ),
-      ),
-      const SizedBox(height: 8),
-      if (_seconds > 0)
-        Center(child: Text('Resend in ${_seconds}s', style: TextStyle(color: JT.textSecondary, fontSize: 13)))
-      else
-        Center(child: GestureDetector(onTap: _sendOtp, child: Text('Resend OTP', style: TextStyle(color: JT.primary, fontWeight: FontWeight.w500, fontSize: 13)))),
-      const SizedBox(height: 32),
-      SizedBox(
-        width: double.infinity, height: 56,
-        child: ElevatedButton(
-          onPressed: _loading ? null : _verifyOtpStep,
-          style: ElevatedButton.styleFrom(backgroundColor: JT.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-          child: _loading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)) : const Text('Verify OTP', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400)),
-        ),
-      ),
-    ]);
-  }
-
-  Widget _buildStep2() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(Icons.lock_reset_rounded, size: 56, color: JT.primary),
-      const SizedBox(height: 16),
-      Text('Set New Password', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w400, color: JT.textPrimary)),
-      const SizedBox(height: 8),
-      Text('Phone verified. Set your new password.', style: TextStyle(color: JT.textSecondary, fontSize: 13)),
-      const SizedBox(height: 28),
-      Text('New Password', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: JT.textSecondary)),
-      const SizedBox(height: 8),
-      _buildPassField(ctrl: _newPassCtrl, hint: 'Create new password', show: _showNewPass, onToggle: () => setState(() => _showNewPass = !_showNewPass)),
-      const SizedBox(height: 16),
-      Text('Confirm Password', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: JT.textSecondary)),
-      const SizedBox(height: 8),
-      _buildPassField(ctrl: _confirmCtrl, hint: 'Re-enter new password', show: _showConfirm, onToggle: () => setState(() => _showConfirm = !_showConfirm)),
-      const SizedBox(height: 32),
-      SizedBox(
-        width: double.infinity, height: 56,
-        child: ElevatedButton(
-          onPressed: _loading ? null : _resetPassword,
-          style: ElevatedButton.styleFrom(backgroundColor: JT.primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-          child: _loading ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)) : const Text('Reset Password', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w400)),
-        ),
-      ),
-    ]);
-  }
-
-  Widget _buildPassField({required TextEditingController ctrl, required String hint, required bool show, required VoidCallback onToggle}) {
-    return Container(
-      decoration: BoxDecoration(color: JT.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: JT.border)),
-      child: TextField(
-        controller: ctrl, obscureText: !show,
-        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w400, color: JT.textPrimary),
-        decoration: InputDecoration(
-          hintText: hint, hintStyle: TextStyle(color: JT.iconInactive),
-          border: InputBorder.none, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          prefixIcon: Icon(Icons.lock_outline_rounded, color: JT.iconInactive),
-          suffixIcon: IconButton(icon: Icon(show ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: JT.iconInactive), onPressed: onToggle),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.lock_reset_rounded, size: 56, color: JT.primary),
+              const SizedBox(height: 16),
+              Text(
+                _otpSent ? 'Choose a new password' : 'Send reset OTP',
+                style: GoogleFonts.poppins(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF080F1E),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _otpSent
+                    ? 'Enter the OTP sent to your driver mobile number and set a new password.'
+                    : 'Use your registered driver mobile number to receive an OTP.',
+                style: GoogleFonts.poppins(
+                  color: const Color(0xFF94A3B8),
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                controller: _phoneCtrl,
+                keyboardType: TextInputType.phone,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(10),
+                ],
+                decoration: _decoration(
+                  'Mobile number',
+                  Icons.phone_iphone_rounded,
+                ).copyWith(prefixText: '+91 '),
+              ),
+              if (_otpSent) ...[
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _otpCtrl,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(6),
+                  ],
+                  decoration: _decoration(
+                    '6-digit OTP',
+                    Icons.verified_user_outlined,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _newPasswordCtrl,
+                  obscureText: _hidePassword,
+                  decoration: _decoration(
+                    'New password',
+                    Icons.lock_outline_rounded,
+                  ).copyWith(
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _hidePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                      onPressed: () {
+                        setState(() => _hidePassword = !_hidePassword);
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _confirmPasswordCtrl,
+                  obscureText: _hideConfirmPassword,
+                  decoration: _decoration(
+                    'Confirm new password',
+                    Icons.lock_reset_rounded,
+                  ).copyWith(
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _hideConfirmPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                      onPressed: () {
+                        setState(
+                          () => _hideConfirmPassword = !_hideConfirmPassword,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _sending ? null : _sendOtp,
+                    child: Text(
+                      'Resend OTP',
+                      style: GoogleFonts.poppins(
+                        color: _blue,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  onPressed: _sending || _resetting
+                      ? null
+                      : _otpSent
+                      ? _resetPassword
+                      : _sendOtp,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _blue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: (_sending || _resetting)
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : Text(
+                          _otpSent ? 'Reset Password' : 'Send OTP',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

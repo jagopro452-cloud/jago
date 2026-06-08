@@ -104,7 +104,7 @@ class _TipDriverScreenState extends State<TipDriverScreen> {
           child: Row(children: [
             Icon(Icons.stars, color: JT.warning, size: 18),
             SizedBox(width: JT.spacing8),
-            Expanded(child: Text('You earn 10x JAGO Pro Coins for every rupee tipped!', style: JT.caption.copyWith(color: JT.warning))),
+            Expanded(child: Text('You earn 10x Jago Coins for every rupee tipped!', style: JT.caption.copyWith(color: JT.warning))),
           ]),
         ),
         const Spacer(),

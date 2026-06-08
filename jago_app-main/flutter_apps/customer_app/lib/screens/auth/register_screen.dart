@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
-import '../home/home_screen.dart';
 import '../main_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -16,6 +15,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
+  final _referralCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
   bool _loading = false;
@@ -42,6 +42,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _emailCtrl.dispose();
+    _referralCtrl.dispose();
     _passwordCtrl.dispose();
     _confirmCtrl.dispose();
     _slideCtrl.dispose();
@@ -70,7 +71,13 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
     if (password.length < 6) { _showSnack('Password must be at least 6 characters', error: true); return; }
     if (password != confirm) { _showSnack('Passwords do not match', error: true); return; }
     setState(() => _loading = true);
-    final res = await AuthService.registerWithPassword(phone, password, name, email: _emailCtrl.text.trim());
+    final res = await AuthService.registerWithPassword(
+      phone,
+      password,
+      name,
+      email: _emailCtrl.text.trim(),
+      referralCode: _referralCtrl.text.trim(),
+    );
     if (!mounted) return;
     setState(() => _loading = false);
     if (res['success'] == true) {
@@ -120,7 +127,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                 // Header
                 const SizedBox(height: 4),
                 Text(
-                  'Join JAGO Pro Today',
+                  'Join Jago Today',
                   style: GoogleFonts.poppins(
                     fontSize: 26,
                     fontWeight: FontWeight.w400,
@@ -159,6 +166,15 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                   hint: 'your@email.com',
                   icon: Icons.mail_outline_rounded,
                   keyboard: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 16),
+
+                _buildLabel('Referral Code (Optional)'),
+                const SizedBox(height: 8),
+                _buildInput(
+                  controller: _referralCtrl,
+                  hint: 'Enter referral code',
+                  icon: Icons.card_giftcard_rounded,
                 ),
                 const SizedBox(height: 16),
 

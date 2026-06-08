@@ -18,8 +18,8 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
   StreamSubscription<Position>? _positionStream;
   Marker? _userMarker;
   bool _locationLoading = true;
-  String _locationStatus = 'Detecting location...';
   bool _isFollowing = true; // Prevents map snapping if user pans manually
+  bool _hasLocationPermission = false;
 
   @override
   void initState() {
@@ -34,15 +34,17 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
     }
     if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
       setState(() {
-        _locationStatus = 'Location permission denied';
         _locationLoading = false;
+        _hasLocationPermission = false;
       });
       return;
+    }
+    if (mounted) {
+      setState(() => _hasLocationPermission = true);
     }
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       setState(() {
-        _locationStatus = 'GPS is OFF. Enable location.';
         _locationLoading = false;
       });
       return;
@@ -72,7 +74,6 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
         position: latLng,
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
       );
-      _locationStatus = 'You are here';
     });
     if (_mapController != null && _isFollowing) {
       _mapController!.animateCamera(CameraUpdate.newLatLng(latLng));
@@ -108,8 +109,8 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                 target: _currentLatLng ?? const LatLng(20.5937, 78.9629),
                 zoom: 15,
               ),
-              myLocationEnabled: true,
-              myLocationButtonEnabled: false,
+              myLocationEnabled: _hasLocationPermission,
+              myLocationButtonEnabled: _hasLocationPermission,
               zoomControlsEnabled: false,
               onCameraMoveStarted: () {
                 // If user touches the map, stop auto-snapping to current location
@@ -150,7 +151,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen> {
                   children: [
                     CircleAvatar(
                       radius: 28,
-                      backgroundColor: JagoTheme.primaryBlue.withOpacity(0.12),
+                      backgroundColor: JagoTheme.primaryBlue.withValues(alpha: 0.12),
                       child: const Icon(Icons.person, color: JagoTheme.primaryBlue, size: 32),
                     ),
                     const SizedBox(width: 16),

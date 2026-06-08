@@ -1,7 +1,13 @@
-// Allow self-signed DB certificates in development only (not in production).
-if (process.env.NODE_ENV !== "production" && process.env.NODE_ENV !== "test") {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-}
+// Register crash handlers FIRST — before any imports or async code runs
+process.on("uncaughtException", (err: any) => {
+  console.error("[FATAL uncaughtException]", err?.stack || err);
+  // Don't exit — keep server alive for health checks
+});
+process.on("unhandledRejection", (reason: any) => {
+  console.error("[FATAL unhandledRejection]", reason?.stack || reason);
+});
+
+console.log("BOOT START");
 
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
@@ -10,16 +16,35 @@ import { createServer } from "http";
 import { setupSocket } from "./socket";
 import { parseEnv, validateProductionReadiness } from "./config/env";
 import { makeErrorId, sendAlert } from "./observability";
+import { recordRequest, recordError } from "./metrics";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { db as drizzleDb } from "./db";
+import { db as drizzleDb, pool as dbPool } from "./db";
+import { settleCustomerRidePaymentByOrder, settleDriverPaymentByOrder } from "./payment-settlement";
+import { startRefundReconciliationJob, reconcilePendingRefunds } from "./refund-reconciliation";
+import { verifyCriticalSchemaOrThrow } from "./schema-health";
 import path from "path";
+import fs from "node:fs/promises";
+import fsSync from "node:fs";
+import { fileURLToPath } from "node:url";
 
-const env = parseEnv();
-validateProductionReadiness(env);
+try {
+  const env = parseEnv();
+  validateProductionReadiness(env);
+} catch (startupErr: any) {
+  console.error("[startup] Invalid production configuration:", startupErr.message);
+  if (process.env.NODE_ENV === "production") {
+    process.exit(1);
+  }
+}
 
 const app = express();
 app.set("trust proxy", 1);
 const httpServer = createServer(app);
+let bootstrapReady = false;
+let bootstrapError: string | null = null;
+const useLocalStaticFrontend = process.env.LOCAL_STATIC_FRONTEND === "1";
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDir = path.dirname(currentFilePath);
 
 declare module "http" {
   interface IncomingMessage {
@@ -29,14 +54,47 @@ declare module "http" {
 
 app.use(
   express.json({
-    limit: "2mb",
+    // Driver onboarding and KYC still send some images as base64 JSON payloads.
+    // Keep this comfortably above typical compressed camera captures to avoid
+    // generic submit failures on selfie/document upload.
+    limit: "35mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ extended: false, limit: "1mb", parameterLimit: 100 }));
+app.use(express.urlencoded({ extended: false, limit: "10mb", parameterLimit: 100 }));
+
+app.get("/_health", (_req, res) => {
+  return res.status(200).json({
+    status: bootstrapReady ? "ok" : "starting",
+    ready: bootstrapReady,
+    error: bootstrapError,
+    ts: new Date().toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
+  });
+});
+
+app.get("/health", (_req, res) => {
+  return res.status(200).json({
+    status: bootstrapReady ? "ok" : "starting",
+    ready: bootstrapReady,
+    error: bootstrapError,
+    ts: new Date().toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
+  });
+});
+
+app.get("/api/health", (_req, res) => {
+  return res.status(200).json({
+    status: bootstrapReady ? "ok" : "starting",
+    ready: bootstrapReady,
+    error: bootstrapError,
+    ts: new Date().toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
+  });
+});
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -49,31 +107,254 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
-// Security headers
-app.use((_req, res, next) => {
-  // CORS headers — allow requests from frontend domain(s)
-  const origin = _req.headers.origin || "*";
-  const isDev = process.env.NODE_ENV !== "production";
+function maskEmail(email: string | null | undefined): string {
+  if (!email) return "[REDACTED_EMAIL]";
+  const [local, domain] = email.split("@");
+  if (!domain) return "[REDACTED_EMAIL]";
+  const safeLocal =
+    local.length <= 2 ? `${local[0] || "*"}*` : `${local.slice(0, 2)}***`;
+  return `${safeLocal}@${domain}`;
+}
 
-  if (isDev || !_req.headers.origin) {
+function redactLogValue(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") {
+    if (value.length > 160) return `${value.slice(0, 157)}...`;
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return `[array:${value.length}]`;
+  }
+  if (typeof value === "object") {
+    return "[object]";
+  }
+  return value;
+}
+
+function sanitizeResponseForDebug(body: unknown): Record<string, unknown> | undefined {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return undefined;
+  const obj = body as Record<string, unknown>;
+  const sensitiveKeys = new Set([
+    "otp",
+    "password",
+    "passwordHash",
+    "token",
+    "sessionToken",
+    "authToken",
+    "resetOtp",
+    "firebaseToken",
+    "fcmToken",
+    "phone",
+    "email",
+    "address",
+    "wallet",
+    "walletBalance",
+    "transactions",
+    "data",
+    "users",
+  ]);
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (sensitiveKeys.has(key)) {
+      sanitized[key] = "[REDACTED]";
+      continue;
+    }
+    sanitized[key] = redactLogValue(value);
+  }
+  return sanitized;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForDependencies() {
+  const requireRedis = Boolean(process.env.REDIS_URL);
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= 20; attempt++) {
+    try {
+      await dbPool.query("SELECT 1");
+      if (requireRedis) {
+        const { checkRedis } = await import("./presence");
+        const redisHealth = await checkRedis();
+        if (redisHealth.status !== "ok") {
+          throw new Error(redisHealth.error || `redis_${redisHealth.status}`);
+        }
+      }
+      return;
+    } catch (error: any) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      log(`[startup] waiting for dependencies (${attempt}/20): ${lastError.message}`);
+      await sleep(1000);
+    }
+  }
+
+  throw lastError || new Error("dependency_check_failed");
+}
+
+async function loadRuntimeConfigFromDb() {
+  const settingsRes = await dbPool.query(
+    "SELECT key_name, value FROM business_settings WHERE key_name = ANY($1::text[])",
+    [[
+      "razorpay_key_id",
+      "razorpay_key_secret",
+      "razorpay_webhook_secret",
+      "google_maps_key",
+    ]]
+  );
+
+  const ENV_MAP: Record<string, string> = {
+    razorpay_key_id: "RAZORPAY_KEY_ID",
+    razorpay_key_secret: "RAZORPAY_KEY_SECRET",
+    razorpay_webhook_secret: "RAZORPAY_WEBHOOK_SECRET",
+    google_maps_key: "GOOGLE_MAPS_API_KEY",
+  };
+
+  for (const row of settingsRes.rows as any[]) {
+    const envKey = ENV_MAP[row.key_name];
+    if (envKey && !process.env[envKey] && row.value?.trim()) {
+      process.env[envKey] = row.value.trim();
+      log(`[config] Loaded ${envKey} from DB settings`);
+    }
+  }
+
+  log("[config] DB settings loaded into runtime config");
+}
+
+async function setupSocketRedisAdapter() {
+  try {
+    const redisUrl = (process.env.REDIS_URL || "").trim();
+    if (!redisUrl) {
+      const message = "REDIS_URL is required for the Socket.IO Redis adapter";
+      if (process.env.NODE_ENV === "production") {
+        throw new Error(message);
+      }
+      log(`[Socket.IO] ${message}; using in-memory adapter outside production`);
+      return;
+    }
+
+    const { createAdapter } = await import("@socket.io/redis-adapter");
+    const { default: IORedis } = await import("ioredis");
+    const pubClient = new IORedis(redisUrl, {
+      lazyConnect: true,
+      enableOfflineQueue: true,
+      maxRetriesPerRequest: null,
+      retryStrategy: (times) => Math.min(times * 500, 5000),
+      reconnectOnError: () => true,
+      keepAlive: 15000,
+    });
+    const subClient = pubClient.duplicate();
+    pubClient.on("error", (error) => { log(`[Socket.IO][Redis] publisher error: ${error.message}`); });
+    subClient.on("error", (error) => { log(`[Socket.IO][Redis] subscriber error: ${error.message}`); });
+    pubClient.on("end", () => { log("[Socket.IO][Redis] publisher connection ended"); });
+    subClient.on("end", () => { log("[Socket.IO][Redis] subscriber connection ended"); });
+    const { io: socketIo } = await import("./socket");
+
+    await Promise.all([
+      new Promise<void>((resolve, reject) => { pubClient.once("ready", resolve); pubClient.once("error", reject); pubClient.connect().catch(reject); }),
+      new Promise<void>((resolve, reject) => { subClient.once("ready", resolve); subClient.once("error", reject); subClient.connect().catch(reject); }),
+    ]);
+
+    socketIo.adapter(createAdapter(pubClient, subClient));
+    log("[Socket.IO] Redis adapter connected");
+  } catch (error: any) {
+    if (process.env.NODE_ENV === "production") {
+      throw error;
+    }
+    log(`[Socket.IO] Redis unavailable, using in-memory adapter: ${error.message}`);
+  }
+}
+
+async function ensureMigrationTable() {
+  const result = await dbPool.query(
+    `SELECT 1
+     FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_name = 'migrations'
+     LIMIT 1`,
+  );
+  if (!result.rowCount) {
+    throw new Error("Missing migrations table. Apply bootstrap SQL migrations before starting the API.");
+  }
+}
+
+async function applySqlMigrationsFromDir(migrationsDir: string) {
+  await ensureMigrationTable();
+  if (!fsSync.existsSync(migrationsDir)) {
+    log(`[migration] directory missing, skipping: ${migrationsDir}`);
+    return;
+  }
+
+  const files = (await fs.readdir(migrationsDir))
+    .filter((name) => name.toLowerCase().endsWith(".sql"))
+    .sort();
+
+  for (const file of files) {
+    const existing = await dbPool.query("SELECT 1 FROM migrations WHERE name = $1 LIMIT 1", [file]);
+    if (existing.rowCount) {
+      log(`[migration] ${file} already marked applied`);
+      continue;
+    }
+
+    const migrationPath = path.join(migrationsDir, file);
+    const migrationSql = await fs.readFile(migrationPath, "utf8");
+    await dbPool.query(migrationSql);
+    await dbPool.query(
+      "INSERT INTO migrations (name, applied_at) VALUES ($1, NOW()) ON CONFLICT (name) DO NOTHING",
+      [file]
+    );
+    log(`[migration] ${file} applied`);
+  }
+}
+
+async function runDrizzleMigrationsIfAvailable() {
+  const candidates = [
+    path.join(process.cwd(), "migrations"),
+    path.join(currentDir, "drizzle-migrations"),
+    path.join(currentDir, "..", "migrations"),
+  ];
+
+  const selected = candidates.find((folder) =>
+    fsSync.existsSync(folder) &&
+    fsSync.existsSync(path.join(folder, "meta", "_journal.json"))
+  );
+
+  if (!selected) {
+    const checked = candidates
+      .map((folder) => path.join(folder, "meta", "_journal.json"))
+      .join(", ");
+    log(`[db] Drizzle migrations skipped; journal not found. Checked: ${checked}`);
+    return;
+  }
+
+  await migrate(drizzleDb, { migrationsFolder: selected });
+  log(`[db] Drizzle migrations applied OK from ${selected}`);
+}
+
+// Security headers
+app.use((req, res, next) => {
+  const isApiRequest =
+    req.path.startsWith("/api") ||
+    req.path.startsWith("/v1/") ||
+    req.path.startsWith("/v2/");
+  // CORS headers — allow requests from frontend domain(s)
+  const origin = req.headers.origin;
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const requestProto = forwardedProto || req.protocol || "https";
+  const requestOrigin = `${requestProto}://${req.headers.host}`;
+  const defaultOrigins = "https://jagopro.org,https://www.jagopro.org,https://sea-lion-app-h5luj.ondigitalocean.app,http://localhost:5173,http://localhost:5000,http://127.0.0.1:5173,http://127.0.0.1:5000";
+  const allowedOrigins = ((process.env.ALLOWED_ORIGINS || defaultOrigins))
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const isSameOrigin = !!origin && origin === requestOrigin;
+
+  if (!origin) {
+    // Native mobile requests usually do not send Origin.
+  } else if (!isApiRequest || isSameOrigin || allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   } else {
-    const allowedOrigins = [
-      "https://jagopro.org",
-      "https://www.jagopro.org",
-      "http://localhost:5173",
-      "http://localhost:5000",
-      "http://127.0.0.1:5173",
-      "http://127.0.0.1:5000",
-      "http://192.168.0.234:5000",
-      "http://192.168.0.143:5000",
-      "http://192.168.1.62:5000",
-      "http://192.168.1.89:5000",
-      "http://192.168.1.89:5173",
-    ];
-    if (allowedOrigins.includes(origin as string)) {
-      res.setHeader("Access-Control-Allow-Origin", origin);
-    }
+    return res.status(403).json({ message: "Origin not allowed" });
   }
 
   res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -82,7 +363,7 @@ app.use((_req, res, next) => {
   res.setHeader("Access-Control-Max-Age", "3600");
 
   // Handle preflight requests
-  if (_req.method === "OPTIONS") {
+  if (req.method === "OPTIONS") {
     return res.sendStatus(200);
   }
 
@@ -99,6 +380,7 @@ app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  const allowResponsePreview = process.env.NODE_ENV !== "production";
 
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
@@ -109,14 +391,14 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
+      recordRequest();
+      if (res.statusCode >= 500) recordError();
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        const sanitized = { ...capturedJsonResponse };
-        if (sanitized.otp !== undefined) sanitized.otp = "[REDACTED]";
-        if (sanitized.password !== undefined) sanitized.password = "[REDACTED]";
-        if (sanitized.token !== undefined) sanitized.token = "[REDACTED]";
-        if (sanitized.sessionToken !== undefined) sanitized.sessionToken = "[REDACTED]";
+      if (allowResponsePreview && capturedJsonResponse) {
+        const sanitized = sanitizeResponseForDebug(capturedJsonResponse);
+        if (sanitized) {
         logLine += ` :: ${JSON.stringify(sanitized)}`;
+        }
       }
 
       log(logLine);
@@ -126,154 +408,170 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
-  // Run Drizzle migrations at startup — this creates ALL tables including admins
-  try {
-    const migrationsFolder = path.join(process.cwd(), "migrations");
-    log(`[db] Running migrations from: ${migrationsFolder}`);
-    // await migrate(drizzleDb, { migrationsFolder });
-    log("[db] Migrations applied OK — all tables ready");
-  } catch (e: any) {
-    console.error("[db] MIGRATION FAILED — tables may be missing:", e.message);
-    console.error("[db] Full error:", e.stack || e);
-    process.exit(1);
+app.use((req, res, next) => {
+  if (bootstrapReady || req.path === "/" || req.path === "/_health" || req.path === "/health" || req.path === "/api/health") {
+    return next();
   }
 
-  // Setup error handler early
+  return res.status(503).json({
+    message: "Server is starting. Please try again in a few seconds.",
+    ready: false,
+  });
+});
+
+app.get("/", (_req, res, next) => {
+  if (bootstrapReady) {
+    return next();
+  }
+
+  return res.status(200).send("starting");
+});
+
+const port = parseInt(process.env.PORT || "5000", 10);
+
+(async () => {
+  // ─── STEP 1: Register error handler ───
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const errorId = makeErrorId();
-
     console.error(`Internal Server Error [${errorId}]:`, err);
-    sendAlert({
-      level: status >= 500 ? "critical" : "error",
-      source: "express",
-      message: `Request failed with status ${status} (${errorId})`,
-      details: typeof err?.stack === "string" ? err.stack : String(err?.message || err),
-    }).catch(() => { });
-
-    if (res.headersSent) {
-      return next(err);
-    }
-
+    sendAlert({ level: status >= 500 ? "critical" : "error", source: "express", message: `Request failed with status ${status} (${errorId})`, details: typeof err?.stack === "string" ? err.stack : String(err?.message || err) }).catch(() => { });
+    if (res.headersSent) return next(err);
     const isProd = process.env.NODE_ENV === "production";
-    const message = isProd && status >= 500
-      ? `An internal error occurred. Reference: ${errorId}`
-      : (err.message || "Internal Server Error");
-
-    return res.status(status).json({ message, errorId });
+    return res.status(status).json({ message: isProd && status >= 500 ? `An internal error occurred. Reference: ${errorId}` : (err.message || "Internal Server Error"), errorId });
   });
 
-  // ─── REGISTER ROUTES FIRST (CRITICAL) ───
-  // Must complete before server handles any API requests
+  try {
+    await waitForDependencies();
+    log("[startup] Dependencies ready");
+  } catch (e: any) {
+    bootstrapError = `dependency_check_failed:${e.message}`;
+    console.error("[startup] Dependency check failed:", e.message);
+    sendAlert({
+      level: "critical",
+      source: "startup",
+      message: "Dependency check failed during boot",
+      details: String(e.message || e),
+    }).catch(() => { });
+    return;
+  }
+
+  // ─── STEP 2: Register routes (non-fatal if fails) ───
   try {
     log("[server] Registering API routes...");
     await registerRoutes(httpServer, app);
-    log("[server] API routes registered successfully");
+    log("[server] API routes registered OK");
   } catch (e: any) {
+    bootstrapError = `route_registration_failed:${e.message}`;
     console.error("[routes] Failed to register routes:", e.message);
-    console.error("[routes] Stack:", e.stack);
-    sendAlert({
-      level: "critical",
-      source: "routes",
-      message: "Failed to register API routes",
-      details: String(e.message || e),
-    }).catch(() => { });
-    process.exit(1);
+    sendAlert({ level: "critical", source: "routes", message: "Failed to register API routes", details: String(e.message || e) }).catch(() => { });
+    return;
   }
 
-  // Setup static files AFTER routes (so routes take precedence)
-  if (process.env.NODE_ENV === "production") {
-    log("[server] Setting up static file serving for production");
-    serveStatic(app);
+  // ─── STEP 3: Static files or Vite dev middleware ───
+  if (process.env.NODE_ENV === "production" || useLocalStaticFrontend) {
+    try {
+      serveStatic(app);
+      log(useLocalStaticFrontend ? "[static] Frontend assets configured via LOCAL_STATIC_FRONTEND" : "[static] Frontend assets configured");
+    } catch (e: any) {
+      bootstrapError = `static_files_failed:${e.message}`;
+      console.error("[static] Failed to configure frontend assets:", e.message);
+      console.error("[static] Run 'npm run build' to generate dist/public, then restart");
+      sendAlert({ level: "error", source: "static", message: "Failed to configure frontend assets", details: e.message }).catch(() => {});
+      return;
+    }
+  } else {
+    // Dev mode: register Vite BEFORE server starts listening so the SPA catch-all
+    // is always ready when the first connection arrives
+    try {
+      const { setupVite } = await import("./vite");
+      await setupVite(httpServer, app);
+      log("[vite] Vite middleware registered");
+    } catch (e: any) {
+      console.error("[vite] Failed to setup Vite — frontend will not be served:", e.message);
+      return;
+    }
   }
 
-  // ─── NOW START SERVER LISTENING ───
-  // Routes are registered and ready to handle requests
-  const port = parseInt(process.env.PORT || "5000", 10);
-  const server = httpServer.listen(port, "0.0.0.0", () => {
-    console.log(`Server running on port ${port}`);
+  // ─── STEP 4: Drizzle migrations (MUST happen before ready flag) ───
+  try {
+    await runDrizzleMigrationsIfAvailable();
+  } catch (e: any) {
+    bootstrapError = `migration_failed:${e.message}`;
+    console.error("[db] Drizzle migration failed:", e.message);
+    sendAlert({ level: "critical", source: "migrations", message: "Drizzle migrations failed", details: e.message }).catch(() => {});
+    return;
+  }
+
+  // ─── STEP 5: Apply custom hardening migration ───
+  try {
+    await applySqlMigrationsFromDir(path.join(currentDir, "migrations"));
+  } catch (e: any) {
+    bootstrapError = `sql_migration_failed:${e.message}`;
+    log(`[migration] production SQL migrations failed: ${e.message}`);
+    if (process.env.NODE_ENV === "production") {
+      sendAlert({ level: "critical", source: "migrations", message: "SQL migrations failed", details: e.message }).catch(() => {});
+      return;
+    }
+  }
+
+  // ─── STEP 6: Mark server ready — health probe passes from here ───
+  try {
+    await verifyCriticalSchemaOrThrow();
+    log("[schema] Critical schema health verified");
+  } catch (e: any) {
+    bootstrapError = `schema_health_failed:${e.message}`;
+    log(`[schema] Critical schema verification failed: ${e.message}`);
+    sendAlert({ level: "critical", source: "schema-health", message: "Critical schema verification failed", details: e.message }).catch(() => {});
+    return;
+  }
+
+  try {
+    setupSocket(httpServer);
+    await setupSocketRedisAdapter();
+  } catch (e: any) {
+    bootstrapError = `socket_init_failed:${e.message}`;
+    console.error("[socket] Failed to initialize Socket.IO:", e.message);
+    sendAlert({ level: "critical", source: "socket", message: "Socket.IO initialization failed", details: String(e.message || e) }).catch(() => {});
+    return;
+  }
+
+  bootstrapReady = true;
+  bootstrapError = null;
+  console.log(`BOOT READY port=${port}`);
+
+  // ─── START LISTENING (only after all critical setup is done) ───
+  httpServer.listen(port, "0.0.0.0", () => {
+    console.log(`BOOT LISTEN OK port=${port}`);
   });
 
-  // ─── BACKGROUND INITIALIZATION (non-blocking) ───
+  // ─── BACKGROUND: Alert engine ───
+  setTimeout(() => {
+    (async () => {
+      try {
+        const { startAlertEngine } = await import("./alert-engine");
+        startAlertEngine();
+      } catch (e: any) {
+        console.error("[alert-engine] Failed to start:", e.message);
+      }
+    })();
+  }, 3000);
 
-  // Load API keys from business_settings DB (non-blocking)
+  // ─── BACKGROUND INITIALIZATION (non-blocking) ───
   (async () => {
     try {
-      const { pool: dbPool } = await import("./db");
-      const settingsRes = await dbPool.query(
-        "SELECT key_name, value FROM business_settings WHERE key_name = ANY($1::text[])",
-        [[
-          "razorpay_key_id",
-          "razorpay_key_secret",
-          "razorpay_webhook_secret",
-          "fast2sms_api_key",
-          "two_factor_api_key",
-          "google_maps_key",
-          "twilio_account_sid",
-          "twilio_auth_token",
-          "twilio_phone_number",
-          "anthropic_api_key",
-          "smslogin_api_key",
-          "smslogin_sender_id",
-          "smslogin_username",
-        ]]
-      );
-      const ENV_MAP: Record<string, string> = {
-        razorpay_key_id: "RAZORPAY_KEY_ID",
-        razorpay_key_secret: "RAZORPAY_KEY_SECRET",
-        razorpay_webhook_secret: "RAZORPAY_WEBHOOK_SECRET",
-        fast2sms_api_key: "FAST2SMS_API_KEY",
-        two_factor_api_key: "TWO_FACTOR_API_KEY",
-        google_maps_key: "GOOGLE_MAPS_API_KEY",
-        twilio_account_sid: "TWILIO_ACCOUNT_SID",
-        twilio_auth_token: "TWILIO_AUTH_TOKEN",
-        twilio_phone_number: "TWILIO_PHONE_NUMBER",
-        anthropic_api_key: "ANTHROPIC_API_KEY",
-        smslogin_api_key: "SMSLOGIN_API_KEY",
-        smslogin_sender_id: "SMSLOGIN_SENDER_ID",
-        smslogin_username: "SMSLOGIN_USERNAME",
-      };
-      for (const row of settingsRes.rows as any[]) {
-        const envKey = ENV_MAP[row.key_name];
-        if (envKey && !process.env[envKey] && row.value?.trim()) {
-          process.env[envKey] = row.value.trim();
-          log(`[config] Loaded ${envKey} from DB settings`);
-        }
-      }
-      log("[config] DB settings loaded into runtime config");
+      await loadRuntimeConfigFromDb();
     } catch (e: any) {
       log(`[config] Could not load DB settings (non-fatal): ${e.message}`);
     }
   })();
 
-  // Setup Socket.IO with Redis adapter (non-blocking)
-  setupSocket(httpServer);
-  (async () => {
-    try {
-      const { createAdapter } = await import("@socket.io/redis-adapter");
-      const { default: IORedis } = await import("ioredis");
-      const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
-      const pubClient = new IORedis(REDIS_URL, { lazyConnect: true, enableOfflineQueue: false, maxRetriesPerRequest: 0, retryStrategy: () => null });
-      const subClient = pubClient.duplicate();
-      // Prevent unhandled error events from crashing / spamming logs
-      pubClient.on("error", () => { });
-      subClient.on("error", () => { });
-      const { io: socketIo } = await import("./socket");
-      Promise.all([
-        new Promise<void>((res, rej) => { pubClient.once("ready", res); pubClient.once("error", rej); }),
-        new Promise<void>((res, rej) => { subClient.once("ready", res); subClient.once("error", rej); }),
-      ]).then(() => {
-        socketIo.adapter(createAdapter(pubClient, subClient));
-        log("[Socket.IO] Redis adapter connected");
-      }).catch((err: any) => {
-        log(`[Socket.IO] Redis unavailable, using in-memory adapter: ${err.message}`);
-      });
-    } catch (err: any) {
-      log(`[Socket.IO] Redis adapter package not available, using in-memory adapter: ${err.message}`);
-    }
-  })();
+  reconcilePendingRefunds().catch((e: any) => {
+    console.error("[refund-reconcile] initial run failed:", e.message);
+  });
+  startRefundReconciliationJob();
 
+  // ─── DB MIGRATION: production_hardening indexes + constraints ───
   // ─── INITIALIZE PRODUCTION HARDENING (CRITICAL) ───
   (async () => {
     try {
@@ -304,8 +602,14 @@ app.use((req, res, next) => {
       const { keyId: RAZORPAY_KEY_ID, keySecret: RAZORPAY_KEY_SECRET } = await getRazorpayKeys();
       if (!RAZORPAY_KEY_ID) return;
       // Find trips stuck in payment_pending for > 5 minutes
-      const stuckTrips = await rawDb.execute(rawSql`
-        SELECT t.id as trip_id, t.customer_id, dp.razorpay_order_id, dp.id as payment_id, dp.driver_id
+      const pendingDriverPayments = await rawDb.execute(rawSql`
+        SELECT
+          'driver'::text AS payment_source,
+          t.id as trip_id,
+          t.customer_id,
+          dp.razorpay_order_id,
+          dp.id as payment_id,
+          dp.driver_id
         FROM trip_requests t
         JOIN driver_payments dp ON dp.trip_id = t.id
         WHERE t.current_status = 'payment_pending'
@@ -314,7 +618,27 @@ app.use((req, res, next) => {
           AND dp.razorpay_order_id IS NOT NULL
         LIMIT 20
       `);
-      for (const row of stuckTrips.rows as any[]) {
+      const pendingCustomerPayments = await rawDb.execute(rawSql`
+        SELECT
+          'customer'::text AS payment_source,
+          t.id as trip_id,
+          t.customer_id,
+          cp.razorpay_order_id,
+          cp.id as payment_id,
+          NULL::uuid AS driver_id
+        FROM trip_requests t
+        JOIN customer_payments cp ON cp.trip_id = t.id
+        WHERE t.current_status = 'payment_pending'
+          AND t.updated_at < NOW() - INTERVAL '5 minutes'
+          AND cp.status = 'pending'
+          AND cp.razorpay_order_id IS NOT NULL
+        LIMIT 20
+      `);
+      const stuckTrips = [
+        ...((pendingDriverPayments.rows as any[]) || []),
+        ...((pendingCustomerPayments.rows as any[]) || []),
+      ];
+      for (const row of stuckTrips) {
         try {
           // Query Razorpay for order payment status
           const rzpRes = await fetch(`https://api.razorpay.com/v1/orders/${row.razorpay_order_id}/payments`, {
@@ -325,14 +649,35 @@ app.use((req, res, next) => {
           const captured = rzpData?.items?.find((p: any) => p.status === "captured");
           if (captured) {
             // Payment confirmed — complete the trip
-            await rawDb.execute(rawSql`
-              UPDATE driver_payments SET status='completed', razorpay_payment_id=${captured.id}, verified_at=NOW()
-              WHERE id=${row.payment_id}::uuid
+            if (row.payment_source === "driver") {
+              await settleDriverPaymentByOrder({
+                orderId: String(row.razorpay_order_id),
+                paymentId: String(captured.id),
+                source: "retry_job",
+              });
+            } else {
+              await settleCustomerRidePaymentByOrder({
+                orderId: String(row.razorpay_order_id),
+                paymentId: String(captured.id),
+                source: "retry_job",
+              });
+            }
+            const tripState = await rawDb.execute(rawSql`
+              SELECT current_status
+              FROM trip_requests
+              WHERE id=${row.trip_id}::uuid
+              LIMIT 1
             `);
-            await rawDb.execute(rawSql`
-              UPDATE trip_requests SET current_status='completed', completed_at=NOW(), payment_status='paid', updated_at=NOW()
-              WHERE id=${row.trip_id}::uuid AND current_status='payment_pending'
-            `);
+            const currentTripStatus = String((tripState.rows[0] as any)?.current_status || "");
+            if (currentTripStatus !== "completed") {
+              const { transitionRideState } = await import("./ride-state");
+              await transitionRideState(String(row.trip_id), "completed", {
+                actorType: "system",
+                event: "COMPLETED",
+                data: { source: "payment_retry_job", paymentId: captured.id, orderId: row.razorpay_order_id },
+                extraSetters: [rawSql`payment_status='paid'`],
+              }).catch(() => null);
+            }
             socketIo.to(`user:${row.customer_id}`).emit("trip:completed", { tripId: row.trip_id, message: "Payment confirmed. Trip complete." });
             log(`[PaymentRetry] Trip ${row.trip_id} resolved — payment ${captured.id} captured`);
           }
@@ -351,35 +696,4 @@ app.use((req, res, next) => {
     } catch (_) { }
   }, 60 * 1000); // every 60 seconds
 
-  // Setup Vite in development (after server is listening)
-  if (process.env.NODE_ENV !== "production") {
-    try {
-      const { setupVite } = await import("./vite");
-      await setupVite(httpServer, app);
-    } catch (e: any) {
-      console.error("[vite] Failed to setup Vite:", e.message);
-    }
-  }
-
-  process.on("unhandledRejection", (reason: any) => {
-    const errorId = makeErrorId();
-    console.error(`[unhandledRejection] [${errorId}]`, reason);
-    sendAlert({
-      level: "critical",
-      source: "process",
-      message: `Unhandled promise rejection (${errorId})`,
-      details: String(reason?.stack || reason),
-    }).catch(() => { });
-  });
-
-  process.on("uncaughtException", (err: any) => {
-    const errorId = makeErrorId();
-    console.error(`[uncaughtException] [${errorId}]`, err);
-    sendAlert({
-      level: "critical",
-      source: "process",
-      message: `Uncaught exception (${errorId})`,
-      details: String(err?.stack || err),
-    }).catch(() => { });
-  });
 })();

@@ -14,7 +14,7 @@ import 'booking_screen.dart';
 import 'map_location_picker.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// JAGO Pro — Full-Screen Location Picker
+// Jago — Full-Screen Location Picker
 // Rule 1: Location ALWAYS comes before vehicle selection.
 // Rule 7: Pickup auto-detect · Drop auto-focus · Map pick · Add stop · Suggestions
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,19 +59,17 @@ class _LocationScreenState extends State<LocationScreen>
   double _dropLng = 0.0;
 
   bool _showStop = false;
-  String _stop = '';
-  double _stopLat = 0.0;
-  double _stopLng = 0.0;
 
   bool _detectingLocation = false;
   List<Map<String, dynamic>> _searchResults = [];
   List<Map<String, dynamic>> _recent = [];
-  List<Map<String, dynamic>> _popular = [];
+  bool _loadingExactPoints = false;
   bool _searching = false;
   bool _activeField = true; // true = editing drop, false = editing stop
   String _activeQuery = '';
   Timer? _debounce;
   String _sessionToken = ''; // Google Places Session Token for cost optimization
+  int _searchRequestSeq = 0;
 
   // ── Animation ─────────────────────────────────────────────────────────────
   late AnimationController _slideCtrl;
@@ -99,7 +97,6 @@ class _LocationScreenState extends State<LocationScreen>
     _slideCtrl.forward();
 
     _loadRecent();
-    _fetchPopular();
     _resetSessionToken();
     if (_pickup.isEmpty) _detectLocation();
 
@@ -165,7 +162,7 @@ class _LocationScreenState extends State<LocationScreen>
         return;
       }
       final pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high)
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.high))
           .timeout(const Duration(seconds: 8));
       final addr = await _reverseGeocode(pos.latitude, pos.longitude);
       if (!mounted) return;
@@ -267,58 +264,6 @@ class _LocationScreenState extends State<LocationScreen>
     } catch (_) {}
   }
 
-  // ── Popular Locations ─────────────────────────────────────────────────────
-  Future<void> _fetchPopular() async {
-    try {
-      final r = await http.get(
-          Uri.parse(
-              '${ApiConfig.baseUrl}/api/app/popular-locations?city=Vijayawada'));
-      if (r.statusCode == 200) {
-        final data = jsonDecode(r.body) as Map<String, dynamic>;
-        final list = ((data['locations'] as List<dynamic>?) ?? [])
-            .map((x) => Map<String, dynamic>.from(x as Map))
-            .map((x) => {
-                  'name': x['name']?.toString() ?? '',
-                  'lat':
-                      double.tryParse((x['lat'] ?? x['latitude'] ?? 0).toString()) ??
-                          0.0,
-                  'lng': double.tryParse(
-                          (x['lng'] ?? x['longitude'] ?? 0).toString()) ??
-                      0.0,
-                })
-            .where((x) => (x['name'] as String).isNotEmpty)
-            .toList();
-        if (mounted && list.isNotEmpty) {
-          setState(() => _popular = list.cast<Map<String, dynamic>>());
-          return;
-        }
-      }
-    } catch (_) {}
-    if (mounted && _popular.isEmpty) {
-      setState(() => _popular = const [
-            {'name': 'Benz Circle', 'lat': 16.5062, 'lng': 80.6480},
-            {
-              'name': 'Vijayawada Railway Station',
-              'lat': 16.5175,
-              'lng': 80.6400
-            },
-            {
-              'name': 'Vijayawada Bus Stand',
-              'lat': 16.5179,
-              'lng': 80.6238
-            },
-            {'name': 'Kanaka Durga Temple', 'lat': 16.5176, 'lng': 80.6121},
-            {
-              'name': 'Gannavaram Airport',
-              'lat': 16.5304,
-              'lng': 80.7968
-            },
-            {'name': 'Governorpet', 'lat': 16.5135, 'lng': 80.6346},
-            {'name': 'Patamata', 'lat': 16.4883, 'lng': 80.6681},
-          ]);
-    }
-  }
-
   // ── Session Token ─────────────────────────────────────────────────────────
   void _resetSessionToken() {
     // Generate a fresh UUID-like token for a new search session
@@ -329,8 +274,13 @@ class _LocationScreenState extends State<LocationScreen>
 
   // ── Search ────────────────────────────────────────────────────────────────
   void _onDropChanged(String q) {
-    _activeQuery = q;
-    _activeField = true;
+    setState(() {
+      _drop = q;
+      _dropLat = 0.0;
+      _dropLng = 0.0;
+      _activeQuery = q;
+      _activeField = true;
+    });
     if (_debounce?.isActive == true) _debounce!.cancel();
     if (q.trim().length < 2) {
       setState(() {
@@ -344,8 +294,11 @@ class _LocationScreenState extends State<LocationScreen>
   }
 
   void _onStopChanged(String q) {
-    _activeQuery = q;
-    _activeField = false;
+    setState(() {
+      _showStop = q.trim().isNotEmpty;
+      _activeQuery = q;
+      _activeField = false;
+    });
     if (_debounce?.isActive == true) _debounce!.cancel();
     if (q.trim().length < 2) {
       setState(() {
@@ -357,52 +310,409 @@ class _LocationScreenState extends State<LocationScreen>
     _debounce = Timer(const Duration(milliseconds: 300), () => _search(q));
   }
 
+  List<Map<String, dynamic>> _mapPredictions(List<dynamic> preds) {
+    return preds
+        .map((p) {
+          final lat2 = (p['lat'] as num?)?.toDouble() ?? 0.0;
+          final lng2 = (p['lng'] as num?)?.toDouble() ?? 0.0;
+          final main = p['mainText']?.toString() ?? '';
+          final sec = p['secondaryText']?.toString() ?? '';
+          return <String, dynamic>{
+            'name': p['fullDescription']?.toString() ?? p['mainText']?.toString() ?? '',
+            'mainText': main,
+            'secondaryText': sec,
+            'placeId': p['placeId']?.toString() ?? '',
+            'lat': lat2,
+            'lng': lng2,
+          };
+        })
+        .where((r) => (r['name'] as String).isNotEmpty)
+        .toList();
+  }
+
+  Future<List<Map<String, dynamic>>> _searchPlacesFallback(String query) async {
+    try {
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'format': 'json',
+        'q': query,
+        'limit': '8',
+        'countrycodes': 'in',
+        'addressdetails': '1',
+      });
+      final r = await http.get(
+        uri,
+        headers: const {'User-Agent': 'JagoPro/1.0 (Android)'},
+      ).timeout(const Duration(seconds: 6));
+      if (r.statusCode != 200) return [];
+      final decoded = jsonDecode(r.body);
+      if (decoded is! List) return [];
+      return decoded
+          .map((item) {
+            final p = Map<String, dynamic>.from(item as Map);
+            final full = p['display_name']?.toString() ?? '';
+            final parts = full.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+            return <String, dynamic>{
+              'name': full,
+              'mainText': parts.isNotEmpty ? parts.first : full,
+              'secondaryText': parts.length > 1 ? parts.sublist(1).join(', ') : '',
+              'placeId': 'nom:${p['place_id'] ?? ''}',
+              'lat': double.tryParse('${p['lat'] ?? 0}') ?? 0.0,
+              'lng': double.tryParse('${p['lon'] ?? 0}') ?? 0.0,
+            };
+          })
+          .where((r) => (r['name'] as String).isNotEmpty)
+          .cast<Map<String, dynamic>>()
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  bool _needsExactPointSelection(String name) {
+    final lower = name.toLowerCase();
+    const keywords = [
+      'station',
+      'railway',
+      'junction',
+      'bus stand',
+      'bus station',
+      'airport',
+      'terminal',
+      'temple',
+      'hospital',
+      'mall',
+      'market',
+      'college',
+      'university',
+    ];
+    return keywords.any(lower.contains);
+  }
+
+  List<String> _exactPointTypesFor(String name) {
+    final lower = name.toLowerCase();
+    if (lower.contains('airport')) {
+      return ['airport', 'transit_station', 'point_of_interest'];
+    }
+    if (lower.contains('rail') || lower.contains('station') || lower.contains('junction')) {
+      return ['train_station', 'transit_station', 'lodging', 'point_of_interest'];
+    }
+    if (lower.contains('bus')) {
+      return ['bus_station', 'transit_station', 'lodging', 'point_of_interest'];
+    }
+    return ['point_of_interest', 'lodging', 'restaurant'];
+  }
+
+  String _exactPointLabel(Map<String, dynamic> option, String defaultName) {
+    final name = option['name']?.toString().trim() ?? '';
+    if (name.isEmpty) return defaultName;
+    final lower = name.toLowerCase();
+    if (lower.contains('gate')) return name;
+    if (lower.contains('entrance')) return name;
+    if (lower.contains('exit')) return name;
+    if (lower.contains('hotel')) return '$name side';
+    if (lower.contains('road')) return '$name side';
+    return name;
+  }
+
+  List<Map<String, dynamic>> _curatedExactPoints(
+    String name,
+    double lat,
+    double lng,
+  ) {
+    final lower = name.toLowerCase();
+    Map<String, dynamic> item(
+      String title,
+      String address,
+      double itemLat,
+      double itemLng,
+    ) {
+      return {
+        'name': title,
+        'address': address,
+        'lat': itemLat,
+        'lng': itemLng,
+        'distanceKm': JT.calculateDistance(lat, lng, itemLat, itemLng),
+        'curated': true,
+      };
+    }
+
+    if (lower.contains('vijayawada bus stand') ||
+        lower.contains('pnbs') ||
+        lower.contains('pandit nehru bus station')) {
+      return [
+        item('Vijayawada Bus Stand Main Gate', 'Main entry side', 16.5182,
+            80.6240),
+        item('Vijayawada Bus Stand Balaji Hotel Side', 'Balaji Hotel side',
+            16.5168, 80.6257),
+        item('Vijayawada Bus Stand Platform Side', 'Inner platform side',
+            16.5187, 80.6229),
+      ];
+    }
+
+    if (lower.contains('vijayawada railway station') ||
+        lower.contains('railway station') ||
+        lower.contains('railway junction')) {
+      return [
+        item('Vijayawada Railway Station Front Gate', 'Main entrance side',
+            16.5182, 80.6395),
+        item('Vijayawada Railway Station Platform Road Side',
+            'Platform road side', 16.5169, 80.6416),
+        item('Vijayawada Railway Station West Side', 'Railway colony side',
+            16.5185, 80.6378),
+      ];
+    }
+
+    if (lower.contains('gannavaram airport') || lower.contains('airport')) {
+      return [
+        item('Gannavaram Airport Departure Gate', 'Departure drop gate',
+            16.5311, 80.7977),
+        item('Gannavaram Airport Arrival Gate', 'Arrival pickup gate',
+            16.5299, 80.7966),
+      ];
+    }
+
+    if (lower.contains('benz circle')) {
+      return [
+        item('Benz Circle Bus Stop Side', 'Bus stop side', 16.5066, 80.6489),
+        item('Benz Circle Service Road Side', 'Service road side', 16.5058,
+            80.6472),
+      ];
+    }
+
+    return const [];
+  }
+
+  Future<List<Map<String, dynamic>>> _loadExactPointOptions(
+    String name,
+    double lat,
+    double lng,
+  ) async {
+    final headers = await AuthService.getHeaders();
+    final options = <Map<String, dynamic>>[
+      {
+        'name': name,
+        'address': 'Main point',
+        'lat': lat,
+        'lng': lng,
+        'distanceKm': 0.0,
+        'synthetic': true,
+      }
+    ];
+
+    options.addAll(_curatedExactPoints(name, lat, lng));
+
+    for (final type in _exactPointTypesFor(name)) {
+      try {
+        final res = await http.get(
+          Uri.parse('${ApiConfig.placesNearby}?lat=$lat&lng=$lng&type=$type&radius=600'),
+          headers: headers,
+        ).timeout(const Duration(seconds: 5));
+        if (res.statusCode != 200) continue;
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final places = (data['places'] as List<dynamic>? ?? [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .where((e) =>
+                (e['name']?.toString().trim().isNotEmpty ?? false) &&
+                ((e['lat'] as num?)?.toDouble() ?? 0.0) != 0.0 &&
+                ((e['lng'] as num?)?.toDouble() ?? 0.0) != 0.0)
+            .map((e) => {
+                  'name': e['name']?.toString() ?? '',
+                  'address': e['address']?.toString() ?? '',
+                  'lat': (e['lat'] as num?)?.toDouble() ?? 0.0,
+                  'lng': (e['lng'] as num?)?.toDouble() ?? 0.0,
+                  'distanceKm': (e['distance_km'] as num?)?.toDouble() ?? 0.0,
+                  'type': e['type']?.toString() ?? type,
+                })
+            .toList();
+        options.addAll(places);
+      } catch (_) {}
+    }
+
+    final deduped = <String, Map<String, dynamic>>{};
+    for (final item in options) {
+      final itemLat = (item['lat'] as num?)?.toDouble() ?? 0.0;
+      final itemLng = (item['lng'] as num?)?.toDouble() ?? 0.0;
+      final key =
+          '${(item['name'] ?? '').toString().toLowerCase()}|${itemLat.toStringAsFixed(4)}|${itemLng.toStringAsFixed(4)}';
+      deduped.putIfAbsent(key, () => item);
+    }
+
+    final list = deduped.values.toList()
+      ..sort((a, b) => ((a['distanceKm'] as num?)?.toDouble() ?? 999)
+          .compareTo((b['distanceKm'] as num?)?.toDouble() ?? 999));
+    return list.take(6).toList();
+  }
+
+  Future<Map<String, dynamic>?> _showExactPointChooser(
+    String name,
+    double lat,
+    double lng, {
+    required bool forDrop,
+  }) async {
+    setState(() => _loadingExactPoints = true);
+    final options = await _loadExactPointOptions(name, lat, lng);
+    if (mounted) setState(() => _loadingExactPoints = false);
+    if (!mounted) return null;
+
+    return showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD8E2F0),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  forDrop ? 'Choose exact drop point' : 'Choose exact stop point',
+                  style: JT.h3,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Large landmarks can have multiple sides. Pick the exact point like Rapido-style pickup selection.',
+                  style: JT.body,
+                ),
+                const SizedBox(height: 14),
+                ...options.map((option) {
+                  final distance = ((option['distanceKm'] as num?)?.toDouble() ?? 0.0);
+                  final subtitle = (option['address']?.toString().trim().isNotEmpty ?? false)
+                      ? option['address'].toString()
+                      : distance > 0
+                          ? '${distance.toStringAsFixed(distance < 1 ? 2 : 1)} km from main point'
+                          : 'Main point';
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: _accentLight,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(Icons.place_rounded, color: _accent, size: 20),
+                    ),
+                    title: Text(
+                      _exactPointLabel(option, name),
+                      style: JT.bodyPrimary,
+                    ),
+                    subtitle: Text(
+                      subtitle,
+                      style: JT.caption,
+                    ),
+                    onTap: () => Navigator.pop(context, option),
+                  );
+                }),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.pop(context, {
+                    'useMap': true,
+                    'name': name,
+                    'lat': lat,
+                    'lng': lng,
+                  }),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    side: BorderSide(color: _accent.withValues(alpha: 0.35)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: Icon(Icons.map_rounded, color: _accent),
+                  label: Text(
+                    'Pick exact point on map',
+                    style: JT.bodyPrimary.copyWith(color: _accent),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _search(String query) async {
-    if (!mounted || query.trim().length < 2) return;
+    final normalizedQuery = query.trim();
+    if (!mounted || normalizedQuery.length < 2) return;
+    final requestId = ++_searchRequestSeq;
     setState(() => _searching = true);
     try {
       final headers = await AuthService.getHeaders();
       final lat = _pickupLat;
       final lng = _pickupLng;
-      
-      // Use the session token to optimize API costs
-      final qp = StringBuffer('?query=${Uri.encodeComponent(query)}');
-      qp.write('&sessionToken=$_sessionToken');
-      
-      if (lat != 0.0 && lng != 0.0) qp.write('&lat=$lat&lng=$lng');
-      
-      print('[PLACES] Searching: $query (session: $_sessionToken)');
+      final queryParameters = <String, String>{
+        'query': normalizedQuery,
+        'sessionToken': _sessionToken,
+        if (lat != 0.0 && lng != 0.0) ...{
+          'lat': lat.toString(),
+          'lng': lng.toString(),
+        },
+      };
       final r = await http.get(
-        Uri.parse('${ApiConfig.placesAutocomplete}$qp'),
+        Uri.parse(ApiConfig.placesAutocomplete)
+            .replace(queryParameters: queryParameters),
         headers: headers,
       ).timeout(const Duration(seconds: 6));
       
       if (!mounted) return;
+      final currentQuery = (_activeField ? _dropCtrl.text : _stopCtrl.text).trim();
+      if (requestId != _searchRequestSeq || currentQuery != normalizedQuery) {
+        return;
+      }
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body) as Map<String, dynamic>;
         final preds = (data['predictions'] as List<dynamic>?) ?? [];
+        var mapped = _mapPredictions(preds);
+        if (mapped.isEmpty) {
+          mapped = await _searchPlacesFallback(normalizedQuery);
+          if (!mounted) return;
+          final fallbackQuery = (_activeField ? _dropCtrl.text : _stopCtrl.text).trim();
+          if (requestId != _searchRequestSeq || fallbackQuery != normalizedQuery) {
+            return;
+          }
+        }
         setState(() {
-          _searchResults = preds
-              .map((p) {
-                final lat2 = (p['lat'] as num?)?.toDouble() ?? 0.0;
-                final lng2 = (p['lng'] as num?)?.toDouble() ?? 0.0;
-                return <String, dynamic>{
-                  'name': p['fullDescription']?.toString() ??
-                      p['mainText']?.toString() ?? '',
-                  'placeId': p['placeId']?.toString() ?? '',
-                  'lat': lat2,
-                  'lng': lng2,
-                };
-              })
-              .where((r) => (r['name'] as String).isNotEmpty)
-              .toList();
+          _searchResults = mapped;
         });
-        print('[PLACES] Found ${_searchResults.length} results');
+      } else {
+        final fallback = await _searchPlacesFallback(normalizedQuery);
+        if (!mounted) return;
+        final fallbackQuery = (_activeField ? _dropCtrl.text : _stopCtrl.text).trim();
+        if (requestId != _searchRequestSeq || fallbackQuery != normalizedQuery) {
+          return;
+        }
+        setState(() => _searchResults = fallback);
       }
-    } catch (e) {
-      print('[PLACES] Error: $e');
+    } catch (_) {
+      final fallback = await _searchPlacesFallback(normalizedQuery);
+      if (mounted) {
+        final fallbackQuery = (_activeField ? _dropCtrl.text : _stopCtrl.text).trim();
+        if (requestId != _searchRequestSeq || fallbackQuery != normalizedQuery) {
+          return;
+        }
+        setState(() => _searchResults = fallback);
+      }
     }
-    if (mounted) setState(() => _searching = false);
+    if (mounted && requestId == _searchRequestSeq) {
+      setState(() => _searching = false);
+    }
   }
 
   // ── Selection Handlers ────────────────────────────────────────────────────
@@ -424,13 +734,38 @@ class _LocationScreenState extends State<LocationScreen>
   void _selectStop(String name, double lat, double lng) {
     HapticFeedback.selectionClick();
     setState(() {
-      _stop = name;
-      _stopLat = lat;
-      _stopLng = lng;
       _stopCtrl.text = name;
       _searchResults = [];
     });
     FocusScope.of(context).unfocus();
+  }
+
+  Future<void> _selectKnownPlace(
+    String name,
+    double lat,
+    double lng, {
+    required bool forDrop,
+  }) async {
+    if (forDrop && _needsExactPointSelection(name) && lat != 0.0 && lng != 0.0) {
+      final picked = await _showExactPointChooser(name, lat, lng, forDrop: true);
+      if (picked != null) {
+        if (picked['useMap'] == true) {
+          await _pickDropOnMap();
+          return;
+        }
+        final pickedName = picked['name']?.toString() ?? name;
+        final pickedLat = (picked['lat'] as num?)?.toDouble() ?? lat;
+        final pickedLng = (picked['lng'] as num?)?.toDouble() ?? lng;
+        _selectDrop(pickedName, pickedLat, pickedLng);
+        return;
+      }
+    }
+
+    if (forDrop) {
+      _selectDrop(name, lat, lng);
+    } else {
+      _selectStop(name, lat, lng);
+    }
   }
 
   /// Resolves place coordinates from server then selects drop/stop.
@@ -443,14 +778,17 @@ class _LocationScreenState extends State<LocationScreen>
     final placeId = p['placeId']?.toString() ?? '';
     if ((lat == 0.0 || lng == 0.0) &&
         placeId.isNotEmpty &&
-        !placeId.startsWith('local:')) {
+        !placeId.startsWith('local:') &&
+        !placeId.startsWith('nom:')) {
       setState(() => _detectingLocation = true);
       try {
         final headers = await AuthService.getHeaders();
         final r = await http
             .get(
-              Uri.parse(
-                  '${ApiConfig.placeDetails}?placeId=${Uri.encodeComponent(placeId)}&sessionToken=$_sessionToken'),
+              Uri.parse(ApiConfig.placeDetails).replace(queryParameters: {
+                'placeId': placeId,
+                'sessionToken': _sessionToken,
+              }),
               headers: headers,
             )
             .timeout(const Duration(seconds: 6));
@@ -471,11 +809,21 @@ class _LocationScreenState extends State<LocationScreen>
       } catch (_) {}
       if (mounted) setState(() => _detectingLocation = false);
     }
-    if (forDrop) {
-      _selectDrop(name, lat, lng);
-    } else {
-      _selectStop(name, lat, lng);
+    if (forDrop && _needsExactPointSelection(name) && lat != 0.0 && lng != 0.0) {
+      final picked = await _showExactPointChooser(name, lat, lng, forDrop: forDrop);
+      if (picked != null) {
+        if (picked['useMap'] == true) {
+          await _pickDropOnMap();
+          return;
+        }
+        final pickedName = picked['name']?.toString() ?? name;
+        final pickedLat = (picked['lat'] as num?)?.toDouble() ?? lat;
+        final pickedLng = (picked['lng'] as num?)?.toDouble() ?? lng;
+        _selectDrop(pickedName, pickedLat, pickedLng);
+        return;
+      }
     }
+    await _selectKnownPlace(name, lat, lng, forDrop: forDrop);
   }
 
   void _tryProceed() {
@@ -715,6 +1063,18 @@ class _LocationScreenState extends State<LocationScreen>
                       color: _accent, size: 16),
                 ),
               ),
+              if (_loadingExactPoints)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: _accent,
+                    ),
+                  ),
+                ),
             ]),
           ),
 
@@ -786,6 +1146,8 @@ class _LocationScreenState extends State<LocationScreen>
                     _dropCtrl.clear();
                     setState(() {
                       _drop = '';
+                      _dropLat = 0.0;
+                      _dropLng = 0.0;
                       _searchResults = [];
                     });
                     _dropFocus.requestFocus();
@@ -834,7 +1196,6 @@ class _LocationScreenState extends State<LocationScreen>
                   onTap: () {
                     setState(() {
                       _showStop = false;
-                      _stop = '';
                       _stopCtrl.clear();
                     });
                   },
@@ -842,7 +1203,7 @@ class _LocationScreenState extends State<LocationScreen>
                 ),
               const Spacer(),
               // Proceed button (shows when drop is selected)
-              if (_drop.isNotEmpty)
+              if (_dropLat != 0.0 && _dropLng != 0.0)
                 GestureDetector(
                   onTap: _proceedToVehicles,
                   child: AnimatedContainer(
@@ -992,18 +1353,42 @@ class _LocationScreenState extends State<LocationScreen>
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
+        // ── Quick Actions ──
+        if (!isSearching) ...[
+          _placeRow(
+            name: 'Current Location',
+            mainText: 'Current Location',
+            secondaryText: 'Using GPS for accuracy',
+            icon: Icons.my_location_rounded,
+            iconColor: JT.primary,
+            onTap: () {
+              // Usually handled by the manual map picker or geocoding
+              _pickDropOnMap(); 
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+
         // Search results
         if (isSearching) ...[
           if (_searching && items.isEmpty)
             _buildShimmerLoading()
           else if (items.isNotEmpty) ...[
             _sectionHeader('Search Results', Icons.search_rounded),
-            ...items.map((p) => _placeRow(
+            ...items.map((p) {
+               final dist = (p['lat'] != 0.0) 
+                  ? JT.calculateDistance(_pickupLat, _pickupLng, p['lat'], p['lng'])
+                  : null;
+                return _placeRow(
                   name: p['name']?.toString() ?? '',
+                  mainText: p['mainText']?.toString() ?? '',
+                  secondaryText: p['secondaryText']?.toString() ?? '',
+                  distanceKm: dist,
                   icon: Icons.location_on_rounded,
                   iconColor: _accent,
                   onTap: () => _selectFromSearch(p, forDrop: _activeField),
-                )),
+                );
+            }),
           ] else if (!_searching)
             _buildNoResults(),
         ]
@@ -1015,29 +1400,20 @@ class _LocationScreenState extends State<LocationScreen>
             _sectionHeader('Recent', Icons.history_rounded),
             ..._recent.map((p) => _placeRow(
                   name: p['name']?.toString() ?? '',
+                  mainText: p['name']?.toString() ?? '',
+                  secondaryText: p['address']?.toString() ?? 'Recent search',
                   icon: Icons.history_rounded,
                   iconColor: JT.textSecondary,
-                  onTap: () => _selectDrop(
-                      p['name'] ?? '',
-                      (p['lat'] as num).toDouble(),
-                      (p['lng'] as num).toDouble()),
+                  onTap: () => _selectKnownPlace(
+                    p['name'] ?? '',
+                    (p['lat'] as num).toDouble(),
+                    (p['lng'] as num).toDouble(),
+                    forDrop: true,
+                  ),
                 )),
             const SizedBox(height: 12),
           ],
 
-          // Popular locations
-          if (_popular.isNotEmpty) ...[
-            _sectionHeader('Popular Locations', Icons.star_rounded),
-            ..._popular.map((p) => _placeRow(
-                  name: p['name']?.toString() ?? '',
-                  icon: Icons.place_rounded,
-                  iconColor: const Color(0xFFF59E0B),
-                  onTap: () => _selectDrop(
-                      p['name'] ?? '',
-                      (p['lat'] as num).toDouble(),
-                      (p['lng'] as num).toDouble()),
-                )),
-          ],
         ],
       ],
     );
@@ -1045,71 +1421,142 @@ class _LocationScreenState extends State<LocationScreen>
 
   Widget _sectionHeader(String label, IconData icon) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8, top: 4),
+      padding: const EdgeInsets.only(bottom: 12, top: 16),
       child: Row(children: [
-        Icon(icon, size: 14, color: JT.textSecondary),
-        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: JT.textSecondary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Icon(icon, size: 12, color: JT.textSecondary),
+        ),
+        const SizedBox(width: 8),
         Text(
-          label,
+          label.toUpperCase(),
           style: GoogleFonts.poppins(
             color: JT.textSecondary,
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.5,
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
           ),
         ),
+        const SizedBox(width: 8),
+        Expanded(child: Divider(color: JT.textSecondary.withValues(alpha: 0.1), thickness: 1)),
       ]),
     );
   }
 
   Widget _placeRow({
     required String name,
+    required String mainText,
+    required String secondaryText,
     required IconData icon,
     required Color iconColor,
     required VoidCallback onTap,
+    double? distanceKm,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFF1F5F9)),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFF1F5FA)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         child: Row(children: [
+          // Premium Icon setup
           Container(
-            width: 36,
-            height: 36,
+            width: 42,
+            height: 42,
             decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, size: 18, color: iconColor),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              name,
-              style: GoogleFonts.poppins(
-                color: JT.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w400,
+              gradient: LinearGradient(
+                colors: [
+                  iconColor.withValues(alpha: 0.15),
+                  iconColor.withValues(alpha: 0.05),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 20, color: iconColor),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        mainText.isNotEmpty ? mainText : name,
+                        style: GoogleFonts.poppins(
+                          color: JT.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (distanceKm != null)
+                      Container(
+                        margin: const EdgeInsets.only(left: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: iconColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${distanceKm.toStringAsFixed(1)} km',
+                          style: GoogleFonts.poppins(
+                            color: iconColor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                if (secondaryText.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      secondaryText,
+                      style: GoogleFonts.poppins(
+                        color: JT.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
             ),
           ),
-          const Icon(Icons.chevron_right_rounded,
-              size: 18, color: JT.textSecondary),
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFF),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.arrow_forward_ios_rounded,
+                size: 10, color: JT.textSecondary),
+          ),
         ]),
       ),
     );

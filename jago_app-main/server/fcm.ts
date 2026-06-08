@@ -6,6 +6,7 @@ const rawSql = sql;
 
 let admin: any = null;
 let fcmInitialized = false;
+let lastFcmError: string | null = null;
 
 // ── Initialize Firebase Admin (env var only, no SMS fallback) ────────────────
 async function initFirebaseAsync() {
@@ -28,17 +29,24 @@ async function initFirebaseAsync() {
   }
 
   try {
-    const firebaseAdmin = require("firebase-admin");
+    const firebaseAdminModule = await import("firebase-admin");
+    const firebaseAdmin: any = (firebaseAdminModule as any)?.default || firebaseAdminModule;
     // Avoid re-initializing if already done
     if (firebaseAdmin.apps.length === 0) {
       const serviceAccount = JSON.parse(serviceAccountJson);
+      if (typeof serviceAccount.private_key === "string") {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
+      }
       firebaseAdmin.initializeApp({
         credential: firebaseAdmin.credential.cert(serviceAccount),
       });
     }
     admin = firebaseAdmin;
+    lastFcmError = null;
     log("[FCM] Firebase Admin initialized successfully", "fcm");
   } catch (e: any) {
+    admin = null;
+    lastFcmError = e?.message || "Firebase Admin initialization failed";
     log(`[FCM] Init failed: ${e.message}`, "fcm");
   }
 }
@@ -59,6 +67,10 @@ export async function getFirebaseAdminAsync(): Promise<any> {
 export function getFirebaseAdmin(): any {
   initFirebase();
   return admin;
+}
+
+export function getLastFcmError(): string | null {
+  return lastFcmError;
 }
 
 // ── Send single FCM notification ─────────────────────────────────────────────
@@ -119,9 +131,15 @@ export async function sendFcmNotification(opts: {
     }
 
     await admin.messaging().send(message);
-    log(`[FCM] Sent to ${opts.fcmToken.substring(0, 20)}... — ${opts.title}${opts.dataOnly ? " (data-only)" : ""}`, "fcm");
+    lastFcmError = null;
+    log(`[FCM] Sent notification title=${opts.title}${opts.dataOnly ? " dataOnly=true" : ""}`, "fcm");
     return true;
   } catch (e: any) {
+    lastFcmError = e?.message || "FCM send failed";
+    if (/invalid_grant|Invalid JWT Signature|certificate key file has been revoked/i.test(lastFcmError || "")) {
+      admin = null;
+      fcmInitialized = false;
+    }
     log(`[FCM] Send failed: ${e.message}`, "fcm");
     return false;
   }
@@ -135,8 +153,13 @@ export async function notifyDriverNewRide(opts: {
   driverName: string;
   customerName: string;
   pickupAddress: string;
+  destinationAddress?: string;
   estimatedFare: number;
+  estimatedDistance?: number | string;
   tripId: string;
+  vehicleCategoryId?: string | null;
+  vehicleCategoryName?: string | null;
+  timeoutMs?: number;
 }) {
   if (!opts.fcmToken) return;
   return sendFcmNotification({
@@ -144,14 +167,20 @@ export async function notifyDriverNewRide(opts: {
     title: "🚗 New Ride Request!",
     body: `${opts.customerName} — ${opts.pickupAddress} — ₹${opts.estimatedFare}`,
     sound: "trip_alert",
-    channelId: "trip_alerts",
+    channelId: "trip_alerts_v2",
     dataOnly: true, // background handler shows full-screen intent
     data: {
       type: "new_trip",
       tripId: opts.tripId,
       customerName: opts.customerName,
       pickupAddress: opts.pickupAddress,
+      destinationAddress: opts.destinationAddress || "",
       estimatedFare: String(opts.estimatedFare),
+      estimatedDistance: String(opts.estimatedDistance ?? ""),
+      vehicleCategoryId: opts.vehicleCategoryId || "",
+      vehicleCategoryName: opts.vehicleCategoryName || "",
+      vehicleCategory: opts.vehicleCategoryName || "",
+      timeoutMs: String(opts.timeoutMs ?? 40000),
     },
   });
 }
@@ -171,7 +200,7 @@ export async function notifyDriverNewParcel(opts: {
     title: "📦 New Parcel Delivery!",
     body: `${opts.pickupAddress} — ₹${opts.totalFare} — ${label}`,
     sound: "trip_alert",
-    channelId: "trip_alerts",
+    channelId: "trip_alerts_v2",
     dataOnly: true, // background handler shows full-screen intent
     data: {
       type: "new_parcel",

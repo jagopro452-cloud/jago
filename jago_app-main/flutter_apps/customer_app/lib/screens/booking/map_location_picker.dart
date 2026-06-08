@@ -67,6 +67,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   String _address = 'Move the map to select location';
   bool _geocoding = false;
   bool _locationLoading = true;
+  bool _hasLocationPermission = false;
 
   // Search state
   final _searchCtrl = TextEditingController();
@@ -75,6 +76,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   bool _searching = false;
   bool _showSearch = false;
   Timer? _debounce;
+  int _searchRequestSeq = 0;
 
   // Session token for Places Autocomplete (reduces billing)
   String _sessionToken = DateTime.now().millisecondsSinceEpoch.toString();
@@ -125,7 +127,11 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialLat != null && widget.initialLng != null) {
+    final hasValidInitial = widget.initialLat != null &&
+        widget.initialLng != null &&
+        widget.initialLat != 0.0 &&
+        widget.initialLng != 0.0;
+    if (hasValidInitial) {
       _lat = widget.initialLat!;
       _lng = widget.initialLng!;
       _locationLoading = false;
@@ -186,6 +192,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       if (perm == LocationPermission.denied) {
         setState(() {
           _locationLoading = false;
+          _hasLocationPermission = false;
           _lat = 16.5062;
           _lng = 80.6480;
           _address = 'Location permission is needed to detect your current location.';
@@ -195,11 +202,15 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       if (perm == LocationPermission.deniedForever) {
         setState(() {
           _locationLoading = false;
+          _hasLocationPermission = false;
           _lat = 16.5062;
           _lng = 80.6480;
           _address = 'Location permission is blocked. Enable it from settings.';
         });
         return;
+      }
+      if (mounted) {
+        setState(() => _hasLocationPermission = true);
       }
 
       if (lastPos != null && mounted) {
@@ -243,28 +254,46 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
       }
       _reverseGeocode(_lat, _lng);
     } catch (e) {
-      setState(() => _locationLoading = false);
+      if (!mounted) return;
+      setState(() {
+        _lat ??= 16.5062;
+        _lng ??= 80.6480;
+        _locationLoading = false;
+        _address = 'Could not fetch live location. Showing default area.';
+      });
     }
   }
 
   // ─── Places Autocomplete Search ─────────────────────────────────────────
 
   Future<void> _searchPlaces(String query) async {
-    if (query.length < 3) {
+    final normalizedQuery = query.trim();
+    if (normalizedQuery.length < 3) {
       setState(() => _predictions = []);
       return;
     }
+    final requestId = ++_searchRequestSeq;
     setState(() => _searching = true);
     try {
       final headers = await AuthService.getHeaders();
       final hasGps = _gpsLat != null && _gpsLng != null;
-      final qp = StringBuffer('?query=${Uri.encodeComponent(query)}&sessionToken=$_sessionToken');
-      if (hasGps) qp.write('&lat=$_gpsLat&lng=$_gpsLng');
+      final queryParameters = <String, String>{
+        'query': normalizedQuery,
+        'sessionToken': _sessionToken,
+        if (hasGps) ...{
+          'lat': _gpsLat.toString(),
+          'lng': _gpsLng.toString(),
+        },
+      };
       final res = await http.get(
-        Uri.parse('${ApiConfig.placesAutocomplete}$qp'),
+        Uri.parse(ApiConfig.placesAutocomplete)
+            .replace(queryParameters: queryParameters),
         headers: headers,
       ).timeout(const Duration(seconds: 6));
       if (res.statusCode == 200) {
+        if (!mounted || requestId != _searchRequestSeq || _searchCtrl.text.trim() != normalizedQuery) {
+          return;
+        }
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final preds = (data['predictions'] as List<dynamic>?) ?? [];
         if (mounted) {
@@ -281,7 +310,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
         }
       }
     } catch (_) {}
-    if (mounted) setState(() => _searching = false);
+    if (mounted && requestId == _searchRequestSeq) setState(() => _searching = false);
   }
 
   /// Get lat/lng from a Place ID using Place Details API.
@@ -316,9 +345,10 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
     try {
       final headers = await AuthService.getHeaders();
       final res = await http.get(
-        Uri.parse(
-          '${ApiConfig.placeDetails}?placeId=${Uri.encodeComponent(pred.placeId)}&sessionToken=$_sessionToken',
-        ),
+        Uri.parse(ApiConfig.placeDetails).replace(queryParameters: {
+          'placeId': pred.placeId,
+          'sessionToken': _sessionToken,
+        }),
         headers: headers,
       ).timeout(const Duration(seconds: 6));
       // Generate a new session token after a detail fetch
@@ -385,8 +415,8 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                 target: LatLng(_lat!, _lng!),
                 zoom: 15,
               ),
-              myLocationEnabled: true,
-              myLocationButtonEnabled: false,
+              myLocationEnabled: _hasLocationPermission,
+              myLocationButtonEnabled: _hasLocationPermission,
               zoomControlsEnabled: false,
               padding: const EdgeInsets.only(bottom: 240),
               onMapCreated: (controller) {
@@ -396,16 +426,11 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                   _pendingCamera = null;
                 }
               },
-            onCameraMove: (pos) {
-              // High performance: update values without setState
-              _lat = pos.target.latitude;
-              _lng = pos.target.longitude;
-            },
-            onCameraIdle: () {
-              // Only update UI and geocode when map stops moving
-              if (mounted) setState(() {});
-              _reverseGeocode(_lat, _lng);
-            },
+              onCameraMove: _onCameraMove,
+              onCameraIdle: () {
+                if (mounted) setState(() {});
+                _onCameraIdle();
+              },
             ),
           if (_locationLoading)
             const Center(child: CircularProgressIndicator()),
@@ -424,10 +449,10 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         margin: const EdgeInsets.only(bottom: 6),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.8),
+                          color: Colors.black.withValues(alpha: 0.8),
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 4)),
+                            BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 4)),
                           ],
                         ),
                         child: Text(
@@ -441,7 +466,7 @@ class _MapLocationPickerState extends State<MapLocationPicker> {
                         width: 8, height: 4,
                         margin: const EdgeInsets.only(top: 2),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.3),
+                          color: Colors.black.withValues(alpha: 0.3),
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),

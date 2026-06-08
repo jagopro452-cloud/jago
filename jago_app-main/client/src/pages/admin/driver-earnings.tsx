@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { adminFetch } from "@/lib/queryClient";
 
 const STATUS_COLORS: any = {
   approved: { bg: "#d1fae5", color: "#065f46", label: "Active" },
@@ -7,11 +8,27 @@ const STATUS_COLORS: any = {
   rejected: { bg: "#fee2e2", color: "#991b1b", label: "Rejected" },
 };
 
+function normalizeArrayPayload(payload: unknown, keys: string[] = []): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === "object") {
+    const value = payload as Record<string, unknown>;
+    if (Array.isArray(value.data)) return value.data;
+    for (const key of keys) {
+      if (Array.isArray(value[key])) return value[key] as any[];
+    }
+  }
+  return [];
+}
+
 function DriverDetail({ driver, onClose }: { driver: any; onClose: () => void }) {
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/driver-earnings", driver.id],
-    queryFn: () => fetch(`/api/driver-earnings/${driver.id}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => (d && !d.message && !d.error) ? d : {}),
+    queryFn: () => adminFetch(`/api/driver-earnings/${driver.id}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => {
+      if (!d || d.message || d.error || typeof d !== "object") return { monthly: [] };
+      return { ...d, monthly: normalizeArrayPayload((d as Record<string, unknown>).monthly) };
+    }),
   });
+  const monthlyRows = normalizeArrayPayload(data?.monthly);
 
   return (
     <div className="modal-backdrop-jago">
@@ -41,7 +58,7 @@ function DriverDetail({ driver, onClose }: { driver: any; onClose: () => void })
             </div>
 
             <h6 className="fw-semibold mb-3" style={{ fontSize: "0.82rem" }}>Monthly Breakdown (Last 12 Months)</h6>
-            {!data.monthly?.length ? (
+            {!monthlyRows.length ? (
               <div className="text-center py-3 text-muted" style={{ fontSize: "0.82rem" }}>No trip history available</div>
             ) : (
               <div className="table-responsive">
@@ -58,7 +75,7 @@ function DriverDetail({ driver, onClose }: { driver: any; onClose: () => void })
                     </tr>
                   </thead>
                   <tbody style={{ fontSize: "0.8rem" }}>
-                    {data.monthly.map((m: any, i: number) => (
+                    {monthlyRows.map((m: any, i: number) => (
                       <tr key={i}>
                         <td className="fw-semibold">{m.monthLabel}</td>
                         <td className="text-center">{m.completed}</td>
@@ -88,16 +105,26 @@ export default function DriverEarningsPage() {
 
   const { data: drivers = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/driver-earnings"],
+    queryFn: async () => {
+      const response = await adminFetch("/api/driver-earnings");
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body?.message || "Failed to load driver earnings");
+      }
+      const body = await response.json().catch(() => []);
+      return normalizeArrayPayload(body, ["drivers", "earnings"]);
+    },
   });
+  const driverRows = Array.isArray(drivers) ? drivers : [];
 
-  const filtered = drivers.filter((d: any) =>
+  const filtered = driverRows.filter((d: any) =>
     !search || d.fullName?.toLowerCase().includes(search.toLowerCase()) || d.phone?.includes(search)
   );
 
-  const totalGross = drivers.reduce((s: number, d: any) => s + Number(d.grossEarnings || 0), 0);
-  const totalCommission = drivers.reduce((s: number, d: any) => s + Number(d.commission || 0), 0);
-  const totalNet = drivers.reduce((s: number, d: any) => s + Number(d.netEarnings || 0), 0);
-  const totalTrips = drivers.reduce((s: number, d: any) => s + Number(d.completedTrips || 0), 0);
+  const totalGross = driverRows.reduce((s: number, d: any) => s + Number(d.grossEarnings || 0), 0);
+  const totalCommission = driverRows.reduce((s: number, d: any) => s + Number(d.commission || 0), 0);
+  const totalNet = driverRows.reduce((s: number, d: any) => s + Number(d.netEarnings || 0), 0);
+  const totalTrips = driverRows.reduce((s: number, d: any) => s + Number(d.completedTrips || 0), 0);
 
   return (
     <>

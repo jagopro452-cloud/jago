@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import AdminLayout from "./layout";
+import { adminFetch } from "@/lib/queryClient";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin → Voice Commands
@@ -24,11 +24,8 @@ export default function VoiceCommandsPage() {
   const { data: logs = [], isLoading: logsLoading } = useQuery<any[]>({
     queryKey: ["/api/admin/voice-logs"],
     queryFn: async () => {
-      const token = localStorage.getItem("admin_token");
-      const r = await fetch("/api/admin/voice-logs?limit=50", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!r.ok) return [];
+      const r = await adminFetch("/api/admin/voice-logs?limit=50");
+      if (!r.ok) throw new Error("Failed to load voice logs");
       const d = await r.json();
       return d.logs || [];
     },
@@ -37,12 +34,9 @@ export default function VoiceCommandsPage() {
 
   // ── Fetch AI config ───────────────────────────────────────────────────────
   useQuery({
-    queryKey: ["/api/admin/config/anthropic"],
+    queryKey: ["/api/admin/business-settings/anthropic_api_key"],
     queryFn: async () => {
-      const token = localStorage.getItem("admin_token");
-      const r = await fetch("/api/admin/business-settings/anthropic_api_key", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const r = await adminFetch("/api/admin/business-settings/anthropic_api_key");
       if (r.ok) {
         const d = await r.json();
         if (d.value) setApiKey(d.value.slice(0, 8) + "•".repeat(20));
@@ -54,10 +48,9 @@ export default function VoiceCommandsPage() {
   // ── Save API key ──────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!apiKey || apiKey.includes("•")) return;
-    const token = localStorage.getItem("admin_token");
-    const r = await fetch("/api/admin/business-settings", {
+    const r = await adminFetch("/api/admin/business-settings", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key_name: "anthropic_api_key", value: apiKey }),
     });
     if (r.ok) {
@@ -72,10 +65,9 @@ export default function VoiceCommandsPage() {
     setTestLoading(true);
     setTestResult(null);
     try {
-      const token = localStorage.getItem("admin_token");
-      const r = await fetch("/api/app/voice-booking/parse", {
+      const r = await adminFetch("/api/app/voice-booking/parse", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: testText }),
       });
       const d = await r.json();
@@ -132,7 +124,6 @@ export default function VoiceCommandsPage() {
   };
 
   return (
-    <AdminLayout>
       <div style={{ padding: "24px 0", maxWidth: 1100 }}>
         {/* Header */}
         <div className="d-flex align-items-center gap-3 mb-4">
@@ -415,6 +406,5 @@ export default function VoiceCommandsPage() {
           </div>
         </div>
       </div>
-    </AdminLayout>
   );
 }

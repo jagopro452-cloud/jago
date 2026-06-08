@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { adminFetch, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ImageUploader } from "@/components/image-uploader";
+import { AdminDataTable, AdminEmptyState } from "@/pages/admin/components/AdminPrimitives";
 
 const avatarBg = (name: string) => {
   const colors = ["#1a73e8","#16a34a","#d97706","#9333ea","#0891b2","#dc2626","#0ea5e9"];
@@ -32,9 +33,9 @@ function VerifyModal({ driver, open, onClose }: { driver: any; open: boolean; on
   const [showRejectForm, setShowRejectForm] = useState(false);
 
   const saveDocs = useMutation({
-    mutationFn: (d: any) => apiRequest("PATCH", `/api/drivers/${driver.id}/documents`, d),
+    mutationFn: (d: any) => apiRequest("PATCH", `/api/admin/drivers/${driver.id}/documents`, d),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/users"] }); },
-    onError: () => toast({ title: "Failed to save document info", variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Failed to save document info", description: e.message, variant: "destructive" }),
   });
 
   const verify = useMutation({
@@ -203,29 +204,62 @@ export default function Drivers() {
   const [page, setPage] = useState(1);
   const [verifyTarget, setVerifyTarget] = useState<any>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ fullName: "", phone: "", email: "", vehicleNumber: "", vehicleModel: "", licenseNumber: "" });
+  const [form, setForm] = useState({
+    fullName: "",
+    phone: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+    vehicleNumber: "",
+    vehicleModel: "",
+    licenseNumber: "",
+  });
   const { toast } = useToast();
   const qc = useQueryClient();
 
+  const normalizedPhone = form.phone.replace(/\D/g, "");
+  const emailLooksValid = !form.email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
+
   const addDriver = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/users", { ...form, userType: "driver" }),
+    mutationFn: () => apiRequest("POST", "/api/admin/drivers", {
+      fullName: form.fullName.trim(),
+      phone: form.phone.trim(),
+      email: form.email.trim(),
+      password: form.password,
+      vehicleNumber: form.vehicleNumber.trim(),
+      vehicleModel: form.vehicleModel.trim(),
+      licenseNumber: form.licenseNumber.trim(),
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/users"] });
       toast({ title: "Driver added successfully" });
       setShowAdd(false);
-      setForm({ fullName: "", phone: "", email: "", vehicleNumber: "", vehicleModel: "", licenseNumber: "" });
+      setForm({ fullName: "", phone: "", email: "", password: "", confirmPassword: "", vehicleNumber: "", vehicleModel: "", licenseNumber: "" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const canSubmitDriver =
+    form.fullName.trim().length > 0 &&
+    normalizedPhone.length >= 10 &&
+    emailLooksValid &&
+    form.password.length >= 8 &&
+    form.password === form.confirmPassword &&
+    !addDriver.isPending;
+
   const { data, isLoading } = useQuery<any>({
-    queryKey: ["/api/users", { userType: "driver", search, page }],
+    queryKey: ["/api/users", { userType: "driver", search, page, verificationStatus: verifyTab }],
     queryFn: () => {
       const params = new URLSearchParams({ userType: "driver", page: String(page), limit: "50" });
       if (search) params.set("search", search);
-      return fetch(`/api/users?${params}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 });
+      if (verifyTab !== "all") params.set("verificationStatus", verifyTab);
+      return adminFetch(`/api/users?${params}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 });
     },
   });
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, verifyTab]);
 
   const toggleActive = useMutation({
     mutationFn: ({ id, isActive }: any) => apiRequest("PATCH", `/api/users/${id}/status`, { isActive }),
@@ -233,17 +267,15 @@ export default function Drivers() {
   });
 
   const drivers: any[] = Array.isArray(data?.data) ? data.data : [];
-
-  const filtered = drivers.filter(d => {
-    if (verifyTab === "pending") return (d.verificationStatus || "pending") === "pending";
-    if (verifyTab === "approved") return d.verificationStatus === "approved";
-    if (verifyTab === "rejected") return d.verificationStatus === "rejected";
-    return true;
-  });
-
-  const pendingCount = drivers.filter(d => (d.verificationStatus || "pending") === "pending").length;
-  const approvedCount = drivers.filter(d => d.verificationStatus === "approved").length;
-  const rejectedCount = drivers.filter(d => d.verificationStatus === "rejected").length;
+  const summary = data?.summary || {};
+  const totalDrivers = Number(summary.total ?? data?.total ?? drivers.length);
+  const pendingCount = Number(summary.pending ?? 0);
+  const approvedCount = Number(summary.approved ?? 0);
+  const rejectedCount = Number(summary.rejected ?? 0);
+  const totalRows = Number(data?.total ?? drivers.length);
+  const totalPages = Math.max(1, Math.ceil(totalRows / 50));
+  const firstRow = totalRows === 0 ? 0 : (page - 1) * 50 + 1;
+  const lastRow = Math.min(page * 50, totalRows);
 
   return (
     <div className="container-fluid">
@@ -279,12 +311,36 @@ export default function Drivers() {
                     <input className="form-control" placeholder="+91 9876543210" type="tel"
                       value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
                       data-testid="input-driver-phone" />
+                    {form.phone && normalizedPhone.length < 10 && (
+                      <div className="text-danger small mt-1">Enter a valid 10-digit phone number</div>
+                    )}
                   </div>
                   <div className="col-md-6">
                     <label className="form-label fw-semibold small">Email <span className="text-muted">(optional)</span></label>
                     <input className="form-control" placeholder="suresh@example.com" type="email"
                       value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                       data-testid="input-driver-email" />
+                    {form.email && !emailLooksValid && (
+                      <div className="text-danger small mt-1">Enter a valid email address</div>
+                    )}
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label fw-semibold small">Login Password <span className="text-danger">*</span></label>
+                    <input className="form-control" placeholder="Minimum 8 characters" type="password"
+                      value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                      data-testid="input-driver-password" />
+                    {form.password && form.password.length < 8 && (
+                      <div className="text-danger small mt-1">Password must be at least 8 characters</div>
+                    )}
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label fw-semibold small">Confirm Password <span className="text-danger">*</span></label>
+                    <input className="form-control" placeholder="Re-enter password" type="password"
+                      value={form.confirmPassword} onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                      data-testid="input-driver-confirm-password" />
+                    {form.confirmPassword && form.password !== form.confirmPassword && (
+                      <div className="text-danger small mt-1">Passwords do not match</div>
+                    )}
                   </div>
                   <div className="col-md-6">
                     <label className="form-label fw-semibold small">License Number</label>
@@ -307,12 +363,12 @@ export default function Drivers() {
                 </div>
                 <div className="alert alert-info mt-3 mb-0 py-2" style={{ fontSize: 12, borderRadius: 8 }}>
                   <i className="bi bi-info-circle me-1"></i>
-                  Driver will be added with <strong>Pending Verification</strong> status. Upload documents and approve from the driver list.
+                  Driver will be added with <strong>Pending Verification</strong> status and a password login. Upload documents and approve from the driver list.
                 </div>
                 <div className="d-flex gap-2 mt-4">
                   <button className="btn btn-light flex-1" onClick={() => setShowAdd(false)}>Cancel</button>
                   <button className="btn btn-primary flex-1"
-                    disabled={!form.fullName || !form.phone || addDriver.isPending}
+                    disabled={!canSubmitDriver}
                     onClick={() => addDriver.mutate()}
                     data-testid="btn-save-driver">
                     {addDriver.isPending ? "Saving…" : "Add Driver"}
@@ -327,7 +383,7 @@ export default function Drivers() {
       {/* Summary cards */}
       <div className="row g-3 mb-3">
         {[
-          { label: "Total Drivers", val: drivers.length, icon: "bi-people-fill", color: "#1a73e8", bg: "#e8f0fe" },
+          { label: "Total Drivers", val: totalDrivers, icon: "bi-people-fill", color: "#1a73e8", bg: "#e8f0fe" },
           { label: "Pending Verification", val: pendingCount, icon: "bi-hourglass-split", color: "#d97706", bg: "#fefce8", alert: pendingCount > 0 },
           { label: "Approved", val: approvedCount, icon: "bi-check-circle-fill", color: "#16a34a", bg: "#f0fdf4" },
           { label: "Rejected", val: rejectedCount, icon: "bi-x-circle-fill", color: "#dc2626", bg: "#fff5f5" },
@@ -362,7 +418,7 @@ export default function Drivers() {
           style={{ borderBottom: "1px solid #f1f5f9" }}>
           <ul className="nav nav--tabs p-1 rounded bg-light">
             {([
-              ["all", "All Drivers", drivers.length],
+              ["all", "All Drivers", totalDrivers],
               ["pending", "Pending Verification", pendingCount],
               ["approved", "Approved", approvedCount],
               ["rejected", "Rejected", rejectedCount],
@@ -382,14 +438,13 @@ export default function Drivers() {
           <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#f8fafc", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "6px 12px" }}>
             <i className="bi bi-search" style={{ fontSize: 12, color: "#94a3b8" }}></i>
             <input style={{ border: "none", background: "transparent", outline: "none", fontSize: 13, width: 200 }}
-              placeholder="Search drivers…" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search drivers..." value={search} onChange={e => setSearch(e.target.value)}
               data-testid="input-driver-search" />
           </div>
         </div>
 
         <div className="card-body p-0">
-          <div className="table-responsive">
-            <table className="table table-borderless align-middle table-hover mb-0">
+          <AdminDataTable minWidth={1080} aria-label="Drivers list">
               <thead style={{ background: "#f8fafc" }}>
                 <tr>
                   {["#","Driver","Contact","Vehicle Info","Documents","Rating","Status","Verification","Action"].map((h, i) => (
@@ -405,20 +460,17 @@ export default function Drivers() {
                   Array(4).fill(0).map((_, i) => (
                     <tr key={i}>{Array(9).fill(0).map((_, j) => <td key={j}><div style={{ height: 14, background: "#f1f5f9", borderRadius: 4 }} /></td>)}</tr>
                   ))
-                ) : filtered.length === 0 ? (
+                ) : drivers.length === 0 ? (
                   <tr><td colSpan={9}>
-                    <div className="text-center py-5 text-muted">
-                      <i className="bi bi-people fs-1 d-block mb-2" style={{ opacity: 0.25 }}></i>
-                      <p className="fw-semibold mb-1">No drivers found</p>
-                    </div>
+                    <AdminEmptyState icon="bi-people" title="No drivers found" />
                   </td></tr>
-                ) : filtered.map((driver: any, idx: number) => {
+                ) : drivers.map((driver: any, idx: number) => {
                   const name = driver.fullName || `${driver.firstName || ""} ${driver.lastName || ""}`.trim() || "Driver";
                   const vs = VSTATUS[driver.verificationStatus || "pending"] || VSTATUS.pending;
                   const docsCount = [driver.licenseImage, driver.vehicleImage, driver.profileImage, driver.licenseNumber, driver.vehicleNumber].filter(Boolean).length;
                   return (
                     <tr key={driver.id} data-testid={`row-driver-${driver.id}`}>
-                      <td className="ps-4 text-muted small">{idx + 1}</td>
+                      <td className="ps-4 text-muted small">{(page - 1) * 50 + idx + 1}</td>
                       <td>
                         <div className="d-flex align-items-center gap-2">
                           <div className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 position-relative"
@@ -486,7 +538,26 @@ export default function Drivers() {
                   );
                 })}
               </tbody>
-            </table>
+          </AdminDataTable>
+          <div className="d-flex align-items-center justify-content-between px-4 py-3 border-top flex-wrap gap-2">
+            <div className="text-muted small">
+              Showing {firstRow}-{lastRow} of {totalRows} drivers
+            </div>
+            <div className="d-flex align-items-center gap-2">
+              <button className="btn btn-sm btn-light"
+                disabled={page <= 1 || isLoading}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                data-testid="btn-drivers-prev">
+                Previous
+              </button>
+              <span className="small text-muted">Page {page} of {totalPages}</span>
+              <button className="btn btn-sm btn-light"
+                disabled={page >= totalPages || isLoading}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                data-testid="btn-drivers-next">
+                Next
+              </button>
+            </div>
           </div>
         </div>
       </div>

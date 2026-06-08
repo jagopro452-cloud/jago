@@ -1,30 +1,41 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, useRef } from "react";
-import * as XLSX from "xlsx";
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-  BarChart,
-  Bar,
-} from "recharts";
+import { adminFetch } from "@/lib/queryClient";
+import { lazy, Suspense, useRef, useState } from "react";
+
+const EarningsTrendChart = lazy(() => import("./reports-charts").then((m) => ({ default: m.EarningsTrendChart })));
+const RevenueCompositionChart = lazy(() => import("./reports-charts").then((m) => ({ default: m.RevenueCompositionChart })));
+const TripStatusChart = lazy(() => import("./reports-charts").then((m) => ({ default: m.TripStatusChart })));
+const PaymentDistributionChart = lazy(() => import("./reports-charts").then((m) => ({ default: m.PaymentDistributionChart })));
 
 const fmtCur = (v: any) => `₹${parseFloat(v || 0).toFixed(2)}`;
 const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 
-function exportExcel(data: any[], filename: string) {
-  const ws = XLSX.utils.json_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Report");
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+function csvCell(value: any) {
+  if (value == null) return "";
+  const text = typeof value === "object" ? JSON.stringify(value) : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function exportCsv(data: any[], filename: string) {
+  const rows = Array.isArray(data) ? data : [];
+  const headers = Array.from(new Set(rows.flatMap((row) => Object.keys(row || {}))));
+  const csvRows = [
+    headers.map(csvCell).join(","),
+    ...rows.map((row) => headers.map((header) => csvCell(row?.[header])).join(",")),
+  ];
+  const blob = new Blob([`\uFEFF${csvRows.join("\r\n")}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${filename}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function ChartFallback() {
+  return <div className="h-100 d-flex align-items-center justify-content-center text-muted">Loading chart...</div>;
 }
 
 function printPDF(ref: React.RefObject<HTMLDivElement>, title: string) {
@@ -87,25 +98,25 @@ export default function ReportsPage() {
 
   const { data: earnings, isLoading: loadEarnings } = useQuery<any>({
     queryKey: ["/api/reports/earnings", from, to],
-    queryFn: () => fetch(`/api/reports/earnings?from=${from}&to=${to}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => (d && !d.message && !d.error) ? d : {}),
+    queryFn: () => adminFetch(`/api/reports/earnings?from=${from}&to=${to}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => (d && !d.message && !d.error) ? d : {}),
     enabled: tab === "earning",
   });
 
   const { data: trips = [], isLoading: loadTrips } = useQuery<any[]>({
     queryKey: ["/api/reports/trips", from, to],
-    queryFn: () => fetch(`/api/reports/trips?from=${from}&to=${to}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
+    queryFn: () => adminFetch(`/api/reports/trips?from=${from}&to=${to}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
     enabled: tab === "trip",
   });
 
   const { data: driversData = [], isLoading: loadDrivers } = useQuery<any[]>({
     queryKey: ["/api/reports/drivers"],
-    queryFn: () => fetch("/api/reports/drivers").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
+    queryFn: () => adminFetch("/api/reports/drivers").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
     enabled: tab === "driver",
   });
 
   const { data: customers = [], isLoading: loadCustomers } = useQuery<any[]>({
     queryKey: ["/api/reports/customers"],
-    queryFn: () => fetch("/api/reports/customers").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
+    queryFn: () => adminFetch("/api/reports/customers").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
     enabled: tab === "customer",
   });
 
@@ -156,18 +167,18 @@ export default function ReportsPage() {
       <div className="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
         <div>
           <h4 className="fw-bold mb-0" data-testid="page-title">Reports & Analytics</h4>
-          <div className="text-muted small">PDF and Excel export for all reports</div>
+          <div className="text-muted small">PDF and CSV export for all reports</div>
         </div>
         <div className="d-flex gap-2 no-print">
           <button className="btn btn-outline-success btn-sm" style={{ borderRadius: 8 }}
-            onClick={() => {
+            onClick={async () => {
               const exportData = tab === "earning" ? earningRows
                 : tab === "trip" ? trips
                 : tab === "driver" ? driversData
                 : customers;
-              exportExcel(exportData, `JAGO_${tab}_report_${from}_${to}`);
+              exportCsv(exportData, `JAGO_${tab}_report_${from}_${to}`);
             }} data-testid="btn-export-excel">
-            <i className="bi bi-file-earmark-excel-fill me-1"></i>Excel
+            <i className="bi bi-filetype-csv me-1"></i>CSV
           </button>
           <button className="btn btn-outline-danger btn-sm" style={{ borderRadius: 8 }}
             onClick={() => printPDF(printRef, `JAGO ${tab} Report`)}
@@ -238,30 +249,9 @@ export default function ReportsPage() {
                   <div className="text-muted small">Revenue vs admin earnings for selected period</div>
                 </div>
                 <div className="card-body" style={{ height: 280 }}>
-                  {earningsTrend.length ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={earningsTrend} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="earnRev" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#2F7BFF" stopOpacity={0.25} />
-                            <stop offset="100%" stopColor="#2F7BFF" stopOpacity={0} />
-                          </linearGradient>
-                          <linearGradient id="earnAdmin" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#16a34a" stopOpacity={0.22} />
-                            <stop offset="100%" stopColor="#16a34a" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                        <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={50} />
-                        <Tooltip formatter={(v: any) => fmtCur(v)} />
-                        <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#2F7BFF" fill="url(#earnRev)" strokeWidth={2.4} />
-                        <Area type="monotone" dataKey="admin" name="Admin Earning" stroke="#16a34a" fill="url(#earnAdmin)" strokeWidth={2.4} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-100 d-flex align-items-center justify-content-center text-muted">No chart data</div>
-                  )}
+                  <Suspense fallback={<ChartFallback />}>
+                    <EarningsTrendChart data={earningsTrend} />
+                  </Suspense>
                 </div>
               </div>
             </div>
@@ -272,19 +262,9 @@ export default function ReportsPage() {
                   <div className="text-muted small">Commission, GST and insurance</div>
                 </div>
                 <div className="card-body" style={{ height: 280 }}>
-                  {earningsBreakdown.length ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={earningsBreakdown} dataKey="value" nameKey="name" innerRadius={54} outerRadius={84} paddingAngle={3}>
-                          {earningsBreakdown.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                        </Pie>
-                        <Tooltip formatter={(v: any) => fmtCur(v)} />
-                        <Legend iconType="circle" iconSize={8} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-100 d-flex align-items-center justify-content-center text-muted">No chart data</div>
-                  )}
+                  <Suspense fallback={<ChartFallback />}>
+                    <RevenueCompositionChart data={earningsBreakdown} />
+                  </Suspense>
                 </div>
               </div>
             </div>
@@ -365,19 +345,9 @@ export default function ReportsPage() {
                   <h6 className="mb-0 fw-bold" style={{ color: "#0f172a" }}>Trip Status Split</h6>
                 </div>
                 <div className="card-body" style={{ height: 250 }}>
-                  {tripStatusData.length ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={tripStatusData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={80} paddingAngle={3}>
-                          {tripStatusData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                        </Pie>
-                        <Tooltip />
-                        <Legend iconType="circle" iconSize={8} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-100 d-flex align-items-center justify-content-center text-muted">No chart data</div>
-                  )}
+                  <Suspense fallback={<ChartFallback />}>
+                    <TripStatusChart data={tripStatusData} />
+                  </Suspense>
                 </div>
               </div>
             </div>
@@ -387,21 +357,9 @@ export default function ReportsPage() {
                   <h6 className="mb-0 fw-bold" style={{ color: "#0f172a" }}>Payment Method Distribution</h6>
                 </div>
                 <div className="card-body" style={{ height: 250 }}>
-                  {paymentDistribution.length ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={paymentDistribution} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={36} />
-                        <Tooltip />
-                        <Bar dataKey="value" radius={[8, 8, 0, 0]}>
-                          {paymentDistribution.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-100 d-flex align-items-center justify-content-center text-muted">No chart data</div>
-                  )}
+                  <Suspense fallback={<ChartFallback />}>
+                    <PaymentDistributionChart data={paymentDistribution} />
+                  </Suspense>
                 </div>
               </div>
             </div>

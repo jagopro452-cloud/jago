@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { adminConfirm } from "./components/AdminPrimitives";
 
 function ReasonModal({ open, onClose, editing, form, setForm, onSave, saving }: any) {
   if (!open) return null;
@@ -64,12 +65,14 @@ export default function CancellationReasonsPage() {
   const remove = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/cancellation-reasons/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/cancellation-reasons"] }); toast({ title: "Reason deleted" }); },
+    onError: (e: any) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
   });
 
   const toggleStatus = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       apiRequest("PATCH", `/api/cancellation-reasons/${id}`, { isActive }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/cancellation-reasons"] }),
+    onError: (e: any) => { qc.invalidateQueries({ queryKey: ["/api/cancellation-reasons"] }); toast({ title: "Toggle failed", description: e.message, variant: "destructive" }); },
   });
 
   const openCreate = () => { setEditing(null); setForm({ reason: "", userType: "customer" }); setOpen(true); };
@@ -122,7 +125,7 @@ export default function CancellationReasonsPage() {
                       <td className="text-center">
                         <div className="d-flex justify-content-center gap-2">
                           <button className="btn btn-sm btn-outline-primary" onClick={() => openEdit(r)} data-testid={`btn-edit-reason-${r.id}`}><i className="bi bi-pencil-fill"></i></button>
-                          <button className="btn btn-sm btn-outline-danger" onClick={() => { if (confirm("Delete this reason?")) remove.mutate(r.id); }} data-testid={`btn-delete-reason-${r.id}`}><i className="bi bi-trash-fill"></i></button>
+                          <button className="btn btn-sm btn-outline-danger" onClick={async () => { if (await adminConfirm("Delete this reason?")) remove.mutate(r.id); }} data-testid={`btn-delete-reason-${r.id}`}><i className="bi bi-trash-fill"></i></button>
                         </div>
                       </td>
                     </tr>

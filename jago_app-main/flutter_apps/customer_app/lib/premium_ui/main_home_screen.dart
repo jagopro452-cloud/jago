@@ -17,7 +17,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
   LatLng? _currentLatLng;
   StreamSubscription<Position>? _positionStream;
   Marker? _userMarker;
-  bool _locationLoading = true;
   String _locationStatus = 'Detecting location...';
   bool _isFollowing = true;
   double _mapPadding = 0;
@@ -37,7 +36,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
       setState(() {
         _locationStatus = 'Location permission denied';
-        _locationLoading = false;
       });
       return;
     }
@@ -45,7 +43,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
     if (!serviceEnabled) {
       setState(() {
         _locationStatus = 'GPS is OFF. Enable location.';
-        _locationLoading = false;
       });
       return;
     }
@@ -64,7 +61,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
       });
     } catch (_) {}
     if (mounted) {
-      setState(() { _locationLoading = false; });
+      setState(() {});
     }
   }
 
@@ -94,7 +91,6 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
     return Scaffold(
       extendBodyBehindAppBar: true,
       body: Stack(
@@ -150,7 +146,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                 children: [
                   CircleAvatar(
                     radius: 22,
-                    backgroundColor: JagoTheme.primaryBlue.withOpacity(0.12),
+                    backgroundColor: JagoTheme.primaryBlue.withValues(alpha: 0.12),
                     child: const Icon(Icons.person, color: JagoTheme.primaryBlue, size: 28),
                   ),
                   Row(
@@ -160,7 +156,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       Text(
                         _locationStatus,
                         style: TextStyle(
-                          color: JagoTheme.textDark.withOpacity(0.85),
+                          color: JagoTheme.textDark.withValues(alpha: 0.85),
                           fontWeight: FontWeight.w600,
                           fontSize: 15,
                         ),
@@ -184,11 +180,11 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                     // Where to input
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.85),
+                        color: Colors.white.withValues(alpha: 0.85),
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: JagoTheme.primaryBlue.withOpacity(0.06),
+                            color: JagoTheme.primaryBlue.withValues(alpha: 0.06),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -197,7 +193,7 @@ class _MainHomeScreenState extends State<MainHomeScreen> {
                       child: TextField(
                         decoration: InputDecoration(
                           hintText: 'Where to?',
-                          hintStyle: TextStyle(color: JagoTheme.textDark.withOpacity(0.5)),
+                          hintStyle: TextStyle(color: JagoTheme.textDark.withValues(alpha: 0.5)),
                           border: InputBorder.none,
                           prefixIcon: const Icon(Icons.search, color: JagoTheme.primaryBlue),
                           contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
@@ -283,7 +279,7 @@ class _RideOption extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: JagoTheme.primaryBlue.withOpacity(0.10),
+                color: JagoTheme.primaryBlue.withValues(alpha: 0.10),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -300,7 +296,7 @@ class _RideOption extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Text(label, style: TextStyle(color: JagoTheme.textDark.withOpacity(0.85), fontWeight: FontWeight.w600)),
+        Text(label, style: TextStyle(color: JagoTheme.textDark.withValues(alpha: 0.85), fontWeight: FontWeight.w600)),
       ],
     );
   }

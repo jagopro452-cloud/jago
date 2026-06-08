@@ -1,6 +1,6 @@
 ﻿import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Logo } from "../../components/Logo";
+import { clearAdminSession, saveAdminSession, verifyAdminSession } from "@/lib/queryClient";
 
 function useAdminBootstrap() {
   useEffect(() => {
@@ -40,6 +40,18 @@ const FEATURES = [
 export default function AdminLogin() {
   useAdminBootstrap();
   const [, setLocation] = useLocation();
+  const getAdminDeviceId = () => {
+    try {
+      const key = "jago-admin-device-id";
+      const existing = localStorage.getItem(key);
+      if (existing) return existing;
+      const created = `admin-web-${crypto.randomUUID()}`;
+      localStorage.setItem(key, created);
+      return created;
+    } catch {
+      return "admin-web-fallback";
+    }
+  };
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -71,8 +83,11 @@ export default function AdminLogin() {
   useEffect(() => {
     setMounted(true);
     const saved = localStorage.getItem("jago-admin");
-    if (saved) setLocation("/admin/dashboard");
-  }, []);
+    if (!saved) return;
+    verifyAdminSession()
+      .then(() => setLocation("/admin/dashboard"))
+      .catch(() => clearAdminSession("stale-login-session"));
+  }, [setLocation]);
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,12 +137,12 @@ export default function AdminLogin() {
     try {
       const res = await fetch("/api/admin/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        headers: { "Content-Type": "application/json", "X-Device-Id": getAdminDeviceId() },
+        body: JSON.stringify({ email, password, deviceId: getAdminDeviceId() }),
       });
       const data = await res.json();
       if (res.ok && data?.token) {
-        localStorage.setItem("jago-admin", JSON.stringify({ ...(data.admin || data), token: data.token, expiresAt: data.expiresAt }));
+        saveAdminSession({ ...(data.admin || data), token: data.token, refreshToken: data.refreshToken || null, expiresAt: data.expiresAt });
         setLocation("/admin/dashboard");
       } else {
         // 2FA disabled - just show error message
@@ -147,12 +162,12 @@ export default function AdminLogin() {
     try {
       const res = await fetch("/api/admin/login/verify-2fa", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp: loginOtp }),
+        headers: { "Content-Type": "application/json", "X-Device-Id": getAdminDeviceId() },
+        body: JSON.stringify({ email, otp: loginOtp, deviceId: getAdminDeviceId() }),
       });
       const data = await res.json();
       if (res.ok && data?.token) {
-        localStorage.setItem("jago-admin", JSON.stringify({ ...(data.admin || data), token: data.token, expiresAt: data.expiresAt }));
+        saveAdminSession({ ...(data.admin || data), token: data.token, refreshToken: data.refreshToken || null, expiresAt: data.expiresAt });
         setLocation("/admin/dashboard");
       } else {
         setError(data.message || "Invalid OTP. Please try again.");
@@ -176,7 +191,9 @@ export default function AdminLogin() {
 
         <div className="jl-brand-inner">
           {/* Logo */}
-          <Logo variant="blue" size="xxl" withTag withBg cardHeight={64} />
+          <div className="jl-logo-img-card" style={{ background: "#ffffff", borderRadius: 16, padding: "12px 24px", display: "inline-flex", alignItems: "center", justifyContent: "center", height: 64, boxShadow: "0 8px 32px rgba(0,0,0,0.25)" }}>
+            <img src="/jago-logo-new.png" alt="JAGO" className="jl-logo-img" style={{ height: 52, width: "auto", objectFit: "contain", display: "block" }} />
+          </div>
 
           {/* Headline */}
           <h2 className="jl-headline">

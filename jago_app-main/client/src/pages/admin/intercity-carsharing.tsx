@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { adminFetch, queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 const ROUTES = [
@@ -35,7 +35,7 @@ const avatarBg = (name: string) => {
   return colors[(name || "D").charCodeAt(0) % colors.length];
 };
 const initials = (name: string) => (name || "?").split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
-const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "-";
 
 function SeatMap({ total, booked }: { total: number; booked: number }) {
   const seats = Array.from({ length: total }, (_, i) => i < booked);
@@ -65,7 +65,7 @@ function SettingsTab({ settings, onSaved }: { settings: any; onSaved: () => void
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/intercity-cs/settings"] });
       setDirty(false);
-      toast({ title: "Settings saved!", description: "Intercity Car Sharing settings updated." });
+      toast({ title: "Settings saved!", description: "Intercity Pool settings updated." });
       onSaved();
     },
   });
@@ -105,7 +105,7 @@ function SettingsTab({ settings, onSaved }: { settings: any; onSaved: () => void
               </div>
               <div>
                 <div className="fw-bold" style={{ fontSize: 17 }}>
-                  Intercity Car Sharing Module
+                  Intercity Pool Module
                   <span className={`badge ms-2 rounded-pill ${moduleEnabled ? "bg-success" : "bg-danger"}`}
                     style={{ fontSize: 11 }}>
                     {moduleEnabled ? "ACTIVE" : "INACTIVE"}
@@ -113,8 +113,8 @@ function SettingsTab({ settings, onSaved }: { settings: any; onSaved: () => void
                 </div>
                 <div className="text-muted" style={{ fontSize: 12.5 }}>
                   {moduleEnabled
-                    ? "Module is live — Drivers can post intercity rides, customers can book seats"
-                    : "Module is disabled — Intercity Car Sharing is hidden from drivers and customers"}
+                    ? "Module is live - Drivers can post intercity rides, customers can book seats"
+                    : "Module is disabled - Intercity Pool is hidden from drivers and customers"}
                 </div>
               </div>
             </div>
@@ -153,10 +153,10 @@ function SettingsTab({ settings, onSaved }: { settings: any; onSaved: () => void
             <div className="col-md-7">
               <div className="row g-3">
                 {[
-                  { key: "rate_per_km_per_seat", label: "Rate per KM per Seat (₹)", prefix: "₹/km/seat", help: "e.g. ₹3.5 → 570km × ₹3.5 = ₹1,995 per seat (HYD-BLR)" },
-                  { key: "gst_pct", label: "GST on Ride Fare (%)", prefix: "%", help: "e.g. 5% → Applied on base fare (per seat)" },
-                  { key: "insurance_per_seat", label: "Insurance per Seat (₹)", prefix: "₹/seat", help: "Flat insurance per booked seat per trip" },
-                  { key: "min_fare", label: "Minimum Fare per Seat (₹)", prefix: "₹", help: "No booking accepted below this fare" },
+                  { key: "rate_per_km_per_seat", label: "Rate per KM per Seat (Rs.)", prefix: "Rs./km/seat", help: "e.g. Rs.3.5 -> 570km x Rs.3.5 = Rs.1,995 per seat (HYD-BLR)" },
+                  { key: "gst_pct", label: "GST on Ride Fare (%)", prefix: "%", help: "e.g. 5% -> Applied on base fare (per seat)" },
+                  { key: "insurance_per_seat", label: "Insurance per Seat (Rs.)", prefix: "Rs./seat", help: "Flat insurance per booked seat per trip" },
+                  { key: "min_fare", label: "Minimum Fare per Seat (Rs.)", prefix: "Rs.", help: "No booking accepted below this fare" },
                   { key: "cancellation_hours", label: "Free Cancellation (Hours)", prefix: "hrs", help: "Customer can cancel free if before departure by these hours" },
                 ].map(f => (
                   <div key={f.key} className="col-md-6">
@@ -174,9 +174,9 @@ function SettingsTab({ settings, onSaved }: { settings: any; onSaved: () => void
               <div className="mt-3 p-3 rounded-3" style={{ background: "#fefce8", border: "1px solid #fde68a", fontSize: 12 }}>
                 <div className="fw-semibold mb-1" style={{ color: "#92400e" }}><i className="bi bi-info-circle me-1"></i>Revenue Model: Commission via Seat Fare</div>
                 <div style={{ color: "#78350f" }}>
-                  Fare per seat = (KM × Rate/km/seat) + GST + Insurance<br/>
+                  Fare per seat = (KM x Rate/km/seat) + GST + Insurance<br/>
                   Platform earns: GST amount collected + Insurance amount<br/>
-                  Driver earns: Base fare (KM × rate) per seat per booking
+                  Driver earns: Base fare (KM x rate) per seat per booking
                 </div>
               </div>
             </div>
@@ -185,17 +185,17 @@ function SettingsTab({ settings, onSaved }: { settings: any; onSaved: () => void
             <div className="col-md-5">
               <div className="p-3 rounded-3 h-100" style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
                 <div className="fw-semibold mb-3" style={{ fontSize: 13, color: "#1a73e8" }}>
-                  <i className="bi bi-calculator me-1"></i>Live Fare Preview — HYD to BLR ({exampleKm} km)
+                  <i className="bi bi-calculator me-1"></i>Live Fare Preview - HYD to BLR ({exampleKm} km)
                 </div>
 
                 {/* 1 seat */}
                 <div className="mb-3 p-2 rounded-2" style={{ background: "white", border: "1px solid #e2e8f0" }}>
                   <div className="fw-semibold mb-2" style={{ fontSize: 12 }}>1 Seat Booking</div>
                   {[
-                    { label: `Base (${exampleKm}km × ₹${s["rate_per_km_per_seat"]||3.5})`, val: `₹${exCalc1.base}` },
-                    { label: `GST (${s["gst_pct"]||5}%)`, val: `₹${exCalc1.gst}`, color: "#d97706" },
-                    { label: `Insurance (1 seat)`, val: `₹${exCalc1.ins}`, color: "#7c3aed" },
-                    { label: "Customer Pays", val: `₹${exCalc1.total}`, bold: true, color: "#dc2626" },
+                    { label: `Base (${exampleKm}km x Rs.${s["rate_per_km_per_seat"]||3.5})`, val: `Rs.${exCalc1.base}` },
+                    { label: `GST (${s["gst_pct"]||5}%)`, val: `Rs.${exCalc1.gst}`, color: "#d97706" },
+                    { label: `Insurance (1 seat)`, val: `Rs.${exCalc1.ins}`, color: "#7c3aed" },
+                    { label: "Customer Pays", val: `Rs.${exCalc1.total}`, bold: true, color: "#dc2626" },
                   ].map((r, i) => (
                     <div key={i} className="d-flex justify-content-between" style={{ fontSize: 11.5, borderBottom: i < 3 ? "1px dashed #f1f5f9" : "none", padding: "2px 0" }}>
                       <span style={{ color: "#64748b" }}>{r.label}</span>
@@ -208,10 +208,10 @@ function SettingsTab({ settings, onSaved }: { settings: any; onSaved: () => void
                 <div className="p-2 rounded-2" style={{ background: "white", border: "1px solid #e2e8f0" }}>
                   <div className="fw-semibold mb-2" style={{ fontSize: 12 }}>2 Seats Booking</div>
                   {[
-                    { label: `Base × 2`, val: `₹${(parseFloat(exCalc2.base)).toFixed(2)}` },
-                    { label: `GST (${s["gst_pct"]||5}%)`, val: `₹${exCalc2.gst}`, color: "#d97706" },
-                    { label: `Insurance (2 seats)`, val: `₹${exCalc2.ins}`, color: "#7c3aed" },
-                    { label: "Customer Pays", val: `₹${exCalc2.total}`, bold: true, color: "#dc2626" },
+                    { label: `Base x 2`, val: `Rs.${(parseFloat(exCalc2.base)).toFixed(2)}` },
+                    { label: `GST (${s["gst_pct"]||5}%)`, val: `Rs.${exCalc2.gst}`, color: "#d97706" },
+                    { label: `Insurance (2 seats)`, val: `Rs.${exCalc2.ins}`, color: "#7c3aed" },
+                    { label: "Customer Pays", val: `Rs.${exCalc2.total}`, bold: true, color: "#dc2626" },
                   ].map((r, i) => (
                     <div key={i} className="d-flex justify-content-between" style={{ fontSize: 11.5, borderBottom: i < 3 ? "1px dashed #f1f5f9" : "none", padding: "2px 0" }}>
                       <span style={{ color: "#64748b" }}>{r.label}</span>
@@ -231,7 +231,7 @@ function SettingsTab({ settings, onSaved }: { settings: any; onSaved: () => void
         <div className="card-footer bg-transparent py-3 px-4">
           <button className="btn btn-primary px-5" disabled={!dirty || saveMut.isPending}
             onClick={() => saveMut.mutate(s)} data-testid="btn-save-settings">
-            {saveMut.isPending ? <><span className="spinner-border spinner-border-sm me-2"></span>Saving…</> : <><i className="bi bi-save me-2"></i>Save Rate Settings</>}
+            {saveMut.isPending ? <><span className="spinner-border spinner-border-sm me-2"></span>Saving...</> : <><i className="bi bi-save me-2"></i>Save Rate Settings</>}
           </button>
           {dirty && <span className="ms-3 text-warning small"><i className="bi bi-exclamation-triangle-fill me-1"></i>Unsaved changes</span>}
         </div>
@@ -247,7 +247,7 @@ function RidesTab() {
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/intercity-cs/rides", filter],
-    queryFn: () => fetch(`/api/intercity-cs/rides${filter !== "all" ? `?status=${filter}` : ""}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 }),
+    queryFn: () => adminFetch(`/api/intercity-cs/rides${filter !== "all" ? `?status=${filter}` : ""}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 }),
   });
   const rides: any[] = Array.isArray(data?.data) ? data.data : [];
 
@@ -288,7 +288,7 @@ function RidesTab() {
         <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#f8fafc", border: "1.5px solid #e2e8f0", borderRadius: 10, padding: "6px 12px" }}>
           <i className="bi bi-search" style={{ fontSize: 12, color: "#94a3b8" }}></i>
           <input style={{ border: "none", background: "transparent", outline: "none", fontSize: 13, width: 150 }}
-            placeholder="Search rides…" value={search} onChange={e => setSearch(e.target.value)} data-testid="input-rides-search" />
+            placeholder="Search rides..." value={search} onChange={e => setSearch(e.target.value)} data-testid="input-rides-search" />
         </div>
       </div>
 
@@ -330,8 +330,8 @@ function RidesTab() {
                       <span style={{ color: "#16a34a" }}>{r.toCity}</span>
                     </div>
                     <div className="text-muted" style={{ fontSize: 10.5 }}>
-                      {r.routeKm ? `${r.routeKm} km` : ""}{r.vehicleModel ? ` · ${r.vehicleModel}` : ""}
-                      {r.vehicleNumber ? ` · ${r.vehicleNumber}` : ""}
+                      {r.routeKm ? `${r.routeKm} km` : ""}{r.vehicleModel ? ` Â· ${r.vehicleModel}` : ""}
+                      {r.vehicleNumber ? ` Â· ${r.vehicleNumber}` : ""}
                     </div>
                   </td>
                   <td>
@@ -341,7 +341,7 @@ function RidesTab() {
                         {initials(r.driverName || "")}
                       </div>
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 600 }}>{r.driverName || "—"}</div>
+                        <div style={{ fontSize: 12, fontWeight: 600 }}>{r.driverName || "-"}</div>
                         <div style={{ fontSize: 10.5, color: "#94a3b8" }}>{r.driverPhone || ""}</div>
                       </div>
                     </div>
@@ -358,11 +358,11 @@ function RidesTab() {
                     </div>
                   </td>
                   <td>
-                    <div className="fw-semibold" style={{ fontSize: 13, color: "#7c3aed" }}>₹{parseFloat(r.farePerSeat || 0).toFixed(0)}</div>
+                    <div className="fw-semibold" style={{ fontSize: 13, color: "#7c3aed" }}>Rs.{parseFloat(r.farePerSeat || 0).toFixed(0)}</div>
                     <div style={{ fontSize: 10, color: "#94a3b8" }}>per seat</div>
                   </td>
                   <td>
-                    <div className="fw-semibold" style={{ fontSize: 12, color: "#16a34a" }}>₹{parseFloat(r.totalRevenue || 0).toFixed(0)}</div>
+                    <div className="fw-semibold" style={{ fontSize: 12, color: "#16a34a" }}>Rs.{parseFloat(r.totalRevenue || 0).toFixed(0)}</div>
                   </td>
                   <td>
                     <span className={`badge ${sc.cls}`} style={{ fontSize: 10 }}>{sc.label}</span>
@@ -404,7 +404,7 @@ function BookingsTab() {
 
   const { data, isLoading } = useQuery<any>({
     queryKey: ["/api/intercity-cs/bookings", filter],
-    queryFn: () => fetch(`/api/intercity-cs/bookings${filter !== "all" ? `?status=${filter}` : ""}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 }),
+    queryFn: () => adminFetch(`/api/intercity-cs/bookings${filter !== "all" ? `?status=${filter}` : ""}`).then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [], total: 0 }),
   });
   const bookings: any[] = Array.isArray(data?.data) ? data.data : [];
 
@@ -415,9 +415,9 @@ function BookingsTab() {
     <div>
       <div className="row g-3 mb-3">
         {[
-          { label: "Total Bookings", val: data?.total ?? "—", icon: "bi-ticket-fill", color: "#1a73e8", bg: "#e8f0fe" },
-          { label: "Total Revenue", val: `₹${totalRevenue.toFixed(0)}`, icon: "bi-cash-stack", color: "#16a34a", bg: "#f0fdf4" },
-          { label: "Platform Earnings", val: `₹${platformRevenue.toFixed(0)}`, icon: "bi-building", color: "#7c3aed", bg: "#f5f3ff" },
+          { label: "Total Bookings", val: data?.total ?? "-", icon: "bi-ticket-fill", color: "#1a73e8", bg: "#e8f0fe" },
+          { label: "Total Revenue", val: `Rs.${totalRevenue.toFixed(0)}`, icon: "bi-cash-stack", color: "#16a34a", bg: "#f0fdf4" },
+          { label: "Platform Earnings", val: `Rs.${platformRevenue.toFixed(0)}`, icon: "bi-building", color: "#7c3aed", bg: "#f5f3ff" },
           { label: "Cancelled", val: bookings.filter(b => b.status === "cancelled").length, icon: "bi-x-circle-fill", color: "#dc2626", bg: "#fef2f2" },
         ].map((s, i) => (
           <div key={i} className="col-6 col-md-3">
@@ -503,10 +503,10 @@ function BookingsTab() {
                         <span style={{ color: "#16a34a" }}>{b.toCity}</span>
                       </div>
                       {(b.pickupPoint || b.dropPoint) && (
-                        <div style={{ fontSize: 10, color: "#94a3b8" }}>{b.pickupPoint} → {b.dropPoint}</div>
+                        <div style={{ fontSize: 10, color: "#94a3b8" }}>{b.pickupPoint} {"->"} {b.dropPoint}</div>
                       )}
                     </td>
-                    <td style={{ fontSize: 12, color: "#64748b" }}>{b.driverName || "—"}</td>
+                    <td style={{ fontSize: 12, color: "#64748b" }}>{b.driverName || "-"}</td>
                     <td style={{ fontSize: 11.5 }}>{fmtDate(b.departureDate)}</td>
                     <td>
                       <div className="d-flex gap-1">
@@ -518,13 +518,13 @@ function BookingsTab() {
                     </td>
                     <td>
                       <div style={{ fontSize: 10.5 }}>
-                        <div>Base: ₹{parseFloat(b.baseFare || 0).toFixed(0)}</div>
-                        <div style={{ color: "#d97706" }}>GST: ₹{parseFloat(b.gstAmount || 0).toFixed(1)}</div>
-                        <div style={{ color: "#7c3aed" }}>Ins: ₹{parseFloat(b.insuranceAmount || 0).toFixed(0)}</div>
+                        <div>Base: Rs.{parseFloat(b.baseFare || 0).toFixed(0)}</div>
+                        <div style={{ color: "#d97706" }}>GST: Rs.{parseFloat(b.gstAmount || 0).toFixed(1)}</div>
+                        <div style={{ color: "#7c3aed" }}>Ins: Rs.{parseFloat(b.insuranceAmount || 0).toFixed(0)}</div>
                       </div>
                     </td>
                     <td>
-                      <div className="fw-bold text-danger" style={{ fontSize: 13 }}>₹{parseFloat(b.totalFare || 0).toFixed(0)}</div>
+                      <div className="fw-bold text-danger" style={{ fontSize: 13 }}>Rs.{parseFloat(b.totalFare || 0).toFixed(0)}</div>
                       <span className={`badge ${b.paymentStatus === "paid" ? "bg-success" : "bg-warning text-dark"}`} style={{ fontSize: 9 }}>
                         {b.paymentStatus}
                       </span>
@@ -548,12 +548,12 @@ export default function IntercarysharingPage() {
 
   const { data: settings, isLoading: settLoading } = useQuery<any>({
     queryKey: ["/api/intercity-cs/settings"],
-    queryFn: () => fetch("/api/intercity-cs/settings").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => (d && !d.message && !d.error) ? d : {}),
+    queryFn: () => adminFetch("/api/intercity-cs/settings").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => (d && !d.message && !d.error) ? d : {}),
   });
 
   const { data: ridesData } = useQuery<any>({
     queryKey: ["/api/intercity-cs/rides", "all"],
-    queryFn: () => fetch("/api/intercity-cs/rides").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [] }),
+    queryFn: () => adminFetch("/api/intercity-cs/rides").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => d?.data ? d : { data: Array.isArray(d) ? d : [] }),
   });
   const rides: any[] = Array.isArray(ridesData?.data) ? ridesData.data : [];
   const moduleEnabled = settings?.module_enabled === "true";
@@ -566,8 +566,8 @@ export default function IntercarysharingPage() {
       {/* Header */}
       <div className="d-flex align-items-start justify-content-between mb-4">
         <div>
-          <h4 className="fw-bold mb-0" data-testid="page-title">Intercity Car Sharing</h4>
-          <div className="text-muted small">Admin-fixed rates · Seat-wise pricing · Commission via GST + Insurance</div>
+          <h4 className="fw-bold mb-0" data-testid="page-title">Intercity Pool</h4>
+          <div className="text-muted small">Admin-fixed rates Â· Seat-wise pricing Â· Commission via GST + Insurance</div>
         </div>
         <div className="d-flex align-items-center gap-2">
           <span className={`badge rounded-pill ${moduleEnabled ? "bg-success" : "bg-danger"}`}
@@ -583,7 +583,7 @@ export default function IntercarysharingPage() {
         {[
           { label: "Total Rides", val: rides.length, icon: "bi-car-front-fill", color: "#1a73e8", bg: "#e8f0fe" },
           { label: "Scheduled", val: scheduledCount, icon: "bi-calendar-check-fill", color: "#16a34a", bg: "#f0fdf4" },
-          { label: "Total Revenue", val: `₹${totalRevenue.toFixed(0)}`, icon: "bi-cash-stack", color: "#7c3aed", bg: "#f5f3ff" },
+          { label: "Total Revenue", val: `Rs.${totalRevenue.toFixed(0)}`, icon: "bi-cash-stack", color: "#7c3aed", bg: "#f5f3ff" },
           { label: "Active Drivers", val: rides.filter(r => r.isActive && r.status === "scheduled").length, icon: "bi-person-fill-check", color: "#d97706", bg: "#fefce8" },
         ].map((s, i) => (
           <div key={i} className="col-6 col-md-3">
@@ -638,3 +638,5 @@ export default function IntercarysharingPage() {
     </div>
   );
 }
+
+

@@ -25,6 +25,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // Step 1: Basic Info
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
+  final _referralCtrl = TextEditingController();
   DateTime? _dob;
   final _cityCtrl = TextEditingController();
 
@@ -73,7 +74,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void dispose() {
     _pageController.dispose();
-    _nameCtrl.dispose(); _phoneCtrl.dispose(); _cityCtrl.dispose();
+    _nameCtrl.dispose(); _phoneCtrl.dispose(); _referralCtrl.dispose(); _cityCtrl.dispose();
     _passwordCtrl.dispose(); _confirmCtrl.dispose();
     _licenseNumCtrl.dispose(); _vehicleBrandCtrl.dispose();
     _vehicleModelCtrl.dispose(); _vehicleColorCtrl.dispose();
@@ -124,7 +125,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
         if (phone.length != 10) throw Exception('Enter a valid 10-digit phone number');
         if (password.length < 6) throw Exception('Password must be at least 6 characters');
         if (name.length < 2) throw Exception('Please enter your full name');
-        final regRes = await AuthService.registerWithPassword(phone, password, name);
+        final regRes = await AuthService.registerWithPassword(
+          phone,
+          password,
+          name,
+          referralCode: _referralCtrl.text.trim(),
+        );
         if (regRes['success'] != true) {
           throw Exception(regRes['message'] ?? 'Registration failed. Try again.');
         }
@@ -178,11 +184,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
       for (var entry in docs.entries) {
         if (entry.value != null) {
           final b64 = await _fileToBase64(entry.value);
-          await http.post(
+          final uploadRes = await http.post(
             Uri.parse('${ApiConfig.baseUrl}/api/app/driver/upload-document-base64'),
             headers: headers,
             body: jsonEncode({'docType': entry.key, 'imageData': b64}),
           );
+          if (uploadRes.statusCode != 200) {
+            String msg = 'Failed to upload ${entry.key}';
+            try {
+              if ((uploadRes.headers['content-type'] ?? '').contains('application/json')) {
+                final decoded = jsonDecode(uploadRes.body);
+                msg = decoded['message'] ?? msg;
+              }
+            } catch (_) {}
+            throw Exception(msg);
+          }
+          try {
+            final decoded = jsonDecode(uploadRes.body);
+            if (decoded is! Map || decoded['success'] != true) {
+              throw Exception('Failed to upload ${entry.key}');
+            }
+          } catch (_) {
+            throw Exception('Failed to upload ${entry.key}');
+          }
         }
       }
 
@@ -311,6 +335,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _input('Full Name', _nameCtrl, Icons.person),
       const SizedBox(height: 16),
       _phoneInput(),
+      const SizedBox(height: 16),
+      _input('Referral Code (Optional)', _referralCtrl, Icons.card_giftcard),
       const SizedBox(height: 16),
       _datePicker('Date of Birth', _dob, (d) => setState(() => _dob = d)),
       const SizedBox(height: 16),

@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/jago_theme.dart';
-import '../services/auth_service.dart';
+import '../services/driver_session_manager.dart';
 import 'home/home_screen.dart';
 import 'auth/login_screen.dart';
 import 'onboarding/language_select_screen.dart';
@@ -101,7 +101,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LanguageSelectScreen()));
       return;
     }
-    final hasSession = await AuthService.rehydrateStoredSession();
+    final hasSession = await DriverSessionManager.restore();
     if (!mounted) return;
     Navigator.pushReplacement(context, PageRouteBuilder(
       pageBuilder: (_, __, ___) => hasSession ? const HomeScreen() : const LoginScreen(),

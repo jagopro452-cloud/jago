@@ -19,15 +19,27 @@ class SocketService {
   final _connectedController = StreamController<bool>.broadcast();
   final _chatMessageController = StreamController<Map<String, dynamic>>.broadcast();
   final _messageHistoryController = StreamController<Map<String, dynamic>>.broadcast();
+  final _poolChatMessageController = StreamController<Map<String, dynamic>>.broadcast();
+  final _poolMessageHistoryController = StreamController<Map<String, dynamic>>.broadcast();
   final _noDriversController = StreamController<Map<String, dynamic>>.broadcast();
   final _tripSearchingController = StreamController<Map<String, dynamic>>.broadcast();
   final _paymentPendingController = StreamController<Map<String, dynamic>>.broadcast();
+  final _poolStatusController = StreamController<Map<String, dynamic>>.broadcast();
+  final _poolSeatUpdateController = StreamController<Map<String, dynamic>>.broadcast();
+  final _poolDriverLocationController = StreamController<Map<String, dynamic>>.broadcast();
+  final _poolIssueUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _poolRefundUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _poolSafetyUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _parcelStatusController = StreamController<Map<String, dynamic>>.broadcast();
+  final _parcelLocationController = StreamController<Map<String, dynamic>>.broadcast();
+  final _configUpdatedController = StreamController<Map<String, dynamic>>.broadcast();
   final _callIncomingController = StreamController<Map<String, dynamic>>.broadcast();
   final _callOfferController = StreamController<Map<String, dynamic>>.broadcast();
   final _callAnswerController = StreamController<Map<String, dynamic>>.broadcast();
   final _callIceController = StreamController<Map<String, dynamic>>.broadcast();
   final _callEndedController = StreamController<Map<String, dynamic>>.broadcast();
   final _callRejectedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _callErrorController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get onDriverAssigned => _driverAssignedController.stream;
   Stream<Map<String, dynamic>> get onDriverLocation => _driverLocationController.stream;
@@ -36,15 +48,27 @@ class SocketService {
   Stream<bool> get onConnectionChanged => _connectedController.stream;
   Stream<Map<String, dynamic>> get onChatMessage => _chatMessageController.stream;
   Stream<Map<String, dynamic>> get onMessageHistory => _messageHistoryController.stream;
+  Stream<Map<String, dynamic>> get onPoolChatMessage => _poolChatMessageController.stream;
+  Stream<Map<String, dynamic>> get onPoolMessageHistory => _poolMessageHistoryController.stream;
   Stream<Map<String, dynamic>> get onNoDrivers => _noDriversController.stream;
   Stream<Map<String, dynamic>> get onTripSearching => _tripSearchingController.stream;
   Stream<Map<String, dynamic>> get onPaymentPending => _paymentPendingController.stream;
+  Stream<Map<String, dynamic>> get onPoolStatus => _poolStatusController.stream;
+  Stream<Map<String, dynamic>> get onPoolSeatUpdate => _poolSeatUpdateController.stream;
+  Stream<Map<String, dynamic>> get onPoolDriverLocation => _poolDriverLocationController.stream;
+  Stream<Map<String, dynamic>> get onPoolIssueUpdated => _poolIssueUpdatedController.stream;
+  Stream<Map<String, dynamic>> get onPoolRefundUpdated => _poolRefundUpdatedController.stream;
+  Stream<Map<String, dynamic>> get onPoolSafetyUpdated => _poolSafetyUpdatedController.stream;
+  Stream<Map<String, dynamic>> get onParcelStatus => _parcelStatusController.stream;
+  Stream<Map<String, dynamic>> get onParcelLocation => _parcelLocationController.stream;
+  Stream<Map<String, dynamic>> get onConfigUpdated => _configUpdatedController.stream;
   Stream<Map<String, dynamic>> get onCallIncoming => _callIncomingController.stream;
   Stream<Map<String, dynamic>> get onCallOffer => _callOfferController.stream;
   Stream<Map<String, dynamic>> get onCallAnswer => _callAnswerController.stream;
   Stream<Map<String, dynamic>> get onCallIce => _callIceController.stream;
   Stream<Map<String, dynamic>> get onCallEnded => _callEndedController.stream;
   Stream<Map<String, dynamic>> get onCallRejected => _callRejectedController.stream;
+  Stream<Map<String, dynamic>> get onCallError => _callErrorController.stream;
   bool get isConnected => _isConnected;
 
   Future<void> connect(String baseUrl) async {
@@ -179,6 +203,7 @@ class SocketService {
     _socket!.on('trip:completed', (data) {
       if (data == null) return;
       try {
+        _activeTripId = null;
         final payload = Map<String, dynamic>.from(data);
         _tripStatusController.add({
           'tripId': payload['tripId'],
@@ -197,6 +222,7 @@ class SocketService {
 
     // Trip cancelled by driver
     _socket!.on('trip:cancelled', (data) {
+      _activeTripId = null;
       _tripCancelledController.add(Map<String, dynamic>.from(data));
     });
 
@@ -209,9 +235,16 @@ class SocketService {
     _socket!.on('trip:message_history', (data) {
       _messageHistoryController.add(Map<String, dynamic>.from(data));
     });
+    _socket!.on('pool:new_message', (data) {
+      _poolChatMessageController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('pool:message_history', (data) {
+      _poolMessageHistoryController.add(Map<String, dynamic>.from(data));
+    });
 
     // No drivers found — trip auto-cancelled
     _socket!.on('trip:no_drivers', (data) {
+      _activeTripId = null;
       _noDriversController.add(Map<String, dynamic>.from(data));
       // Also push as cancelled so tracking screen updates
       _tripCancelledController.add({...Map<String, dynamic>.from(data), 'reason': 'no_drivers'});
@@ -224,6 +257,7 @@ class SocketService {
 
     // Trip timeout — server gave up finding driver
     _socket!.on('trip:timeout', (data) {
+      _activeTripId = null;
       _noDriversController.add(Map<String, dynamic>.from(data));
       _tripCancelledController.add({...Map<String, dynamic>.from(data), 'reason': 'timeout'});
     });
@@ -231,6 +265,131 @@ class SocketService {
     // Payment not yet verified — trip held at payment_pending
     _socket!.on('trip:payment_pending', (data) {
       _paymentPendingController.add(Map<String, dynamic>.from(data));
+    });
+    // Local pool real-time status events — backend emits these, not 'pool:status'
+    _socket!.on('pool:matched', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'local_pool';
+      payload['status'] = payload['pendingDriverAccept'] == true
+          ? 'pending_driver_accept'
+          : 'matched';
+      payload['eventType'] = 'matched';
+      _poolStatusController.add(payload);
+    });
+    _socket!.on('pool:driver_confirmed', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'local_pool';
+      payload['status'] = 'matched';
+      payload['eventType'] = 'driver_confirmed';
+      _poolStatusController.add(payload);
+    });
+    _socket!.on('pool:picked_up', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'local_pool';
+      payload['status'] = 'picked_up';
+      payload['eventType'] = 'picked_up';
+      _poolStatusController.add(payload);
+    });
+    _socket!.on('pool:dropped', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'local_pool';
+      payload['status'] = 'dropped';
+      payload['eventType'] = 'dropped';
+      _poolStatusController.add(payload);
+    });
+    _socket!.on('pool:cancelled', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'local_pool';
+      payload['status'] = 'cancelled';
+      payload['eventType'] = 'cancelled';
+      _poolStatusController.add(payload);
+    });
+    _socket!.on('pool:driver_confirm_timeout', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'local_pool';
+      payload['status'] = 'searching';
+      payload['eventType'] = 'driver_confirm_timeout';
+      _poolStatusController.add(payload);
+    });
+    _socket!.on('pool:search_timeout', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'local_pool';
+      payload['status'] = 'search_timeout';
+      payload['eventType'] = 'search_timeout';
+      _poolStatusController.add(payload);
+    });
+    // Driver skipped this passenger — back to searching immediately
+    _socket!.on('pool:driver_skipped', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'local_pool';
+      payload['status'] = 'searching';
+      payload['eventType'] = 'driver_skipped';
+      _poolStatusController.add(payload);
+    });
+    _socket!.on('pool:seat_update', (data) {
+      _poolSeatUpdateController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('outstation_pool:seat_update', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'outstation_pool';
+      _poolSeatUpdateController.add(payload);
+    });
+    _socket!.on('pool:driver_location', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'local_pool';
+      _poolDriverLocationController.add(payload);
+    });
+    _socket!.on('outstation_pool:driver_location', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'outstation_pool';
+      _poolDriverLocationController.add(payload);
+    });
+    _socket!.on('outstation_pool:trip_started', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'outstation_pool';
+      payload['status'] = payload['status'] ?? 'active';
+      payload['eventType'] = 'trip_started';
+      _poolStatusController.add(payload);
+    });
+    _socket!.on('outstation_pool:picked_up', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'outstation_pool';
+      payload['status'] = payload['status'] ?? 'picked_up';
+      payload['eventType'] = 'picked_up';
+      _poolStatusController.add(payload);
+    });
+    _socket!.on('outstation_pool:booking_cancelled', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'outstation_pool';
+      payload['status'] = payload['status'] ?? 'cancelled';
+      payload['eventType'] = 'booking_cancelled';
+      _poolStatusController.add(payload);
+    });
+    _socket!.on('outstation_pool:cancellation_confirmed', (data) {
+      final payload = Map<String, dynamic>.from(data);
+      payload['module'] = 'outstation_pool';
+      payload['status'] = payload['status'] ?? 'cancelled';
+      payload['eventType'] = 'cancellation_confirmed';
+      _poolStatusController.add(payload);
+      _poolRefundUpdatedController.add(payload);
+    });
+    _socket!.on('pool:issue_updated', (data) {
+      _poolIssueUpdatedController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('pool:refund_updated', (data) {
+      _poolRefundUpdatedController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('pool:safety_updated', (data) {
+      _poolSafetyUpdatedController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('parcel:status', (data) {
+      _parcelStatusController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('parcel:location', (data) {
+      _parcelLocationController.add(Map<String, dynamic>.from(data));
+    });
+    _socket!.on('config:updated', (data) {
+      _configUpdatedController.add(Map<String, dynamic>.from(data));
     });
 
     // ── WebRTC Call Signaling ──────────────────────────────────
@@ -252,6 +411,9 @@ class SocketService {
     _socket!.on('call:rejected', (data) {
       _callRejectedController.add(Map<String, dynamic>.from(data));
     });
+    _socket!.on('call:error', (data) {
+      _callErrorController.add(Map<String, dynamic>.from(data));
+    });
 
     _socket!.connect();
   }
@@ -272,6 +434,18 @@ class SocketService {
       _socket!.emit('customer:leave_trip', {'tripId': tripId});
     }
     _activeTripId = null;
+  }
+
+  void trackParcel(String orderId) {
+    if (_socket != null && (_isConnected || _socket!.connected)) {
+      _socket!.emit('parcel:track', {'orderId': orderId});
+    }
+  }
+
+  void stopTrackingParcel(String orderId) {
+    if (_socket != null && _socket!.connected) {
+      _socket!.emit('parcel:leave', {'orderId': orderId});
+    }
   }
 
   // Cancel a trip
@@ -297,25 +471,51 @@ class SocketService {
     _socket!.emit('trip:get_messages', {'tripId': tripId});
   }
 
+  void joinPoolChat({required String module, required String referenceId}) {
+    if (!_isConnected) return;
+    _socket!.emit('pool:join_chat', {'module': module, 'referenceId': referenceId});
+  }
+
+  void sendPoolChatMessage({
+    required String module,
+    required String referenceId,
+    required String message,
+    required String senderName,
+  }) {
+    if (!_isConnected) return;
+    _socket!.emit('pool:send_message', {
+      'module': module,
+      'referenceId': referenceId,
+      'message': message,
+      'senderName': senderName,
+      'senderType': 'customer',
+    });
+  }
+
+  void loadPoolChatHistory({required String module, required String referenceId}) {
+    if (!_isConnected) return;
+    _socket!.emit('pool:get_messages', {'module': module, 'referenceId': referenceId});
+  }
+
   // ── WebRTC Call Methods ──────────────────────────────────
-  void initiateCall({required String targetUserId, required String tripId, required String callerName}) {
+  void initiateCall({required String targetUserId, required String tripId, required String callerName, String scope = 'trip', String? module}) {
     if (!_isConnected) return;
-    _socket!.emit('call:initiate', {'targetUserId': targetUserId, 'tripId': tripId, 'callerName': callerName});
+    _socket!.emit('call:initiate', {'targetUserId': targetUserId, 'tripId': tripId, 'callerName': callerName, 'scope': scope, if (module != null) 'module': module});
   }
 
-  void sendCallOffer({required String targetUserId, required dynamic sdp}) {
+  void sendCallOffer({required String targetUserId, required String tripId, required dynamic sdp, String scope = 'trip', String? module}) {
     if (!_isConnected) return;
-    _socket!.emit('call:offer', {'targetUserId': targetUserId, 'sdp': sdp});
+    _socket!.emit('call:offer', {'targetUserId': targetUserId, 'tripId': tripId, 'sdp': sdp, 'scope': scope, if (module != null) 'module': module});
   }
 
-  void sendCallAnswer({required String targetUserId, required dynamic sdp}) {
+  void sendCallAnswer({required String targetUserId, required String tripId, required dynamic sdp, String scope = 'trip', String? module}) {
     if (!_isConnected) return;
-    _socket!.emit('call:answer', {'targetUserId': targetUserId, 'sdp': sdp});
+    _socket!.emit('call:answer', {'targetUserId': targetUserId, 'tripId': tripId, 'sdp': sdp, 'scope': scope, if (module != null) 'module': module});
   }
 
-  void sendIceCandidate({required String targetUserId, required dynamic candidate}) {
+  void sendIceCandidate({required String targetUserId, required String tripId, required dynamic candidate, String scope = 'trip', String? module}) {
     if (!_isConnected) return;
-    _socket!.emit('call:ice', {'targetUserId': targetUserId, 'candidate': candidate});
+    _socket!.emit('call:ice', {'targetUserId': targetUserId, 'tripId': tripId, 'candidate': candidate, 'scope': scope, if (module != null) 'module': module});
   }
 
   void endCall({required String targetUserId, String? tripId, int? durationSec}) {
@@ -343,14 +543,26 @@ class SocketService {
     _connectedController.close();
     _chatMessageController.close();
     _messageHistoryController.close();
+    _poolChatMessageController.close();
+    _poolMessageHistoryController.close();
     _noDriversController.close();
     _tripSearchingController.close();
     _paymentPendingController.close();
+    _poolStatusController.close();
+    _poolSeatUpdateController.close();
+    _poolDriverLocationController.close();
+    _poolIssueUpdatedController.close();
+    _poolRefundUpdatedController.close();
+    _poolSafetyUpdatedController.close();
+    _parcelStatusController.close();
+    _parcelLocationController.close();
+    _configUpdatedController.close();
     _callIncomingController.close();
     _callOfferController.close();
     _callAnswerController.close();
     _callIceController.close();
     _callEndedController.close();
     _callRejectedController.close();
+    _callErrorController.close();
   }
 }

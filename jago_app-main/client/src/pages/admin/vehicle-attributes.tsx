@@ -2,6 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { adminConfirm } from "./components/AdminPrimitives";
 
 export default function VehicleAttributesPage() {
   const { toast } = useToast();
@@ -18,23 +19,25 @@ export default function VehicleAttributesPage() {
   const brandSave = useMutation({
     mutationFn: (d: any) => editing ? apiRequest("PUT", `/api/vehicle-brands/${editing.id}`, d) : apiRequest("POST", "/api/vehicle-brands", d),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/vehicle-brands"] }); setShowModal(false); toast({ title: "Saved" }); setEditing(null); },
-    onError: () => toast({ title: "Failed", variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
   const brandDelete = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/vehicle-brands/${id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/vehicle-brands"] }); toast({ title: "Deleted" }); },
+    onError: (e: any) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
   });
 
   const modelSave = useMutation({
     mutationFn: (d: any) => editing ? apiRequest("PUT", `/api/vehicle-models/${editing.id}`, d) : apiRequest("POST", "/api/vehicle-models", d),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/vehicle-models"] }); setShowModal(false); toast({ title: "Saved" }); setEditing(null); },
-    onError: () => toast({ title: "Failed", variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
   const modelDelete = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/vehicle-models/${id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/vehicle-models"] }); toast({ title: "Deleted" }); },
+    onError: (e: any) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
   });
 
   const isSaving = brandSave.isPending || modelSave.isPending;
@@ -47,8 +50,8 @@ export default function VehicleAttributesPage() {
     else modelSave.mutate(form);
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm("Delete?")) return;
+  const handleDelete = async (id: string) => {
+    if (!(await adminConfirm(`Delete this vehicle ${tab === "brands" ? "brand" : "model"}?`))) return;
     if (tab === "brands") brandDelete.mutate(id);
     else modelDelete.mutate(id);
   };
@@ -127,6 +130,10 @@ export default function VehicleAttributesPage() {
                 <div className="mb-3">
                   <label className="form-label fw-semibold">Name <span className="text-danger">*</span></label>
                   <input className="form-control" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} data-testid="input-attr-name" />
+                </div>
+                <div className="form-check form-switch">
+                  <input className="form-check-input" type="checkbox" id="attrIsActive" checked={!!form.isActive} onChange={e => setForm({ ...form, isActive: e.target.checked })} />
+                  <label className="form-check-label" htmlFor="attrIsActive">Active</label>
                 </div>
               </div>
               <div className="modal-footer">
