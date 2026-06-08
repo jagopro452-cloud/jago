@@ -2,7 +2,6 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
@@ -11,7 +10,6 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
@@ -50,13 +48,15 @@
     </queries>
 
     <application
-        android:label="JAGO Pro"
+        android:label="JAGO"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:enableOnBackInvokedCallback="true"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="false">
 
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyAiMVYA_ppxeT344tkcoSsjeGGMaPU26eI"/>
+            android:value="${googleMapsApiKey}"/>
 
         <activity
             android:name=".MainActivity"
@@ -104,10 +104,10 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/notification_color"/>
-
-        <!-- Disable Impeller to prevent "Lost connection" crashes on some Android devices -->
         <meta-data
             android:name="io.flutter.embedding.android.EnableImpeller"
             android:value="false" />
+
+
     </application>
 </manifest>

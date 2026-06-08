@@ -2,19 +2,21 @@ import 'dart:math';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
+import '../../services/trip_service.dart';
 import 'package:geolocator/geolocator.dart';
-import '../tracking/tracking_screen.dart';
+import '../tracking/parcel_tracking_screen.dart';
 
 import 'map_location_picker.dart';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// JAGO Pro Logistics — Porter-style parcel booking screen
+// Jago Logistics — Porter-style parcel booking screen
 // Vehicles: Bike Parcel (≤10 kg) · Mini Truck / Tata Ace (≤500 kg) · Pickup Truck (≤2000 kg)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -22,12 +24,18 @@ class ParcelBookingScreen extends StatefulWidget {
   final String pickupAddress;
   final double pickupLat;
   final double pickupLng;
+  final String dropAddress;
+  final double dropLat;
+  final double dropLng;
   final String? initialVehicleKey;
   const ParcelBookingScreen({
     super.key,
     this.pickupAddress = 'Getting location...',
     this.pickupLat = 17.3850,
     this.pickupLng = 78.4867,
+    this.dropAddress = '',
+    this.dropLat = 0,
+    this.dropLng = 0,
     this.initialVehicleKey,
   });
   @override
@@ -59,10 +67,16 @@ const _kVehicles = [
     accentColor: Color(0xFF2F7BFF),
   ),
   _ParcelVehicle(
+    key: 'auto_parcel', name: 'Auto Parcel', subtitle: 'Medium 3-wheeler loads',
+    icon: 'auto', capacity: 'Up to 50 kg', maxKg: 50,
+    suitable: 'Medium boxes - Shop supplies - Small furniture',
+    accentColor: Color(0xFFF59E0B),
+  ),
+  _ParcelVehicle(
     key: 'tata_ace', name: 'Mini Truck', subtitle: 'Tata Ace · Medium goods',
-    icon: 'mini_truck', capacity: 'Up to 500 kg', maxKg: 500,
+    icon: 'truck', capacity: 'Up to 500 kg', maxKg: 500,
     suitable: 'Furniture · Appliances · Bulk items · Shop stock',
-    accentColor: Color(0xFFFF6B35),
+    accentColor: Color(0xFFC29763),
   ),
   _ParcelVehicle(
     key: 'pickup_truck', name: 'Pickup Truck', subtitle: 'Heavy goods & business',
@@ -70,7 +84,37 @@ const _kVehicles = [
     suitable: 'Heavy machinery · Construction · Business logistics',
     accentColor: Color(0xFF7C3AED),
   ),
+  _ParcelVehicle(
+    key: 'bolero_cargo', name: 'Bolero Cargo', subtitle: 'Heavy-duty pickup',
+    icon: 'pickup_truck', capacity: 'Up to 1,500 kg', maxKg: 1500,
+    suitable: 'Construction - Heavy equipment - Large shipments',
+    accentColor: Color(0xFF8B5CF6),
+  ),
+  _ParcelVehicle(
+    key: 'tempo_407', name: 'Tempo 407', subtitle: 'Large commercial loads',
+    icon: 'truck', capacity: 'Up to 2,500 kg', maxKg: 2500,
+    suitable: 'Factory goods - Full shifting - Large shipments',
+    accentColor: Color(0xFF0F766E),
+  ),
 ];
+
+const Map<String, String> _parcelVehicleImageUrls = {
+  'bike_parcel': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_49_26_AM_gjbrxs',
+  'auto_parcel': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_49_26_AM_gjbrxs',
+  'tata_ace': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_51_59_AM_jzd119',
+  'pickup_truck': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_54_02_AM_hicx7s',
+  'bolero_cargo': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_54_02_AM_hicx7s',
+  'tempo_407': 'https://res.cloudinary.com/dg5ct7fys/image/upload/f_auto,q_auto/ChatGPT_Image_Apr_17_2026_11_54_02_AM_hicx7s',
+};
+
+const _allowedParcelVehicleKeys = {
+  'bike_parcel',
+  'auto_parcel',
+  'tata_ace',
+  'pickup_truck',
+  'bolero_cargo',
+  'tempo_407',
+};
 
 // ── Static item types ─────────────────────────────────────────────────────────
 const _kItemTypes = [
@@ -101,13 +145,18 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
   // Controllers
   final _dropAddressCtrl    = TextEditingController();
+  final _pickupAddressCtrl  = TextEditingController();
   final _receiverNameCtrl   = TextEditingController();
   final _receiverPhoneCtrl  = TextEditingController();
   final _instructionsCtrl   = TextEditingController();
   final _descCtrl           = TextEditingController();
 
+  final _dropFocusNode      = FocusNode();
+  final _pickupFocusNode    = FocusNode();
+
   // Step (0=vehicle, 1=locations, 2=package, 3=confirm)
   int _step = 0;
+  bool _isEditingPickup = false;
 
   // Selections
   int _vehicleIdx = 0;
@@ -122,11 +171,14 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
   late String _pickupAddr;
   late double _pickupLat;
   late double _pickupLng;
+  List<Map<String, dynamic>> _pickupSuggestions = [];
 
   // Drop location
   double _destLat = 0, _destLng = 0;
   List<Map<String, dynamic>> _suggestions = [];
   Timer? _debounce;
+  String _placesSessionToken = DateTime.now().microsecondsSinceEpoch.toString();
+  int _placesSearchSeq = 0;
 
 
   // Fare estimate
@@ -146,12 +198,64 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
     _pickupAddr = widget.pickupAddress;
     _pickupLat  = widget.pickupLat;
     _pickupLng  = widget.pickupLng;
+    _destLat    = widget.dropLat;
+    _destLng    = widget.dropLng;
+    _pickupAddressCtrl.text = _pickupAddr;
+    _dropAddressCtrl.text = widget.dropAddress;
     _fetchDynamicVehicles();
     if (widget.initialVehicleKey != null) {
-      final idx = _kVehicles.indexWhere((v) => v.key == widget.initialVehicleKey);
+      final initialKey = _normalizedVehicleKey(widget.initialVehicleKey!, widget.initialVehicleKey!);
+      final idx = _kVehicles.indexWhere((v) => v.key == initialKey);
       if (idx >= 0) _vehicleIdx = idx;
     }
     _pageCtrl = PageController();
+    if (_destLat != 0) {
+      _step = 1; // Start at location step if drop is provided
+    }
+    // Caller (e.g. home screen) may pass 0,0 if GPS hasn't resolved yet —
+    // fetch device location so dispatch isn't sent for the Atlantic Ocean.
+    if (_pickupLat == 0.0 || _pickupLng == 0.0) {
+      _resolvePickupFromGps();
+    }
+  }
+
+  Future<void> _resolvePickupFromGps() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null && last.latitude != 0 && last.longitude != 0 && mounted) {
+        setState(() {
+          _pickupLat = last.latitude;
+          _pickupLng = last.longitude;
+          if (_pickupAddr == 'Getting location...') _pickupAddr = 'Current location';
+          _pickupAddressCtrl.text = _pickupAddr;
+        });
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      if (!mounted) return;
+      if (pos.latitude != 0 && pos.longitude != 0) {
+        setState(() {
+          _pickupLat = pos.latitude;
+          _pickupLng = pos.longitude;
+          if (_pickupAddr == 'Getting location...') _pickupAddr = 'Current location';
+          _pickupAddressCtrl.text = _pickupAddr;
+        });
+        _fetchDynamicVehicles();
+      }
+    } catch (_) {}
   }
 
   Future<void> _fetchDynamicVehicles() async {
@@ -164,39 +268,41 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body) as Map<String, dynamic>;
         final list = (data['vehicles'] as List<dynamic>?) ?? [];
-        // Filter to only parcel-relevant vehicle types
+        // Filter to the production parcel whitelist only; legacy aliases are
+        // normalized before rendering so stale backend rows cannot leak into UI.
         bool _isParcelVehicle(Map<String, dynamic> m) {
           final key = (m['vehicle_key']?.toString() ?? '').toLowerCase();
-          final type = (m['type']?.toString() ?? '').toLowerCase();
-          final cat = (m['category']?.toString() ?? '').toLowerCase();
-          return type == 'parcel' || cat == 'parcel' ||
-              key.contains('parcel') || key.contains('tata') ||
-              key.contains('pickup') || key.contains('truck') ||
-              key.contains('bike_parcel') || key.contains('mini');
+          final name = (m['display_name']?.toString() ?? m['name']?.toString() ?? '').toLowerCase();
+          return _allowedParcelVehicleKeys.contains(_normalizedVehicleKey(key, name));
         }
 
         final parsed = list
             .where((v) => _isParcelVehicle(v as Map<String, dynamic>))
-            .map<_ParcelVehicle>((v) {
+            .map<_ParcelVehicle?>((v) {
           final m = v as Map<String, dynamic>;
           final colorStr = m['color']?.toString() ?? '#2F7BFF';
           final colorVal = int.tryParse(colorStr.replaceFirst('#', '0xFF')) ?? 0xFF2F7BFF;
+          final rawKey = m['vehicle_key']?.toString() ?? '';
+          final rawName = m['display_name']?.toString() ?? rawKey;
+          final normalizedKey = _normalizedVehicleKey(rawKey, rawName);
+          if (!_allowedParcelVehicleKeys.contains(normalizedKey)) return null;
           return _ParcelVehicle(
-            key: m['vehicle_key']?.toString() ?? '',
-            name: m['display_name']?.toString() ?? m['vehicle_key']?.toString() ?? '',
+            key: normalizedKey,
+            name: rawName,
             subtitle: m['description']?.toString() ?? '',
-            icon: m['icon']?.toString() ?? '📦',
+            icon: m['icon']?.toString() ?? normalizedKey,
             capacity: 'Up to ${m['max_weight_kg'] ?? 10} kg',
             maxKg: (m['max_weight_kg'] as num?)?.toInt() ?? 10,
             suitable: m['suitable_items']?.toString() ?? '',
             accentColor: Color(colorVal),
           );
-        }).toList();
+        }).whereType<_ParcelVehicle>().toList();
         if (mounted && parsed.isNotEmpty) {
           setState(() => _dynamicVehicles = parsed);
           // Re-align initial vehicle selection
           if (widget.initialVehicleKey != null) {
-            final idx = _dynamicVehicles.indexWhere((v) => v.key == widget.initialVehicleKey);
+            final initialKey = _normalizedVehicleKey(widget.initialVehicleKey!, widget.initialVehicleKey!);
+            final idx = _dynamicVehicles.indexWhere((v) => v.key == initialKey);
             if (idx >= 0) setState(() => _vehicleIdx = idx);
           }
         }
@@ -207,10 +313,13 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
   @override
   void dispose() {
     _dropAddressCtrl.dispose();
+    _pickupAddressCtrl.dispose();
     _receiverNameCtrl.dispose();
     _receiverPhoneCtrl.dispose();
     _instructionsCtrl.dispose();
     _descCtrl.dispose();
+    _dropFocusNode.dispose();
+    _pickupFocusNode.dispose();
     _debounce?.cancel();
     _pageCtrl.dispose();
     super.dispose();
@@ -220,6 +329,44 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
   _ParcelVehicle get _vehicle => _vehicles[_vehicleIdx];
   double get _weightKg => (_kWeightOptions[_weightIdx]['value'] as num).toDouble();
+
+  String _normalizedVehicleKey(String rawKey, String fallbackName) {
+    final hay = '$rawKey $fallbackName'.toLowerCase();
+    if (hay.contains('tempo') || hay.contains('407')) return 'tempo_407';
+    if (hay.contains('bolero')) return 'bolero_cargo';
+    if (hay.contains('auto')) return 'auto_parcel';
+    if (hay.contains('pickup')) return 'pickup_truck';
+    if (hay.contains('tata') || hay.contains('mini')) return 'tata_ace';
+    if (hay.contains('bike')) return 'bike_parcel';
+    return '';
+  }
+
+  Widget _buildVehicleImage(String key, {double width = 56, double height = 56}) {
+    final normalizedKey = _normalizedVehicleKey(key, key);
+    final url = _parcelVehicleImageUrls[normalizedKey];
+    if (url == null) {
+      return Icon(
+        _iconForKey(normalizedKey),
+        color: const Color(0xFF2F7BFF),
+        size: width * 0.72,
+      );
+    }
+    return Image.network(
+      url,
+      width: width,
+      height: height,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => Icon(
+        _iconForKey(normalizedKey),
+        color: const Color(0xFF2F7BFF),
+        size: width * 0.72,
+      ),
+    );
+  }
+
+  void _refreshPlacesSessionToken() {
+    _placesSessionToken = DateTime.now().microsecondsSinceEpoch.toString();
+  }
 
   bool get _step0Valid => true;
   bool get _step1Valid => _dropAddressCtrl.text.trim().isNotEmpty && _destLat != 0;
@@ -258,59 +405,139 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
   // ── Drop address search ───────────────────────────────────────────────────────
 
-  void _onDropSearch(String q) {
+  void _onPickupSearch(String q) {
     _debounce?.cancel();
-    if (q.length < 3) { setState(() => _suggestions = []); return; }
-    _debounce = Timer(const Duration(milliseconds: 400), () => _searchAddress(q));
+    setState(() {
+      _pickupAddr = q;
+      _pickupLat = 0;
+      _pickupLng = 0;
+    });
+    if (q.length < 3) { setState(() => _pickupSuggestions = []); return; }
+    _debounce = Timer(const Duration(milliseconds: 400), () => _searchAddress(q, isPickup: true));
   }
 
-  Future<void> _searchAddress(String q) async {
+  void _onDropSearch(String q) {
+    _debounce?.cancel();
+    setState(() {
+      _destLat = 0;
+      _destLng = 0;
+    });
+    if (q.length < 3) { setState(() => _suggestions = []); return; }
+    _debounce = Timer(const Duration(milliseconds: 400), () => _searchAddress(q, isPickup: false));
+  }
+
+  Future<void> _searchAddress(String q, {required bool isPickup}) async {
+    final normalizedQuery = q.trim();
+    if (normalizedQuery.length < 3) return;
+    _refreshPlacesSessionToken();
+    final requestId = ++_placesSearchSeq;
     try {
       final headers = await AuthService.getHeaders();
+      final queryParameters = <String, String>{
+        'input': normalizedQuery,
+        'sessionToken': _placesSessionToken,
+      };
+      final refLat = isPickup ? _pickupLat : (_pickupLat != 0 ? _pickupLat : widget.pickupLat);
+      final refLng = isPickup ? _pickupLng : (_pickupLng != 0 ? _pickupLng : widget.pickupLng);
+      if (refLat != 0 && refLng != 0) {
+        queryParameters['lat'] = refLat.toString();
+        queryParameters['lng'] = refLng.toString();
+      }
       final r = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}/api/app/places/autocomplete?input=${Uri.encodeComponent(q)}'),
+        Uri.parse(ApiConfig.placesAutocomplete).replace(queryParameters: queryParameters),
         headers: headers,
       ).timeout(const Duration(seconds: 30));
       if (r.statusCode == 200) {
+        final currentQuery = (isPickup ? _pickupAddressCtrl.text : _dropAddressCtrl.text).trim();
+        if (!mounted || requestId != _placesSearchSeq || currentQuery != normalizedQuery) {
+          return;
+        }
         final body = jsonDecode(r.body);
         final list = (body['predictions'] ?? body['results'] ?? body) as List;
         if (mounted) setState(() {
-          _suggestions = list.map<Map<String, dynamic>>((p) => {
-            'description': p['description'] ?? p['formatted_address'] ?? p['name'] ?? '',
-            'place_id': p['place_id'] ?? '',
-            'lat': (p['lat'] ?? p['geometry']?['location']?['lat'] ?? 0).toDouble(),
-            'lng': (p['lng'] ?? p['geometry']?['location']?['lng'] ?? 0).toDouble(),
+          final results = list.map<Map<String, dynamic>>((p) => {
+            'description': p['fullDescription'] ?? p['description'] ?? p['formatted_address'] ?? p['name'] ?? '',
+            'place_id': p['placeId'] ?? p['place_id'] ?? '',
+            'main_text': p['mainText'] ?? '',
+            'secondary_text': p['secondaryText'] ?? '',
+            'lat': (p['lat'] ?? 0).toDouble(),
+            'lng': (p['lng'] ?? 0).toDouble(),
           }).toList();
+          if (isPickup) {
+            _pickupSuggestions = results;
+          } else {
+            _suggestions = results;
+          }
         });
       }
     } catch (_) {}
   }
 
-  void _selectSuggestion(Map<String, dynamic> s) async {
+  void _selectSuggestion(Map<String, dynamic> s, {required bool isPickup}) async {
     final desc = s['description'] as String;
+    final selectedLat = (s['lat'] as num?)?.toDouble() ?? 0;
+    final selectedLng = (s['lng'] as num?)?.toDouble() ?? 0;
     setState(() {
-      _dropAddressCtrl.text = desc;
-      _destLat = (s['lat'] as num).toDouble();
-      _destLng = (s['lng'] as num).toDouble();
-      _suggestions = [];
+      if (isPickup) {
+        _pickupAddressCtrl.text = desc;
+        _pickupAddr = desc;
+        _pickupLat = selectedLat;
+        _pickupLng = selectedLng;
+        _pickupSuggestions = [];
+        _isEditingPickup = false;
+      } else {
+        _dropAddressCtrl.text = desc;
+        _destLat = selectedLat;
+        _destLng = selectedLng;
+        _suggestions = [];
+      }
     });
+
     // Resolve lat/lng if not available
-    if (_destLat == 0 && s['place_id'] != null && s['place_id'] != '') {
+    double currentLat = isPickup ? _pickupLat : _destLat;
+    if (currentLat == 0 && s['place_id'] != null && s['place_id'] != '') {
       try {
         final headers = await AuthService.getHeaders();
+        final placeId = s['place_id']?.toString() ?? '';
         final r = await http.get(
-          Uri.parse('${ApiConfig.baseUrl}/api/app/places/details?place_id=${s['place_id']}'),
+          Uri.parse(ApiConfig.placeDetails).replace(queryParameters: {
+            'placeId': placeId,
+            'sessionToken': _placesSessionToken,
+          }),
           headers: headers,
         ).timeout(const Duration(seconds: 5));
         if (r.statusCode == 200) {
           final d = jsonDecode(r.body);
           if (mounted) setState(() {
-            _destLat = (d['lat'] ?? d['result']?['geometry']?['location']?['lat'] ?? 0).toDouble();
-            _destLng = (d['lng'] ?? d['result']?['geometry']?['location']?['lng'] ?? 0).toDouble();
+            final lat = (d['lat'] ?? d['result']?['geometry']?['location']?['lat'] ?? 0).toDouble();
+            final lng = (d['lng'] ?? d['result']?['geometry']?['location']?['lng'] ?? 0).toDouble();
+            if (isPickup) {
+              _pickupLat = lat;
+              _pickupLng = lng;
+            } else {
+              _destLat = lat;
+              _destLng = lng;
+            }
           });
         }
       } catch (_) {}
     }
+
+    try {
+      final headers = await AuthService.getHeaders();
+      await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/api/app/places/select'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'placeId': s['place_id'],
+          'queryText': desc,
+          'placeLabel': s['main_text'] ?? desc.split(',').first,
+          'placeAddress': desc,
+          'lat': isPickup ? _pickupLat : _destLat,
+          'lng': isPickup ? _pickupLng : _destLng,
+        }),
+      ).timeout(const Duration(seconds: 5));
+    } catch (_) {}
   }
 
   // ── Fare estimate ─────────────────────────────────────────────────────────────
@@ -360,48 +587,162 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
   // ── Book ─────────────────────────────────────────────────────────────────────
 
+  Future<bool> _ensureNoActiveBookingBeforeContinue() async {
+    final active = await TripService.getActiveBooking();
+    final booking = active['booking'];
+    final bookingType = active['bookingType']?.toString();
+    if (booking is! Map<String, dynamic> || bookingType == null || bookingType.isEmpty) {
+      return true;
+    }
+
+    final canCancel = booking['canCancel'] == true;
+    final bookingId = booking['id']?.toString() ?? '';
+    final title = bookingType == 'parcel' ? 'Active parcel found' : 'Active ride found';
+    final subtitle = bookingType == 'parcel'
+        ? (booking['pickupAddress']?.toString() ?? 'Parcel booking in progress')
+        : (booking['destinationAddress']?.toString() ?? 'Ride booking in progress');
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              style: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context, 'track'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: JT.primary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: const Text('Track Current Booking', style: TextStyle(color: Colors.white)),
+              ),
+            ),
+            if (canCancel) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context, 'cancel'),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  child: const Text('Cancel Current Booking And Continue'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted) return false;
+    if (action == 'track' && bookingId.isNotEmpty) {
+      if (bookingType == 'parcel') {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ParcelTrackingScreen(orderId: bookingId)),
+        );
+      }
+      return false;
+    }
+
+    if (action == 'cancel' && bookingId.isNotEmpty && canCancel) {
+      final result = bookingType == 'parcel'
+          ? await TripService.cancelParcelOrder(
+              bookingId,
+              reason: 'Customer cancelled to continue with a new parcel booking',
+            )
+          : await TripService.cancelTrip(
+              bookingId,
+              'Customer cancelled to continue with a new parcel booking',
+            );
+      if (result['success'] == true) {
+        _showSnack('Previous booking cancelled. Continue with your new parcel.', error: false);
+        return true;
+      }
+      _showSnack(
+        result['message']?.toString() ?? result['error']?.toString() ?? 'Could not cancel current booking.',
+        error: true,
+      );
+    }
+
+    return false;
+  }
+
   Future<void> _book() async {
     if (!_step3Valid || _booking) return;
+    if (_pickupLat == 0.0 || _pickupLng == 0.0) {
+      _showSnack('Pickup location not detected. Please tap pickup field and select on map.', error: true);
+      return;
+    }
+    if (_destLat == 0.0 || _destLng == 0.0) {
+      _showSnack('Delivery location is missing. Please re-select drop location.', error: true);
+      return;
+    }
+    final canContinue = await _ensureNoActiveBookingBeforeContinue();
+    if (!canContinue) return;
     setState(() => _booking = true);
     try {
       final dist = _haversine(_pickupLat, _pickupLng, _destLat, _destLng);
       final headers = await AuthService.getHeaders();
-      final r = await http.post(
-        Uri.parse(ApiConfig.parcelBook),
-        headers: {...headers, 'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'vehicleCategory': _vehicle.key,
-          'pickupAddress': _pickupAddr,
-          'pickupLat': _pickupLat,
-          'pickupLng': _pickupLng,
-          'pickupContactName': '',
-          'pickupContactPhone': '',
-          'dropLocations': [{
+      final payload = {
+        'vehicleCategory': _vehicle.key,
+        'pickupAddress': _pickupAddr,
+        'pickupLat': _pickupLat,
+        'pickupLng': _pickupLng,
+        'pickupContactName': '',
+        'pickupContactPhone': '',
+        'dropLocations': [
+          {
             'address': _dropAddressCtrl.text,
             'lat': _destLat,
             'lng': _destLng,
             'receiverName': _receiverNameCtrl.text.trim(),
             'receiverPhone': _receiverPhoneCtrl.text.trim(),
-          }],
-          'totalDistanceKm': dist,
-          'weightKg': _weightKg,
-          'paymentMethod': 'cash',
-          'notes': [
-            if (_itemType != null) 'Item: $_itemType',
-            if (_descCtrl.text.trim().isNotEmpty) 'Desc: ${_descCtrl.text.trim()}',
-            if (_instructionsCtrl.text.trim().isNotEmpty) 'Instructions: ${_instructionsCtrl.text.trim()}',
-          ].join(' | '),
-        }),
+          }
+        ],
+        'totalDistanceKm': dist,
+        'weightKg': _weightKg,
+        'paymentMethod': 'cash',
+        'notes': [
+          if (_itemType != null) 'Item: $_itemType',
+          if (_descCtrl.text.trim().isNotEmpty) 'Desc: ${_descCtrl.text.trim()}',
+          if (_instructionsCtrl.text.trim().isNotEmpty) 'Instructions: ${_instructionsCtrl.text.trim()}',
+        ].join(' | '),
+      };
+      debugPrint('[PARCEL_BOOKING] payload=${jsonEncode(payload)}');
+      final r = await http.post(
+        Uri.parse(ApiConfig.parcelBook),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
       ).timeout(const Duration(seconds: 30));
       if (!mounted) return;
       if (r.statusCode == 200 || r.statusCode == 201) {
         final data = jsonDecode(r.body);
         final orderId = data['orderId']?.toString() ?? data['id']?.toString() ?? '';
         Navigator.pushReplacement(context, MaterialPageRoute(
-          builder: (_) => TrackingScreen(tripId: orderId),
+          builder: (_) => ParcelTrackingScreen(orderId: orderId),
         ));
       } else {
         final e = jsonDecode(r.body);
+        if (e['orderId'] != null) {
+          await _ensureNoActiveBookingBeforeContinue();
+        }
         _showSnack(e['message'] ?? 'Booking failed. Try again.', error: true);
       }
     } catch (e) {
@@ -409,6 +750,65 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
     } finally {
       if (mounted) setState(() => _booking = false);
     }
+  }
+
+  Future<void> _useCurrentLocationForPickup() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        _showSnack('Location permission denied', error: true);
+        return;
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      final addr = await _reverseGeocode(pos.latitude, pos.longitude);
+      if (mounted) {
+        setState(() {
+          _pickupAddr = addr;
+          _pickupLat = pos.latitude;
+          _pickupLng = pos.longitude;
+          _pickupAddressCtrl.text = addr;
+          _isEditingPickup = false;
+        });
+        _fetchDynamicVehicles();
+      }
+    } catch (e) {
+      _showSnack('Could not get current location', error: true);
+    }
+  }
+
+  Future<String> _reverseGeocode(double lat, double lng) async {
+    try {
+      final headers = await AuthService.getHeaders();
+      final r = await http.get(
+        Uri.parse('${ApiConfig.reverseGeocode}?lat=$lat&lng=$lng'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 10));
+      if (r.statusCode == 200) {
+        final d = jsonDecode(r.body);
+        return d['formattedAddress'] ?? d['address'] ?? 'Selected Location';
+      }
+    } catch (_) {}
+    return 'Selected Location';
+  }
+
+  void _onEnterPickupManually() {
+    setState(() {
+      _isEditingPickup = true;
+    });
+    _pickupFocusNode.requestFocus();
+  }
+
+  void _onEnterDropManually() {
+    setState(() {
+      _destLat = 0; // Clear lat/lng to show input field again if it was set
+    });
+    _dropFocusNode.requestFocus();
   }
 
   Future<void> _pickPickupOnMap() async {
@@ -425,6 +825,8 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
         _pickupAddr = result.address;
         _pickupLat = result.lat;
         _pickupLng = result.lng;
+        _pickupAddressCtrl.text = result.address;
+        _isEditingPickup = false;
       });
       _fetchDynamicVehicles();
     }
@@ -449,54 +851,13 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
     }
   }
 
-  Future<void> _useCurrentLocationForPickup() async {
-    try {
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        _showSnack('Location permission required', error: true);
-        return;
-      }
-      
-      var pos = await Geolocator.getLastKnownPosition();
-      if (pos == null || pos.latitude == 0) {
-        pos = await Geolocator.getCurrentPosition();
-      }
-      setState(() {
-        _pickupLat = pos!.latitude;
-        _pickupLng = pos!.longitude;
-        _pickupAddr = 'Detecting address...';
-      });
-      // Reverse geocode
-      final headers = await AuthService.getHeaders();
-      final r = await http.get(Uri.parse('${ApiConfig.reverseGeocode}?lat=${pos!.latitude}&lng=${pos!.longitude}'), headers: headers);
-      if (r.statusCode == 200) {
-        final data = jsonDecode(r.body);
-        if (mounted) setState(() => _pickupAddr = data['formattedAddress']?.toString() ?? 'Current Location');
-      }
-      _fetchDynamicVehicles();
-    } catch (_) {}
-  }
-
-  void _showSnack(String msg, {bool error = false}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(color: Colors.white)),
-      backgroundColor: error ? JT.error : JT.success,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-    ));
-  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // BUILD
   // ─────────────────────────────────────────────────────────────────────────────
 
-  // Local theme colors for Logistics (Orange-focused)
-  static const Color logisticsOrange = Color(0xFFFF6B35);
-  static const Color logisticsOrangeLight = Color(0xFFFFF1EB);
+  // Local theme colors for Logistics (Earthy Gold-focused)
+  static const Color logisticsOrange = Color(0xFFC29763);
 
   @override
   Widget build(BuildContext context) {
@@ -528,7 +889,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       width: double.infinity,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [logisticsOrange, Color(0xFFFF8C5F)],
+          colors: [logisticsOrange, Color(0xFFD6B58F)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -536,33 +897,29 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 8, 16, 24),
+          padding: const EdgeInsets.fromLTRB(8, 0, 16, 6),
           child: Column(
             children: [
               Row(children: [
                 IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 24),
+                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
                   onPressed: _back,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      JT.logoWhite(height: 36),
+                      const SizedBox(height: 2),
                       Text(
-                        'JAGO Pro Logistics',
+                        'Parcel Delivery',
                         style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        'Porter-style parcel delivery',
-                        style: GoogleFonts.poppins(
-                          color: Colors.white.withValues(alpha: 0.8),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w400,
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
@@ -602,7 +959,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
   Widget _buildNewStepBar() {
     final steps = ['Vehicle', 'Location', 'Package', 'Confirm'];
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
       child: Row(
         children: List.generate(steps.length, (i) {
           final isCompleted = i < _step;
@@ -703,7 +1060,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: isSelected ? logisticsOrange.withValues(alpha: 0.03) : Colors.white,
                   borderRadius: BorderRadius.circular(16),
@@ -719,18 +1076,14 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 60,
-                      height: 60,
+                      width: 56,
+                      height: 56,
                       decoration: BoxDecoration(
-                        color: v.accentColor.withValues(alpha: 0.08),
+                        color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Center(
-                        child: Icon(
-                          _iconForKey(v.key),
-                          color: v.accentColor,
-                          size: 32,
-                        ),
+                        child: _buildVehicleImage(v.key),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -740,17 +1093,20 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                         children: [
                           Row(
                             children: [
-                              Text(
-                                v.name,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: const Color(0xFF111827),
+                              Flexible(
+                                child: Text(
+                                  v.name,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF111827),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 6),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
                                   color: v.accentColor.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(6),
@@ -758,7 +1114,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                                 child: Text(
                                   v.capacity,
                                   style: GoogleFonts.poppins(
-                                    fontSize: 10,
+                                    fontSize: 9,
                                     fontWeight: FontWeight.w600,
                                     color: v.accentColor,
                                   ),
@@ -813,7 +1169,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
           // About Card
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: const Color(0xFFF9FAFB),
               borderRadius: BorderRadius.circular(20),
@@ -827,7 +1183,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                     const Icon(Icons.local_shipping, color: Color(0xFF374151), size: 20),
                     const SizedBox(width: 10),
                     Text(
-                      'About JAGO Pro Logistics',
+                      'About Jago Logistics',
                       style: GoogleFonts.poppins(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
@@ -844,7 +1200,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
               ],
             ),
           ),
-          const SizedBox(height: 100), // Spacing for bottom button
+          const SizedBox(height: 24), // Spacing for bottom button
         ],
       ),
     );
@@ -852,16 +1208,19 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
   Widget _buildInfoPoint(IconData icon, String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: logisticsOrange, size: 16),
-          const SizedBox(width: 12),
-          Text(
-            text,
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              color: const Color(0xFF4B5563),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: const Color(0xFF4B5563),
+              ),
             ),
           ),
         ],
@@ -894,46 +1253,104 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
           ),
           child: Column(
             children: [
-              Row(children: [
-                Container(
-                  width: 44, height: 44,
-                  decoration: const BoxDecoration(color: logisticsOrange, shape: BoxShape.circle),
-                  child: const Icon(Icons.my_location, color: Colors.white, size: 20)),
-                const SizedBox(width: 16),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('PICKUP LOCATION', style: GoogleFonts.poppins(
-                          fontSize: 10, color: logisticsOrange,
-                          fontWeight: FontWeight.w700, letterSpacing: 1)),
-                      GestureDetector(
-                        onTap: _useCurrentLocationForPickup,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Pickup', style: GoogleFonts.poppins(
+                        fontSize: 16, fontWeight: FontWeight.w600, color: const Color(0xFF374151))),
+                    GestureDetector(
+                      onTap: _useCurrentLocationForPickup,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF7ED), 
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: logisticsOrange.withValues(alpha: 0.2)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.remove_circle_outline_rounded, size: 14, color: logisticsOrange),
+                            const SizedBox(width: 6),
+                            Text('Use Current', style: GoogleFonts.poppins(
+                              fontSize: 12, color: logisticsOrange, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 44, height: 44,
+                      decoration: const BoxDecoration(color: logisticsOrange, shape: BoxShape.circle),
+                      child: const Icon(Icons.location_on_rounded, color: Colors.white, size: 24)),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _isEditingPickup 
+                      ? Container(
+                          height: 52,
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
                           decoration: BoxDecoration(
-                            color: logisticsOrange.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: logisticsOrange.withValues(alpha: 0.2)),
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.gps_fixed, size: 10, color: logisticsOrange),
-                              const SizedBox(width: 4),
-                              Text('Use Current', style: GoogleFonts.poppins(
-                                fontSize: 10, color: logisticsOrange, fontWeight: FontWeight.w600)),
+                              Expanded(
+                                child: TextField(
+                                  controller: _pickupAddressCtrl,
+                                  focusNode: _pickupFocusNode,
+                                  onChanged: _onPickupSearch,
+                                  style: GoogleFonts.poppins(fontSize: 14, color: const Color(0xFF1F2937)),
+                                  decoration: InputDecoration(
+                                    hintText: 'Search pickup location',
+                                    hintStyle: GoogleFonts.poppins(color: const Color(0xFF9CA3AF), fontSize: 13),
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                width: 32, height: 32,
+                                decoration: const BoxDecoration(color: logisticsOrange, shape: BoxShape.circle),
+                                child: const Icon(Icons.search, color: Colors.white, size: 16),
+                              ),
                             ],
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(_pickupAddr, style: GoogleFonts.poppins(
-                      fontSize: 15, color: const Color(0xFF111827), fontWeight: FontWeight.w500),
-                      maxLines: 2, overflow: TextOverflow.ellipsis),
-                ])),
-              ]),
+                        )
+                      : Text(_pickupAddr, style: GoogleFonts.poppins(
+                          fontSize: 14, color: const Color(0xFF6B7280), fontWeight: FontWeight.w400),
+                          maxLines: 2, overflow: TextOverflow.ellipsis),
+                    ),
+                  ],
+                ),
+              if (_pickupSuggestions.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Divider(height: 1, color: Color(0xFFF3F4F6)),
+                ..._pickupSuggestions.take(3).map((s) => ListTile(
+                  onTap: () => _selectSuggestion(s, isPickup: true),
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.location_on_outlined, size: 18, color: Color(0xFF9CA3AF)),
+                  title: Text(s['description'] ?? '', 
+                    style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFF4B5563)),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                )),
+              ],
               const SizedBox(height: 20),
               Row(
                 children: [
@@ -942,10 +1359,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _buildLocationSubBtn(Icons.edit_outlined, 'Enter Manually', () {
-                      // Already has a direct text field if not set, 
-                      // if set, we could clear and focus
-                    }),
+                    child: _buildLocationSubBtn(Icons.edit_outlined, 'Enter Manually', _onEnterPickupManually),
                   ),
                 ],
               ),
@@ -980,50 +1394,86 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
           ),
           child: Column(
             children: [
-              Row(children: [
-                Container(
-                  width: 44, height: 44,
-                  decoration: BoxDecoration(
-                    color: _destLat != 0 ? logisticsOrange : const Color(0xFFF3F4F6),
-                    shape: BoxShape.circle),
-                  child: Icon(_destLat != 0 ? Icons.check : Icons.location_on_rounded,
-                      color: _destLat != 0 ? Colors.white : const Color(0xFF9CA3AF), size: 22)),
-                const SizedBox(width: 16),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('DELIVERY LOCATION', style: GoogleFonts.poppins(
-                          fontSize: 10, color: _destLat != 0 ? logisticsOrange : const Color(0xFF6B7280),
-                          fontWeight: FontWeight.w700, letterSpacing: 1)),
-                      Icon(Icons.keyboard_arrow_up_rounded, color: const Color(0xFF9CA3AF), size: 20),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  _destLat == 0 
-                  ? TextField(
-                      controller: _dropAddressCtrl,
-                      onChanged: _onDropSearch,
-                      style: GoogleFonts.poppins(fontSize: 14, color: const Color(0xFF111827), fontWeight: FontWeight.w500),
-                      decoration: InputDecoration(
-                        hintText: 'Select delivery location',
-                        hintStyle: GoogleFonts.poppins(color: const Color(0xFF9CA3AF), fontSize: 13),
-                        isDense: true,
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 44, height: 44,
+                      decoration: const BoxDecoration(color: Color(0xFFF3F4F6), shape: BoxShape.circle),
+                      child: const Icon(Icons.location_on_rounded, color: Color(0xFF9CA3AF), size: 24)),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('DELIVERY LOCATION', style: GoogleFonts.poppins(
+                                  fontSize: 11, color: const Color(0xFF6B7280),
+                                  fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                              const Icon(Icons.keyboard_arrow_up_rounded, color: Color(0xFF9CA3AF), size: 18),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          _destLat == 0 
+                          ? Container(
+                              height: 52,
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(30),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.05),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _dropAddressCtrl,
+                                      focusNode: _dropFocusNode,
+                                      onChanged: _onDropSearch,
+                                      style: GoogleFonts.poppins(fontSize: 14, color: const Color(0xFF1F2937)),
+                                      decoration: InputDecoration(
+                                        hintText: 'Search delivery location',
+                                        hintStyle: GoogleFonts.poppins(color: const Color(0xFF9CA3AF), fontSize: 13),
+                                        border: InputBorder.none,
+                                        enabledBorder: InputBorder.none,
+                                        focusedBorder: InputBorder.none,
+                                        errorBorder: InputBorder.none,
+                                        disabledBorder: InputBorder.none,
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.zero,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 32, height: 32,
+                                    decoration: const BoxDecoration(color: logisticsOrange, shape: BoxShape.circle),
+                                    child: const Icon(Icons.search, color: Colors.white, size: 16),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : Text(_dropAddressCtrl.text, style: GoogleFonts.poppins(
+                              fontSize: 14, color: const Color(0xFF1F2937), fontWeight: FontWeight.w500),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ],
                       ),
-                    )
-                  : Text(_dropAddressCtrl.text, style: GoogleFonts.poppins(
-                      fontSize: 15, color: const Color(0xFF111827), fontWeight: FontWeight.w500),
-                      maxLines: 2, overflow: TextOverflow.ellipsis),
-                ])),
-              ]),
+                    ),
+                  ],
+                ),
               
               if (_suggestions.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 const Divider(height: 1, color: Color(0xFFF3F4F6)),
                 ..._suggestions.take(3).map((s) => ListTile(
-                  onTap: () => _selectSuggestion(s),
+                  onTap: () => _selectSuggestion(s, isPickup: false),
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.location_on_outlined, size: 18, color: Color(0xFF9CA3AF)),
                   title: Text(s['description'] ?? '', 
@@ -1042,9 +1492,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: _buildLocationSubBtn(Icons.edit_outlined, 'Enter Manually', () {
-                       // Handled by direct text field
-                    }),
+                    child: _buildLocationSubBtn(Icons.edit_outlined, 'Enter Manually', _onEnterDropManually),
                   ),
                 ],
               ),
@@ -1056,17 +1504,20 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
 
         // ── Vehicle Reminder ──
         Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: _vehicle.accentColor.withValues(alpha: 0.05),
+            color: const Color(0xFFFFF2EF), // Light peach/orange tint
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _vehicle.accentColor.withValues(alpha: 0.1))),
+          ),
           child: Row(children: [
             Container(
               width: 52, height: 52,
-              decoration: BoxDecoration(
-                  color: _vehicle.accentColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
-              child: Icon(_iconForKey(_vehicle.key), color: _vehicle.accentColor, size: 28)),
+              decoration: const BoxDecoration(
+                  color: Colors.white, shape: BoxShape.circle),
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: _buildVehicleImage(_vehicle.key, width: 36, height: 36),
+              )),
             const SizedBox(width: 16),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(_vehicle.name, style: GoogleFonts.poppins(
@@ -1074,7 +1525,7 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
               Text(_vehicle.capacity, style: GoogleFonts.poppins(
                   fontSize: 13, color: const Color(0xFF6B7280))),
             ])),
-            Icon(Icons.chevron_right_rounded, color: const Color(0xFF9CA3AF), size: 24),
+            const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 24),
           ]),
         ),
         const SizedBox(height: 100),
@@ -1299,11 +1750,18 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
           duration: const Duration(milliseconds: 200),
           height: 60,
           decoration: BoxDecoration(
-            color: canGoNext ? logisticsOrange : const Color(0xFFE5E7EB),
+            gradient: canGoNext
+                ? const LinearGradient(
+                    colors: [logisticsOrange, Color(0xFFD6B58F)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            color: canGoNext ? null : const Color(0xFFE5E7EB),
             borderRadius: BorderRadius.circular(16),
             boxShadow: canGoNext ? [
               BoxShadow(
-                color: logisticsOrange.withValues(alpha: 0.3),
+                color: logisticsOrange.withValues(alpha: 0.28),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               )
@@ -1368,5 +1826,15 @@ class _ParcelBookingScreenState extends State<ParcelBookingScreen>
       case 'fragile': return Icons.local_drink_rounded;
       default: return Icons.inventory_2_rounded;
     }
+  }
+
+  void _showSnack(String msg, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: const TextStyle(color: Colors.white)),
+      backgroundColor: error ? Colors.redAccent : logisticsOrange,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ));
   }
 }

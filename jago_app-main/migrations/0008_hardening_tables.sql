@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS driver_no_shows (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_driver_no_shows_driver ON driver_no_shows(driver_id);
-CREATE INDEX idx_driver_no_shows_created ON driver_no_shows(created_at);
+CREATE INDEX IF NOT EXISTS idx_driver_no_shows_driver ON driver_no_shows(driver_id);
+CREATE INDEX IF NOT EXISTS idx_driver_no_shows_created ON driver_no_shows(created_at);
 
 -- 2. CUSTOMER NO-SHOW TRACKING
 CREATE TABLE IF NOT EXISTS customer_no_shows (
@@ -26,8 +26,8 @@ CREATE TABLE IF NOT EXISTS customer_no_shows (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_customer_no_shows_customer ON customer_no_shows(customer_id);
-CREATE INDEX idx_customer_no_shows_created ON customer_no_shows(created_at);
+CREATE INDEX IF NOT EXISTS idx_customer_no_shows_customer ON customer_no_shows(customer_id);
+CREATE INDEX IF NOT EXISTS idx_customer_no_shows_created ON customer_no_shows(created_at);
 
 -- 3. SYSTEM HEALTH & LOGS
 CREATE TABLE IF NOT EXISTS system_logs (
@@ -39,9 +39,9 @@ CREATE TABLE IF NOT EXISTS system_logs (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_system_logs_level ON system_logs(level);
-CREATE INDEX idx_system_logs_tag ON system_logs(tag);
-CREATE INDEX idx_system_logs_created ON system_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_system_logs_level ON system_logs(level);
+CREATE INDEX IF NOT EXISTS idx_system_logs_tag ON system_logs(tag);
+CREATE INDEX IF NOT EXISTS idx_system_logs_created ON system_logs(created_at);
 
 -- 4. NOTIFICATION DELIVERY TRACKING
 CREATE TABLE IF NOT EXISTS notification_logs (
@@ -60,9 +60,9 @@ CREATE TABLE IF NOT EXISTS notification_logs (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_notification_logs_driver ON notification_logs(driver_id);
-CREATE INDEX idx_notification_logs_trip ON notification_logs(trip_id);
-CREATE INDEX idx_notification_logs_result ON notification_logs(fcm_result);
+CREATE INDEX IF NOT EXISTS idx_notification_logs_driver ON notification_logs(driver_id);
+CREATE INDEX IF NOT EXISTS idx_notification_logs_trip ON notification_logs(trip_id);
+CREATE INDEX IF NOT EXISTS idx_notification_logs_result ON notification_logs(fcm_result);
 
 -- 5. DISPATCH SESSION TRACKING (for debugging timeouts)
 CREATE TABLE IF NOT EXISTS dispatch_sessions (
@@ -80,9 +80,9 @@ CREATE TABLE IF NOT EXISTS dispatch_sessions (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_dispatch_sessions_trip ON dispatch_sessions(trip_id);
-CREATE INDEX idx_dispatch_sessions_status ON dispatch_sessions(status);
-CREATE INDEX idx_dispatch_sessions_customer ON dispatch_sessions(customer_id);
+CREATE INDEX IF NOT EXISTS idx_dispatch_sessions_trip ON dispatch_sessions(trip_id);
+CREATE INDEX IF NOT EXISTS idx_dispatch_sessions_status ON dispatch_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_dispatch_sessions_customer ON dispatch_sessions(customer_id);
 
 -- 6. ADD COLUMNS TO TRIP_REQUESTS FOR HARDENING
 ALTER TABLE trip_requests ADD COLUMN IF NOT EXISTS 

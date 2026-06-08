@@ -2,6 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { adminConfirm } from "./components/AdminPrimitives";
 
 export default function SurgePricingPage() {
   const { toast } = useToast();
@@ -22,17 +23,19 @@ export default function SurgePricingPage() {
       toast({ title: editing ? "Updated" : "Created" });
       setEditing(null);
     },
-    onError: () => toast({ title: "Failed", variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/surge-pricing/${id}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/surge-pricing"] }); toast({ title: "Deleted" }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/surge-pricing"] }); toast({ title: "Surge rule deleted" }); },
+    onError: (e: any) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
   });
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, isActive }: any) => apiRequest("PATCH", `/api/surge-pricing/${id}`, { isActive }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/surge-pricing"] }),
+    onError: (e: any) => { queryClient.invalidateQueries({ queryKey: ["/api/surge-pricing"] }); toast({ title: "Toggle failed", description: e.message, variant: "destructive" }); },
   });
 
   const openAdd = () => { setEditing(null); setForm({ zoneId: "", startTime: "", endTime: "", multiplier: "", reason: "", isActive: true }); setShowModal(true); };
@@ -94,7 +97,7 @@ export default function SurgePricingPage() {
                       </td>
                       <td>
                         <button className="btn btn-sm btn-outline-primary me-1" onClick={() => openEdit(s)}><i className="bi bi-pencil-fill"></i></button>
-                        <button className="btn btn-sm btn-outline-danger" onClick={() => { if (confirm("Delete?")) deleteMutation.mutate(s.id); }}><i className="bi bi-trash-fill"></i></button>
+                        <button className="btn btn-sm btn-outline-danger" onClick={async () => { if (await adminConfirm("Delete this surge rule?")) deleteMutation.mutate(s.id); }}><i className="bi bi-trash-fill"></i></button>
                       </td>
                     </tr>
                   ))}

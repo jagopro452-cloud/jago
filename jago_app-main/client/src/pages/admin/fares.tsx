@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { adminConfirm } from "./components/AdminPrimitives";
 
 function FareCalculator({ zones, vehicleCategories }: { zones: any[]; vehicleCategories: any[] }) {
   const [calc, setCalc] = useState({ zoneId: "", vehicleCategoryId: "", distanceKm: "5", durationMin: "10" });
@@ -101,7 +102,7 @@ function FareCalculator({ zones, vehicleCategories }: { zones: any[]; vehicleCat
   );
 }
 
-const EMPTY_FORM = { zoneId: "", vehicleCategoryId: "", baseFare: "50", farePerKm: "15", farePerMin: "2", minimumFare: "30", cancellationFee: "5", waitingChargePerMin: "1.50", nightChargeMultiplier: "1.25" };
+const EMPTY_FORM = { zoneId: "", vehicleCategoryId: "", baseFare: "50", farePerKm: "15", farePerMin: "2", minimumFare: "30", cancellationFee: "5", waitingChargePerMin: "1.50", nightChargeMultiplier: "1.25", perSeatBaseFare: "0", perSeatKmRate: "0", maxPoolSeats: "4" };
 
 function FareModal({ open, onClose, editing, zones, vehicleCategories, form, setForm, onSave, saving }: any) {
   if (!open) return null;
@@ -167,6 +168,34 @@ function FareModal({ open, onClose, editing, zones, vehicleCategories, form, set
               <small className="text-muted">1.25 = 25% extra charge 10PM–6AM</small>
             </div>
           </div>
+
+          <div className="mt-3 p-3 rounded" style={{ background: "#eff6ff", border: "1px solid #bfdbfe" }}>
+            <div className="d-flex align-items-center gap-2 mb-3">
+              <i className="bi bi-people-fill text-primary"></i>
+              <span style={{ fontWeight: 600, fontSize: "0.85rem" }}>Pool / Carpool Fare (per seat)</span>
+              <span className="badge bg-primary bg-opacity-10 text-primary" style={{ fontSize: "0.65rem" }}>Local Pool &amp; Car Pool</span>
+            </div>
+            <div className="row g-3">
+              <div className="col-4">
+                <label className="form-label-jago">Base Fare / Seat (₹)</label>
+                <input type="number" className="form-control" value={form.perSeatBaseFare} min="0" step="0.5"
+                  onChange={e => setForm((f: any) => ({ ...f, perSeatBaseFare: e.target.value }))} />
+                <small className="text-muted">0 = auto-derive from full fare ÷ seats</small>
+              </div>
+              <div className="col-4">
+                <label className="form-label-jago">Per Km / Seat (₹)</label>
+                <input type="number" className="form-control" value={form.perSeatKmRate} min="0" step="0.5"
+                  onChange={e => setForm((f: any) => ({ ...f, perSeatKmRate: e.target.value }))} />
+              </div>
+              <div className="col-4">
+                <label className="form-label-jago">Max Pool Seats</label>
+                <input type="number" className="form-control" value={form.maxPoolSeats} min="1" max="6" step="1"
+                  onChange={e => setForm((f: any) => ({ ...f, maxPoolSeats: e.target.value }))} />
+                <small className="text-muted">Max passengers per pool ride</small>
+              </div>
+            </div>
+          </div>
+
           <div className="d-flex gap-2 justify-content-end mt-2">
             <button className="btn btn-outline-secondary" onClick={onClose}>Cancel</button>
             <button className="btn btn-primary" onClick={onSave} disabled={!form.zoneId || saving} data-testid="btn-save-fare">
@@ -216,7 +245,7 @@ export default function Fares() {
   const remove = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/fares/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/fares"] }); toast({ title: "Fare deleted" }); },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Delete failed", description: e.message || "This fare may be referenced by active trips.", variant: "destructive" }),
   });
 
   const openCreate = () => { setEditing(null); setForm({ ...EMPTY_FORM }); setOpen(true); };
@@ -232,6 +261,9 @@ export default function Fares() {
       cancellationFee: String(item.fare.cancellationFee || "5"),
       waitingChargePerMin: String(item.fare.waitingChargePerMin || "1.50"),
       nightChargeMultiplier: String(item.fare.nightChargeMultiplier || "1.25"),
+      perSeatBaseFare: String(item.fare.perSeatBaseFare || "0"),
+      perSeatKmRate: String(item.fare.perSeatKmRate || "0"),
+      maxPoolSeats: String(item.fare.maxPoolSeats || "4"),
     });
     setOpen(true);
   };
@@ -317,7 +349,7 @@ export default function Fares() {
                       <td className="text-center">
                         <div className="d-flex justify-content-center gap-2">
                           <button className="btn btn-sm btn-outline-primary" onClick={() => openEdit(item)} data-testid={`btn-edit-fare-${item.fare.id}`}><i className="bi bi-pencil-fill"></i></button>
-                          <button className="btn btn-sm btn-outline-danger" onClick={() => { if (confirm("Delete this fare?")) remove.mutate(item.fare.id); }} data-testid={`btn-delete-fare-${item.fare.id}`}><i className="bi bi-trash-fill"></i></button>
+                          <button className="btn btn-sm btn-outline-danger" onClick={async () => { if (await adminConfirm("Delete this fare?")) remove.mutate(item.fare.id); }} data-testid={`btn-delete-fare-${item.fare.id}`}><i className="bi bi-trash-fill"></i></button>
                         </div>
                       </td>
                     </tr>

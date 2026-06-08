@@ -1,7 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { adminFetch, queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { adminConfirm } from "./components/AdminPrimitives";
 
 const CITIES = [
   "Hyderabad","Vijayawada","Visakhapatnam","Tirupati","Warangal","Bengaluru","Chennai",
@@ -150,12 +151,12 @@ export default function IntercityRoutesPage() {
 
   const { data = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/intercity-routes"],
-    queryFn: () => fetch("/api/intercity-routes").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
+    queryFn: () => adminFetch("/api/intercity-routes").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
   });
 
   const { data: vehicles = [] } = useQuery<any[]>({
     queryKey: ["/api/vehicle-categories"],
-    queryFn: () => fetch("/api/vehicle-categories").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
+    queryFn: () => adminFetch("/api/vehicle-categories").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
   });
 
   const routes = Array.isArray(data) ? data : [];
@@ -181,12 +182,27 @@ export default function IntercityRoutesPage() {
 
   const toggle = useMutation({
     mutationFn: ({ id, isActive }: any) => apiRequest("PATCH", `/api/intercity-routes/${id}`, { isActive }),
+    onMutate: async ({ id, isActive }: any) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/intercity-routes"] });
+      const previous = queryClient.getQueryData<any[]>(["/api/intercity-routes"]);
+      queryClient.setQueryData<any[]>(["/api/intercity-routes"], (current = []) =>
+        current.map((route) => route.id === id ? { ...route, isActive } : route),
+      );
+      return { previous };
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["/api/intercity-routes"], context.previous);
+      }
+      toast({ title: "Error", description: "Failed to update route status", variant: "destructive" });
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/intercity-routes"] }),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/intercity-routes/${id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/intercity-routes"] }); toast({ title: "Route deleted" }); },
+    onError: (e: any) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
   });
 
   return (
@@ -306,7 +322,7 @@ export default function IntercityRoutesPage() {
                           <i className="bi bi-pencil-fill"></i>
                         </button>
                         <button className="btn btn-sm btn-outline-danger" style={{ borderRadius: 8 }}
-                          onClick={() => { if (confirm("Delete route?")) remove.mutate(r.id); }}
+                          onClick={async () => { if (await adminConfirm("Delete route?")) remove.mutate(r.id); }}
                           data-testid={`btn-delete-route-${r.id}`}>
                           <i className="bi bi-trash-fill"></i>
                         </button>

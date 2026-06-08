@@ -7,7 +7,6 @@ const __dirname = path.dirname(__filename);
 
 const SOURCE_DIR = path.join(__dirname, "..", "public", "apks");
 const DEST_DIR_DIST = path.join(__dirname, "..", "dist", "public", "apks");
-const DOWNLOADS_DIR = path.join(process.env.USERPROFILE || "C:\\Users\\kiran", "Downloads");
 
 function copyFile(src, dest) {
   try {
@@ -42,9 +41,13 @@ function compareVersions(a, b) {
   return 0;
 }
 
+function isVersionedApk(fileName) {
+  return /v\d+\.\d+\.\d+/i.test(fileName);
+}
+
 function findLatest(files, prefix) {
   return files
-    .filter((file) => file.startsWith(prefix) && file.endsWith(".apk"))
+    .filter((file) => file.startsWith(prefix) && file.endsWith(".apk") && isVersionedApk(file))
     .sort(compareVersions)[0] ?? null;
 }
 
@@ -57,7 +60,6 @@ function syncAPKs() {
   }
 
   ensureDir(DEST_DIR_DIST);
-  ensureDir(DOWNLOADS_DIR);
 
   const apkFiles = fs.readdirSync(SOURCE_DIR).filter((file) => file.endsWith(".apk"));
   if (apkFiles.length === 0) {
@@ -67,21 +69,24 @@ function syncAPKs() {
 
   apkFiles.forEach((fileName) => {
     copyFile(path.join(SOURCE_DIR, fileName), path.join(DEST_DIR_DIST, fileName));
-    copyFile(path.join(SOURCE_DIR, fileName), path.join(DOWNLOADS_DIR, fileName));
   });
 
   const customerLatest = findLatest(apkFiles, "jago-customer-");
+  const driverLatest = findLatest(apkFiles, "jago-driver-");
   const pilotLatest = findLatest(apkFiles, "jago-pilot-");
   const aliases = [
     { source: customerLatest, alias: "jago-customer-latest.apk" },
-    { source: pilotLatest, alias: "jago-driver-latest.apk" },
+    { source: driverLatest, alias: "jago-driver-latest.apk" },
     { source: pilotLatest, alias: "jago-pilot-latest.apk" },
   ];
 
   aliases.forEach(({ source, alias }) => {
-    if (!source) return;
-    copyFile(path.join(SOURCE_DIR, source), path.join(DEST_DIR_DIST, alias));
-    copyFile(path.join(SOURCE_DIR, source), path.join(DOWNLOADS_DIR, alias));
+    const explicitLatest = path.join(SOURCE_DIR, alias);
+    if (fs.existsSync(explicitLatest)) {
+      copyFile(explicitLatest, path.join(DEST_DIR_DIST, alias));
+      return;
+    }
+    if (source) copyFile(path.join(SOURCE_DIR, source), path.join(DEST_DIR_DIST, alias));
   });
 
   const status = {

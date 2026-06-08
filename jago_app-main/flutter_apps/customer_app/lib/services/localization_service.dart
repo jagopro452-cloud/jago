@@ -36,7 +36,7 @@ class L {
   static const Map<String, Map<String, String>> _strings = {
     'en': {
       // Auth
-      'welcome': 'Welcome to\\nJAGO Pro 👋',
+      'welcome': 'Welcome to\\nJago 👋',
       'welcome_sub': 'Safe, affordable rides — anywhere',
       'enter_otp': 'Enter OTP\n📱',
       'otp_sent_to': 'OTP sent to +91 ',
@@ -91,7 +91,7 @@ class L {
       'saved_places': 'Saved Places',
       'ride_preferences': 'Ride Preferences',
       'monthly_pass': 'Monthly Pass',
-      'my_coins': 'My JAGO Pro Coins',
+      'my_coins': 'My Jago Coins',
       'safety_contacts': 'Safety & Emergency',
       'refer_earn': 'Refer & Earn',
       'support_chat': 'Support Chat',
@@ -154,7 +154,7 @@ class L {
     },
     'te': {
       // Auth
-      'welcome': 'JAGO Pro కి\nస్వాగతం 👋',
+      'welcome': 'Jago కి\nస్వాగతం 👋',
       'welcome_sub': 'సురక్షితమైన, చవకైన రైడ్లు — ఎక్కడైనా',
       'enter_otp': 'OTP నమోదు\nచేయండి 📱',
       'otp_sent_to': 'OTP పంపించబడింది +91 ',
@@ -209,7 +209,7 @@ class L {
       'saved_places': 'సేవ్ చేసిన స్థలాలు',
       'ride_preferences': 'రైడ్ ప్రాధాన్యతలు',
       'monthly_pass': 'నెలవారీ పాస్',
-      'my_coins': 'నా JAGO Pro కాయిన్లు',
+      'my_coins': 'నా Jago కాయిన్లు',
       'safety_contacts': 'సురక్షత & అత్యవసర',
       'refer_earn': 'రెఫర్ & సంపాదించండి',
       'support_chat': 'మద్దతు చాట్',
@@ -272,7 +272,7 @@ class L {
     },
     'hi': {
       // Auth
-      'welcome': 'JAGO Pro में\nस्वागत है 👋',
+      'welcome': 'Jago में\nस्वागत है 👋',
       'welcome_sub': 'सुरक्षित, किफायती सवारी — कहीं भी',
       'enter_otp': 'OTP दर्ज\nकरें 📱',
       'otp_sent_to': 'OTP भेजा गया +91 ',
@@ -327,7 +327,7 @@ class L {
       'saved_places': 'सहेजे गए स्थान',
       'ride_preferences': 'सवारी प्राथमिकताएं',
       'monthly_pass': 'मासिक पास',
-      'my_coins': 'मेरे JAGO Pro सिक्के',
+      'my_coins': 'मेरे Jago सिक्के',
       'safety_contacts': 'सुरक्षा और आपातकाल',
       'refer_earn': 'रेफर करें & कमाएं',
       'support_chat': 'सहायता चैट',
@@ -389,7 +389,7 @@ class L {
       'service_area': 'हैदराबाद और आंध्र प्रदेश',
     },
     'ta': {
-      'welcome': 'JAGO Pro-க்கு\nவரவேற்கிறோம் 👋',
+      'welcome': 'Jago-க்கு\nவரவேற்கிறோம் 👋',
       'welcome_sub': 'பாதுகாப்பான, மலிவான சவாரிகள் — எங்கும்',
       'enter_otp': 'OTP உள்ளிடவும் 📱',
       'otp_sent_to': 'OTP அனுப்பப்பட்டது +91 ',
@@ -441,7 +441,7 @@ class L {
       'saved_places': 'சேமிக்கப்பட்ட இடங்கள்',
       'ride_preferences': 'சவாரி விருப்பங்கள்',
       'monthly_pass': 'மாதாந்திர பாஸ்',
-      'my_coins': 'என் JAGO Pro நாணயங்கள்',
+      'my_coins': 'என் Jago நாணயங்கள்',
       'safety_contacts': 'பாதுகாப்பு & அவசரநிலை',
       'refer_earn': 'பரிந்துரை & சம்பாதி',
       'support_chat': 'ஆதரவு அரட்டை',
@@ -501,7 +501,7 @@ class L {
       'service_area': 'ஹைதராபாத் & ஆந்திர பிரதேசம்',
     },
     'kn': {
-      'welcome': 'JAGO Pro ಗೆ\nಸ್ವಾಗತ 👋',
+      'welcome': 'Jago ಗೆ\nಸ್ವಾಗತ 👋',
       'welcome_sub': 'ಸುರಕ್ಷಿತ, ಕಡಿಮೆ ಬೆಲೆಯ ರೈಡ್‌ಗಳು — ಎಲ್ಲಿಯಾದರೂ',
       'enter_otp': 'OTP ನಮೂದಿಸಿ 📱',
       'otp_sent_to': 'OTP ಕಳಿಸಲಾಗಿದೆ +91 ',
@@ -553,7 +553,7 @@ class L {
       'saved_places': 'ಉಳಿಸಿದ ಸ್ಥಳಗಳು',
       'ride_preferences': 'ರೈಡ್ ಆದ್ಯತೆಗಳು',
       'monthly_pass': 'ಮಾಸಿಕ ಪಾಸ್',
-      'my_coins': 'ನನ್ನ JAGO Pro ನಾಣ್ಯಗಳು',
+      'my_coins': 'ನನ್ನ Jago ನಾಣ್ಯಗಳು',
       'safety_contacts': 'ಸುರಕ್ಷತೆ & ತುರ್ತು',
       'refer_earn': 'ರೆಫರ್ ಮಾಡಿ & ಗಳಿಸಿ',
       'support_chat': 'ಬೆಂಬಲ ಚಾಟ್',
@@ -613,7 +613,7 @@ class L {
       'service_area': 'ಹೈದರಾಬಾದ್ & ಆಂಧ್ರಪ್ರದೇಶ',
     },
     'ml': {
-      'welcome': 'JAGO Pro-ലേക്ക്\nസ്വാഗതം 👋',
+      'welcome': 'Jago-ലേക്ക്\nസ്വാഗതം 👋',
       'welcome_sub': 'സുരക്ഷിതമായ, താങ്ങാനാവുന്ന യാത്രകൾ — എവിടെയും',
       'enter_otp': 'OTP നൽകൂ 📱',
       'otp_sent_to': 'OTP അയച്ചു +91 ',
@@ -665,7 +665,7 @@ class L {
       'saved_places': 'സേവ് ചെയ്ത സ്ഥലങ്ങൾ',
       'ride_preferences': 'യാത്ര മുൻഗണനകൾ',
       'monthly_pass': 'മാസ പാസ്',
-      'my_coins': 'എന്റെ JAGO Pro നാണയങ്ങൾ',
+      'my_coins': 'എന്റെ Jago നാണയങ്ങൾ',
       'safety_contacts': 'സുരക്ഷ & അടിയന്തരം',
       'refer_earn': 'റഫർ ചെയ്ത് നേടൂ',
       'support_chat': 'സഹായ ചാറ്റ്',

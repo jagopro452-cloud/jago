@@ -7,120 +7,19 @@
 
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
+import { assertSchemaObjectsOrThrow } from "./schema-health";
 
 // ════════════════════════════════════════════════════════════════════════════
 //  DB TABLE INIT
 // ════════════════════════════════════════════════════════════════════════════
 
 export async function initDynamicServicesTables(): Promise<void> {
-  // ── City-based service availability ─────────────────────────────────────
-  await rawDb.execute(rawSql`
-    CREATE TABLE IF NOT EXISTS city_services (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      city_name VARCHAR(100) NOT NULL,
-      city_lat NUMERIC(10,7),
-      city_lng NUMERIC(10,7),
-      radius_km NUMERIC(8,2) DEFAULT 30,
-      service_key VARCHAR(50) NOT NULL,
-      is_active BOOLEAN DEFAULT true,
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW(),
-      UNIQUE(city_name, service_key)
-    );
-    CREATE INDEX IF NOT EXISTS idx_city_services_city ON city_services(city_name);
-    CREATE INDEX IF NOT EXISTS idx_city_services_key ON city_services(service_key);
-  `).catch(() => {});
+  await assertSchemaObjectsOrThrow({
+    tables: ["platform_services", "city_services", "parcel_vehicle_types", "city_parcel_vehicles"],
+  });
 
-  // ── Service images (admin-uploadable) ──────────────────────────────────
-  await rawDb.execute(rawSql`
-    ALTER TABLE platform_services ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT '';
-    ALTER TABLE platform_services ADD COLUMN IF NOT EXISTS short_description TEXT DEFAULT '';
-    ALTER TABLE platform_services ADD COLUMN IF NOT EXISTS eta_label VARCHAR(50) DEFAULT '';
-  `).catch(() => {});
-
-  // ── Dynamic parcel vehicles ─────────────────────────────────────────────
-  await rawDb.execute(rawSql`
-    CREATE TABLE IF NOT EXISTS parcel_vehicle_types (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      vehicle_key VARCHAR(50) UNIQUE NOT NULL,
-      name VARCHAR(100) NOT NULL,
-      subtitle VARCHAR(200) DEFAULT '',
-      icon VARCHAR(20) DEFAULT '📦',
-      image_url TEXT DEFAULT '',
-      capacity_label VARCHAR(50) DEFAULT '',
-      max_weight_kg NUMERIC(10,2) DEFAULT 10,
-      suitable_items TEXT DEFAULT '',
-      accent_color VARCHAR(20) DEFAULT '#2F7BFF',
-      base_fare NUMERIC(10,2) DEFAULT 40,
-      per_km NUMERIC(10,2) DEFAULT 12,
-      per_kg NUMERIC(10,2) DEFAULT 4,
-      load_charge NUMERIC(10,2) DEFAULT 0,
-      is_active BOOLEAN DEFAULT true,
-      sort_order INTEGER DEFAULT 0,
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_parcel_vehicles_active ON parcel_vehicle_types(is_active);
-  `).catch(() => {});
-
-  // ── City-based parcel vehicle availability ──────────────────────────────
-  await rawDb.execute(rawSql`
-    CREATE TABLE IF NOT EXISTS city_parcel_vehicles (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      city_name VARCHAR(100) NOT NULL,
-      vehicle_key VARCHAR(50) NOT NULL,
-      is_active BOOLEAN DEFAULT true,
-      eta_minutes INTEGER DEFAULT 5,
-      created_at TIMESTAMP DEFAULT NOW(),
-      UNIQUE(city_name, vehicle_key)
-    );
-  `).catch(() => {});
-
-  // ── Seed default parcel vehicles ────────────────────────────────────────
-  await rawDb.execute(rawSql`
-    INSERT INTO parcel_vehicle_types
-      (vehicle_key, name, subtitle, icon, capacity_label, max_weight_kg, suitable_items, accent_color,
-       base_fare, per_km, per_kg, load_charge, is_active, sort_order)
-    VALUES
-      ('bike_parcel', 'Bike Parcel', 'Fast & lightweight delivery', '🏍️', 'Up to 10 kg', 10,
-       'Documents · Small boxes · Groceries · Medicine', '#2F7BFF', 40, 12, 4, 0, true, 1),
-      ('auto_parcel', 'Cargo Auto', 'Medium loads in 3-wheeler', '🛺', 'Up to 50 kg', 50,
-       'Medium boxes · Small furniture · Shop supplies', '#F59E0B', 50, 13, 7, 0, true, 2),
-      ('cargo_car', 'Cargo Car', 'Sedan-sized cargo transport', '🚗', 'Up to 200 kg', 200,
-       'Appliances · Large boxes · Business goods', '#10B981', 120, 16, 4, 30, true, 3),
-      ('tata_ace', 'Mini Truck', 'Tata Ace · Medium goods', '🚛', 'Up to 500 kg', 500,
-       'Furniture · Appliances · Bulk items · Shop stock', '#FF6B35', 150, 18, 2, 50, true, 4),
-      ('bolero_cargo', 'Bolero Pickup', 'Heavy-duty pickup truck', '🚙', 'Up to 1,500 kg', 1500,
-       'Construction · Heavy equipment · Large shipments', '#8B5CF6', 200, 22, 3, 80, true, 5),
-      ('pickup_truck', 'Pickup Truck', 'Large heavy goods transport', '🛻', 'Up to 2,000 kg', 2000,
-       'Heavy machinery · Construction · Business logistics', '#7C3AED', 200, 22, 1, 100, true, 6)
-    ON CONFLICT (vehicle_key) DO NOTHING;
-  `).catch(() => {});
-
-  // ── Seed default cities ─────────────────────────────────────────────────
-  const defaultCities = [
-    { name: 'Vijayawada', lat: 16.5062, lng: 80.6480 },
-    { name: 'Hyderabad', lat: 17.3850, lng: 78.4867 },
-    { name: 'Guntur', lat: 16.3067, lng: 80.4365 },
-  ];
-  const defaultServices = ['bike_ride', 'parcel_delivery'];
-
-  for (const city of defaultCities) {
-    for (const svc of defaultServices) {
-      await rawDb.execute(rawSql`
-        INSERT INTO city_services (city_name, city_lat, city_lng, service_key, is_active)
-        VALUES (${city.name}, ${city.lat}, ${city.lng}, ${svc}, true)
-        ON CONFLICT (city_name, service_key) DO NOTHING
-      `).catch(() => {});
-    }
-  }
-
-  console.log("[DYNAMIC-SVC] Tables and seeds initialized");
+  console.log("[DYNAMIC-SVC] Schema verified");
 }
-
-// ════════════════════════════════════════════════════════════════════════════
-//  CITY DETECTION
-// ════════════════════════════════════════════════════════════════════════════
 
 interface CityMatch {
   cityName: string;
@@ -350,9 +249,10 @@ export async function getDriverEligibleServices(
 ): Promise<DriverServiceConfig> {
   // Determine driver's vehicle type
   const driverR = await rawDb.execute(rawSql`
-    SELECT u.vehicle_type, vc.name as vehicle_name, vc.type as vehicle_type_code
+    SELECT dd.vehicle_type, vc.name as vehicle_name, vc.vehicle_type as vehicle_type_code
     FROM users u
-    LEFT JOIN vehicle_categories vc ON vc.id = u.vehicle_category_id
+    LEFT JOIN driver_details dd ON dd.user_id = u.id
+    LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
     WHERE u.id = ${driverId}::uuid
   `);
 
@@ -404,11 +304,8 @@ export async function getDriverEligibleServices(
       if (vehicleName.includes('auto') || vehicleCode === 'auto') {
         eligibleParcelKeys.push('auto_parcel');
       }
-      if (vehicleName.includes('car') || vehicleName.includes('sedan') || vehicleCode === 'car') {
-        eligibleParcelKeys.push('cargo_car');
-      }
       if (vehicleName.includes('truck') || vehicleName.includes('ace') || vehicleName.includes('bolero')) {
-        eligibleParcelKeys.push('tata_ace', 'bolero_cargo', 'pickup_truck');
+        eligibleParcelKeys.push('tata_ace', 'bolero_cargo', 'pickup_truck', 'tempo_407');
       }
     } else if (svc.category === 'carpool') {
       // Carpool available for car/sedan/suv
@@ -422,13 +319,16 @@ export async function getDriverEligibleServices(
   // Get matching parcel vehicles
   let parcelVehicles: ParcelVehicleType[] = [];
   if (eligibleParcelKeys.length > 0) {
+    const parcelKeyArray = rawSql.raw(
+      `ARRAY[${eligibleParcelKeys.map((key) => `'${key.replace(/'/g, "''")}'`).join(",")}]::text[]`
+    );
     const pvR = await rawDb.execute(rawSql`
       SELECT vehicle_key as key, name, subtitle, icon,
         COALESCE(image_url, '') as image_url, capacity_label,
         max_weight_kg, suitable_items, accent_color,
         base_fare, per_km, per_kg, load_charge, 5 as eta_minutes
       FROM parcel_vehicle_types
-      WHERE is_active = true AND vehicle_key = ANY(${eligibleParcelKeys})
+      WHERE is_active = true AND vehicle_key = ANY(${parcelKeyArray})
       ORDER BY sort_order ASC
     `);
     parcelVehicles = (pvR.rows as any[]).map(row => ({

@@ -11,6 +11,8 @@ class CallScreen extends StatefulWidget {
   final String targetUserId;
   final bool isIncoming;
   final String? callerIdForIncoming;
+  final String callScope;
+  final String? poolModule;
 
   const CallScreen({
     super.key,
@@ -19,6 +21,8 @@ class CallScreen extends StatefulWidget {
     required this.targetUserId,
     this.isIncoming = false,
     this.callerIdForIncoming,
+    this.callScope = 'trip',
+    this.poolModule,
   });
 
   @override
@@ -41,7 +45,7 @@ class _CallScreenState extends State<CallScreen> {
       if (!mounted) return;
       setState(() => _state = s);
       if (s == CallState.connected) _startDurationTimer();
-      if (s == CallState.idle || s == CallState.rejected) {
+      if (s == CallState.idle || s == CallState.rejected || s == CallState.failed) {
         _durationTimer?.cancel();
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted) Navigator.of(context).pop();
@@ -53,6 +57,13 @@ class _CallScreenState extends State<CallScreen> {
       _state = CallState.incoming;
     } else {
       _state = CallState.outgoing;
+      _callService.startCall(
+        targetUserId: widget.targetUserId,
+        tripId: widget.tripId,
+        callerName: 'Customer',
+        scope: widget.callScope,
+        module: widget.poolModule,
+      );
     }
   }
 
@@ -80,6 +91,8 @@ class _CallScreenState extends State<CallScreen> {
     await _callService.acceptCall(
       callerId: widget.callerIdForIncoming ?? widget.targetUserId,
       tripId: widget.tripId,
+      scope: widget.callScope,
+      module: widget.poolModule,
     );
   }
 
@@ -150,6 +163,7 @@ class _CallScreenState extends State<CallScreen> {
       case CallState.connected: return 'Connected';
       case CallState.rejected: return 'Call declined';
       case CallState.idle: return 'Call ended';
+      case CallState.failed: return 'Call failed';
     }
   }
 

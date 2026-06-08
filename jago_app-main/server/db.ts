@@ -12,9 +12,14 @@ import pg from "pg";
 import * as schema from "@shared/schema";
 
 const { Pool } = pg;
+const isProduction = process.env.NODE_ENV === 'production';
+const databaseUrl = (process.env.DATABASE_URL || "").trim();
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL must be set. Did you forget to provision a database?");
+if (!databaseUrl) {
+  if (isProduction) {
+    throw new Error("[db] DATABASE_URL is required in production");
+  }
+  console.error("[db] WARNING: DATABASE_URL not set — DB operations will fail at runtime");
 }
 
 function normalizeDatabaseUrl(connectionString: string): string {
@@ -32,22 +37,30 @@ function normalizeDatabaseUrl(connectionString: string): string {
   }
 }
 
-// Cloud DBs (Neon, Supabase, Railway) use intermediate CAs that trigger Node.js SSL errors.
-// Fix: disable cert rejection at pool level only (not globally — global setting breaks all HTTPS).
-const isLocalDb = (process.env.DATABASE_URL || "").match(/localhost|127\.0\.0\.1/);
-const isProduction = process.env.NODE_ENV === 'production';
-const normalizedDatabaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL);
+const isLocalDb = databaseUrl.match(/localhost|127\.0\.0\.1/);
+const normalizedDatabaseUrl = normalizeDatabaseUrl(databaseUrl);
+const databaseCaCert = (process.env.DATABASE_CA_CERT || process.env.DB_CA_CERT || "")
+  .replace(/\\n/g, "\n")
+  .trim();
+const rejectUnauthorized =
+  String(process.env.DB_SSL_REJECT_UNAUTHORIZED || (databaseCaCert ? "true" : "false")).toLowerCase() !== "false";
+const sslConfig = isLocalDb ? false : {
+  rejectUnauthorized,
+  ...(databaseCaCert ? { ca: databaseCaCert } : {}),
+};
 
-// Keep production pool conservative so startup jobs do not exhaust managed DB limits.
-// Development can still use a slightly higher ceiling for local workflows.
-const maxConnections = isProduction ? 10 : 20;
+// Neon serverless needs enough connections to handle concurrent request bursts.
+// 10 was too low — production peaks can exhaust the pool causing queue buildup.
+// Increased to 25 for production, 15 for dev to handle multiple async startup operations.
+const maxConnections = Number(process.env.DB_POOL_MAX || (isProduction ? "25" : "15"));
 
 export const pool = new Pool({
   connectionString: normalizedDatabaseUrl,
-  ssl: isLocalDb ? false : { rejectUnauthorized: false },
+  ssl: sslConfig,
   max: maxConnections,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,  // Fail fast instead of hanging (was 10000ms)
+  connectionTimeoutMillis: 8000,
+  statement_timeout: 10000,
   allowExitOnIdle: false,
   application_name: 'jago-api',   // For debugging in pg_stat_statements
 });
@@ -57,7 +70,9 @@ pool.on("error", (err) => {
 });
 
 pool.on("connect", () => {
-  console.debug("[DB] New connection established, pool size:", pool.totalCount);
+  if (!isProduction) {
+    console.debug("[DB] New connection established, pool size:", pool.totalCount);
+  }
 });
 
 export const db = drizzle(pool, { schema });

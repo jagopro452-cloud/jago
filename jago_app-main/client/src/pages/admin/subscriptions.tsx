@@ -1,7 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { adminFetch, queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { adminConfirm } from "./components/AdminPrimitives";
 
 const PLAN_TYPES = [
   { value: "ride", label: "Ride", icon: "bi-car-front-fill", color: "#1a73e8", bg: "#e8f0fe" },
@@ -108,7 +109,7 @@ export default function SubscriptionsPage() {
 
   const { data, isLoading } = useQuery<any[]>({
     queryKey: ["/api/subscription-plans"],
-    queryFn: () => fetch("/api/subscription-plans").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
+    queryFn: () => adminFetch("/api/subscription-plans").then(r => r.ok ? r.json() : r.json().then(d => { throw new Error(d?.message || "Error") })).then(d => Array.isArray(d) ? d : (d?.data && Array.isArray(d.data) ? d.data : [])),
   });
   const plans = Array.isArray(data) ? data : [];
 
@@ -127,17 +128,19 @@ export default function SubscriptionsPage() {
       setShowModal(false); setEditing(null);
       toast({ title: editing ? "Plan updated" : "Plan created" });
     },
-    onError: () => toast({ title: "Failed to save", variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Failed to save", description: e.message, variant: "destructive" }),
   });
 
   const toggle = useMutation({
     mutationFn: ({ id, isActive }: any) => apiRequest("PATCH", `/api/subscription-plans/${id}`, { isActive }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/subscription-plans"] }),
+    onError: (e: any) => { queryClient.invalidateQueries({ queryKey: ["/api/subscription-plans"] }); toast({ title: "Toggle failed", description: e.message, variant: "destructive" }); },
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => apiRequest("DELETE", `/api/subscription-plans/${id}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/subscription-plans"] }); toast({ title: "Deleted" }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/subscription-plans"] }); toast({ title: "Plan deleted" }); },
+    onError: (e: any) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
   });
 
   const openAdd = () => {
@@ -232,7 +235,7 @@ export default function SubscriptionsPage() {
               {filtered.map(plan => (
                 <PlanCard key={plan.id} plan={plan}
                   onEdit={openEdit}
-                  onDelete={(id: string) => { if (confirm("Delete plan?")) remove.mutate(id); }}
+                  onDelete={async (id: string) => { if (await adminConfirm("Delete subscription plan?")) remove.mutate(id); }}
                   onToggle={(id: string, isActive: boolean) => toggle.mutate({ id, isActive })}
                 />
               ))}

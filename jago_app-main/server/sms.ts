@@ -1,54 +1,171 @@
-/**
- * SMS delivery via smslogin.co XML API v3.
- * Credentials are loaded from business_settings DB into process.env at startup.
- * Required env vars: SMSLOGIN_USERNAME, SMSLOGIN_API_KEY, SMSLOGIN_SENDER_ID
- */
+import { getConf } from "./config-db";
 
-const SMS_URL = "https://smslogin.co/v3/xmlapi.php";
+function normalizeIndianPhone(phone: string): string {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (digits.length <= 10) return digits;
+  return digits.slice(-10);
+}
 
-export async function sendCustomSms(phone: string, text: string): Promise<boolean> {
-  const username = process.env.SMSLOGIN_USERNAME?.trim();
-  const apiKey   = process.env.SMSLOGIN_API_KEY?.trim();
-  const senderId = process.env.SMSLOGIN_SENDER_ID?.trim();
+type SmsMeta = {
+  purpose?: string;
+  userType?: string;
+};
 
-  if (!username || !apiKey || !senderId) {
-    console.warn(`[SMS] Credentials not set (SMSLOGIN_USERNAME/API_KEY/SENDER_ID) — skipping SMS to ${phone}`);
-    return false;
-  }
-
-  // Normalise to 10-digit number (smslogin expects local 10-digit)
-  const mobile = phone.replace(/\D/g, "").replace(/^91/, "").slice(-10);
-  if (mobile.length !== 10) {
-    console.warn(`[SMS] Invalid phone number: ${phone}`);
-    return false;
-  }
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?><xmlapi><auth><username>${username}</username><apikey>${apiKey}</apikey></auth><sendSMS><mobile>${mobile}</mobile><message>${escapeXml(text)}</message></sendSMS><options><senderid>${senderId}</senderid></options></xmlapi>`;
-
-  const url = `${SMS_URL}?data=${encodeURIComponent(xml)}`;
+async function sendViaTwilio(phone: string, text: string): Promise<boolean> {
+  const accountSid = await getConf("TWILIO_ACCOUNT_SID", "twilio_account_sid");
+  const authToken = await getConf("TWILIO_AUTH_TOKEN", "twilio_auth_token");
+  const fromNumber = await getConf("TWILIO_PHONE_NUMBER", "twilio_phone_number");
+  if (!accountSid || !authToken || !fromNumber) return false;
 
   try {
-    const res  = await fetch(url, { method: "GET" });
-    const body = await res.text();
-
-    if (body.includes("<success>")) {
-      console.log(`[SMS] Delivered to ******${mobile.slice(-4)}`);
-      return true;
-    }
-
-    console.error(`[SMS] smslogin error: ${body.slice(0, 300)}`);
-    return false;
-  } catch (e: any) {
-    console.error(`[SMS] Network error: ${e.message}`);
+    const twilioModule = await import("twilio");
+    const twilioFactory = (twilioModule.default ?? twilioModule) as any;
+    const client = twilioFactory(accountSid, authToken);
+    await client.messages.create({
+      body: text,
+      from: fromNumber,
+      to: `+91${phone}`,
+    });
+    return true;
+  } catch (error: any) {
+    console.warn(`[SMS] Twilio send failed: ${error?.message || error}`);
     return false;
   }
 }
 
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+async function sendViaFast2Sms(phone: string, text: string): Promise<boolean> {
+  const apiKey = await getConf("FAST2SMS_API_KEY", "fast2sms_api_key");
+  if (!apiKey) return false;
+
+  try {
+    const response = await fetch("https://www.fast2sms.com/dev/bulkV2", {
+      method: "POST",
+      headers: {
+        authorization: apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        route: "q",
+        message: text,
+        language: "english",
+        flash: 0,
+        numbers: phone,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      console.warn(`[SMS] Fast2SMS HTTP ${response.status}: ${body}`);
+      return false;
+    }
+
+    const payload = await response.json().catch(() => null) as any;
+    const ok = payload?.return === true || payload?.message?.some?.((item: string) => /sms sent/i.test(item));
+    if (!ok) {
+      console.warn(`[SMS] Fast2SMS rejected payload: ${JSON.stringify(payload)}`);
+    }
+    return !!ok;
+  } catch (error: any) {
+    console.warn(`[SMS] Fast2SMS send failed: ${error?.message || error}`);
+    return false;
+  }
+}
+
+async function sendViaSmsLogin(phone: string, text: string, meta: SmsMeta = {}): Promise<boolean> {
+  const apiUrl = await getConf("SMSLOGIN_API_URL", "smslogin_api_url");
+  const apiKey = await getConf("SMSLOGIN_API_KEY", "smslogin_api_key");
+  const senderId = await getConf("SMSLOGIN_SENDER_ID", "smslogin_sender_id");
+  const route = await getConf("SMSLOGIN_ROUTE", "smslogin_route");
+  const templateId = await getConf("SMSLOGIN_TEMPLATE_ID", "smslogin_template_id");
+  const entityId = await getConf("SMSLOGIN_ENTITY_ID", "smslogin_entity_id");
+  if (!apiUrl || !apiKey || !senderId) return false;
+
+  const params = new URLSearchParams();
+  params.set("api_key", apiKey);
+  params.set("sender_id", senderId);
+  params.set("number", phone);
+  params.set("message", text);
+  params.set("purpose", meta.purpose || "transactional");
+  params.set("user_type", meta.userType || "customer");
+  if (route) params.set("route", route);
+  if (templateId) params.set("template_id", templateId);
+  if (entityId) params.set("entity_id", entityId);
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: params.toString(),
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      console.warn(`[SMS] SMSLogin HTTP ${response.status}: ${body}`);
+      return false;
+    }
+
+    const raw = await response.text().catch(() => "");
+    const body = raw.trim();
+    if (!body) return true;
+
+    try {
+      const payload = JSON.parse(body) as any;
+      const ok =
+        payload?.success === true ||
+        payload?.status === true ||
+        String(payload?.status || "").toLowerCase() === "success" ||
+        String(payload?.message || "").toLowerCase().includes("success");
+      if (!ok) {
+        console.warn(`[SMS] SMSLogin rejected payload: ${body}`);
+      }
+      return !!ok;
+    } catch {
+      const ok = /success|sent|queued|accepted/i.test(body);
+      if (!ok) {
+        console.warn(`[SMS] SMSLogin unexpected payload: ${body}`);
+      }
+      return ok;
+    }
+  } catch (error: any) {
+    console.warn(`[SMS] SMSLogin send failed: ${error?.message || error}`);
+    return false;
+  }
+}
+
+export async function sendCustomSms(phone: string, text: string, meta: SmsMeta = {}): Promise<boolean> {
+  const normalizedPhone = normalizeIndianPhone(phone);
+  if (normalizedPhone.length !== 10) {
+    console.warn(`[SMS] Invalid phone for SMS: ${phone}`);
+    return false;
+  }
+
+  if (String(process.env.AUTH_DEV_CONSOLE_SMS || "").trim().toLowerCase() === "true") {
+    console.log(`[SMS-DEV] Sending to ${normalizedPhone}: ${text}`);
+    return true;
+  }
+
+  if (await sendViaTwilio(normalizedPhone, text)) {
+    console.log(`[SMS] Sent via Twilio to ${normalizedPhone}`);
+    return true;
+  }
+
+  if (await sendViaSmsLogin(normalizedPhone, text, meta)) {
+    console.log(`[SMS] Sent via SMSLogin to ${normalizedPhone}`);
+    return true;
+  }
+
+  if (await sendViaFast2Sms(normalizedPhone, text)) {
+    console.log(`[SMS] Sent via Fast2SMS to ${normalizedPhone}`);
+    return true;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[SMS-DEV] Sending to ${normalizedPhone}: ${text}`);
+    return true;
+  }
+
+  console.warn(`[SMS] No SMS provider configured for ${normalizedPhone}`);
+  return false;
 }

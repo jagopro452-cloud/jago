@@ -152,9 +152,9 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
           const SizedBox(height: 8),
           Text(
             rewardType == 'coins'
-              ? '${rewardAmount?.toInt() ?? 0} JAGO Pro Coins meeru wallet ki add chesamu!'
+              ? '${rewardAmount?.toInt() ?? 0} Jago Coins meeru wallet ki add chesamu!'
               : rewardType == 'wallet'
-                ? '₹${rewardAmount ?? 0} meeru JAGO Pro Wallet ki add chesamu!'
+                ? '₹${rewardAmount ?? 0} meeru Jago Wallet ki add chesamu!'
                 : 'Better luck next time!',
             textAlign: TextAlign.center,
             style: const TextStyle(color: Colors.grey, fontSize: 13),
@@ -285,7 +285,7 @@ class _SpinWheelScreenState extends State<SpinWheelScreen>
             const SizedBox(height: 10),
             for (final tip in [
               '🎯 Roju okasari spin free ga available',
-              '🪙 JAGO Pro Coins win cheste wallet ki credit avutayi',
+              '🪙 Jago Coins win cheste wallet ki credit avutayi',
               '💰 Wallet cash win cheste instantly add avutundi',
               '⭐ More rides → more daily rewards!',
             ])

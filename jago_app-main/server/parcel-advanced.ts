@@ -16,9 +16,12 @@
 
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
-import { sendFcmNotification } from "./fcm";
+import { assertSchemaObjectsOrThrow } from "./schema-health";
+import { notifyUser } from "./notification-service";
 // Removed legacy SMS notification logic. Only FCM and socket notifications are supported.
 import { io } from "./socket";
+import { activeDriverEligibilitySql } from "./driver-state";
+import { uuidArraySql } from "./vehicle-matching";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -151,8 +154,8 @@ const SLA_ESTIMATES: Record<string, { baseMinutes: number; perKmMinutes: number 
   tata_ace:      { baseMinutes: 30, perKmMinutes: 4 },
   pickup_truck:  { baseMinutes: 45, perKmMinutes: 5 },
   auto_parcel:   { baseMinutes: 20, perKmMinutes: 3.5 },
-  cargo_car:     { baseMinutes: 35, perKmMinutes: 4 },
   bolero_cargo:  { baseMinutes: 45, perKmMinutes: 5 },
+  tempo_407:     { baseMinutes: 55, perKmMinutes: 6 },
 };
 
 export function calculateExpectedDeliveryMinutes(
@@ -226,20 +229,23 @@ export async function notifyReceiver(opts: {
   // FCM push if receiver is a registered user
   try {
     const userR = await rawDb.execute(rawSql`
-      SELECT ud.fcm_token
+      SELECT u.id as user_id, ud.fcm_token
       FROM users u
       JOIN user_devices ud ON ud.user_id = u.id
       WHERE u.phone = ${receiverPhone}
         AND ud.fcm_token IS NOT NULL
       LIMIT 1
     `);
-    const fcmToken = (userR.rows[0] as any)?.fcm_token;
-    if (fcmToken) {
-      await sendFcmNotification({
-        fcmToken,
-        title: eventType === "delivered" ? "📦 Parcel Delivered!" : "📦 Parcel Update",
+    const targetUserId = (userR.rows[0] as any)?.user_id;
+    if (targetUserId) {
+      await notifyUser(String(targetUserId), "parcel:update", {
+        type: "parcel_update",
+        orderId,
+        eventType,
+        message: smsBody,
+      }, {
+        title: eventType === "delivered" ? "Parcel Delivered!" : "Parcel Update",
         body: smsBody,
-        data: { type: "parcel_update", orderId, eventType },
         channelId: "parcel_updates",
       });
     }
@@ -483,12 +489,12 @@ export function emitParcelLifecycle(
  * with no mapping is rejected outright.
  */
 const PARCEL_VEHICLE_DRIVER_MAP: Record<string, string[]> = {
-  bike_parcel:   ["bike"],
-  auto_parcel:   ["auto"],
-  tata_ace:      ["mini_truck", "tempo"],
-  pickup_truck:  ["truck"],
-  cargo_car:     ["car"],
-  bolero_cargo:  ["truck"],
+  bike_parcel:   ["bike_parcel", "bike parcel", "parcel_bike", "bike_delivery", "bike delivery"],
+  auto_parcel:   ["auto_parcel", "auto parcel", "parcel_auto", "auto_delivery", "auto delivery", "mini_cargo_auto"],
+  tata_ace:      ["tata_ace", "tata ace"],
+  pickup_truck:  ["pickup_truck", "pickup truck"],
+  bolero_cargo:  ["bolero_cargo", "bolero pickup", "bolero cargo"],
+  tempo_407:     ["tempo_407", "tempo 407", "tata 407 / tempo"],
 };
 
 // 60s in-memory cache for parcel_key → vehicle_category_id[] resolution.
@@ -506,8 +512,8 @@ async function resolveAllowedCategoryIds(parcelKey: string): Promise<string[]> {
   const lowered = allowedNames.map((t) => t.toLowerCase());
   const r = await rawDb.execute(rawSql`
     SELECT id FROM vehicle_categories
-    WHERE LOWER(name) = ANY(${lowered})
-       OR LOWER(slug) = ANY(${lowered})
+    WHERE REGEXP_REPLACE(LOWER(name), '[^a-z0-9]+', '_', 'g') = ANY(${lowered})
+       OR REGEXP_REPLACE(LOWER(COALESCE(vehicle_type, '')), '[^a-z0-9]+', '_', 'g') = ANY(${lowered})
   `).catch(() => ({ rows: [] as any[] }));
 
   const ids = (r.rows as any[]).map((row) => String(row.id));
@@ -563,7 +569,7 @@ export async function findParcelCapableDriversDetailed(
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const safeExclude = excludeDriverIds.filter((id) => uuidRe.test(id));
   const excludeClause = safeExclude.length > 0
-    ? rawSql`AND NOT (u.id = ANY(${safeExclude}::uuid[]))`
+    ? rawSql`AND NOT (u.id = ANY(${uuidArraySql(safeExclude)}))`
     : rawSql``;
 
   const categoryIds = await resolveAllowedCategoryIds(vehicleCategory);
@@ -592,14 +598,12 @@ export async function findParcelCapableDriversDetailed(
     JOIN driver_details dd ON dd.user_id = u.id
     LEFT JOIN driver_behavior_scores dbs ON dbs.driver_id = u.id
     WHERE u.user_type = 'driver'
-      AND u.is_active = true
-      AND u.is_locked = false
+      AND ${activeDriverEligibilitySql("u")}
       AND dl.is_online = true
       AND u.current_trip_id IS NULL
-      AND u.verification_status = 'approved'
       AND dl.lat != 0 AND dl.lng != 0
       AND dl.updated_at > NOW() - INTERVAL '30 seconds'
-      AND dd.vehicle_category_id = ANY(${categoryIds}::uuid[])
+      AND dd.vehicle_category_id = ANY(${uuidArraySql(categoryIds)})
       ${excludeClause}
       AND SQRT(
         POW((dl.lat - ${Number(pickupLat)}) * 111.32, 2) +
@@ -643,7 +647,7 @@ export async function findParcelCapableDriversDetailed(
         if (row.is_locked) reasons.push("locked");
         if (!row.dl_online) reasons.push("offline");
         if (row.current_trip_id) reasons.push("busy");
-        if (row.verification_status !== "approved") reasons.push("not_verified");
+        if (row.verification_status !== "approved") reasons.push("not_active");
         if (Number(row.lat) === 0 && Number(row.lng) === 0) reasons.push("gps_invalid");
         const mins = row.updated_at
           ? (Date.now() - new Date(row.updated_at).getTime()) / 1000
@@ -672,91 +676,9 @@ export async function findParcelCapableDriversDetailed(
 // ── DB Table Initialization ──────────────────────────────────────────────────
 
 export async function initParcelAdvancedTables(): Promise<void> {
-  // Proof of delivery table
-  await rawDb.execute(rawSql`
-    CREATE TABLE IF NOT EXISTS parcel_delivery_proofs (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      order_id UUID NOT NULL,
-      drop_index INTEGER NOT NULL DEFAULT 0,
-      photo_url TEXT,
-      signature_url TEXT,
-      delivered_to VARCHAR(255),
-      driver_id UUID NOT NULL,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(order_id, drop_index)
-    )
-  `).catch(() => {});
+  await assertSchemaObjectsOrThrow({
+    tables: ["parcel_delivery_proofs", "parcel_prohibited_items", "b2b_webhook_logs", "b2b_companies", "parcel_orders", "business_settings"],
+  });
 
-  // Prohibited items table
-  await rawDb.execute(rawSql`
-    CREATE TABLE IF NOT EXISTS parcel_prohibited_items (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      item_name VARCHAR(255) NOT NULL,
-      category VARCHAR(100) DEFAULT 'general',
-      is_active BOOLEAN DEFAULT true,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `).catch(() => {});
-
-  // Seed default prohibited items
-  for (const item of DEFAULT_PROHIBITED) {
-    await rawDb.execute(rawSql`
-      INSERT INTO parcel_prohibited_items (item_name, category)
-      VALUES (${item}, 'general')
-      ON CONFLICT DO NOTHING
-    `).catch(() => {});
-  }
-
-  // B2B webhook logs
-  await rawDb.execute(rawSql`
-    CREATE TABLE IF NOT EXISTS b2b_webhook_logs (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      company_id UUID NOT NULL,
-      event_type VARCHAR(50) NOT NULL,
-      order_id UUID,
-      payload JSONB,
-      status VARCHAR(20) DEFAULT 'pending',
-      response_code INTEGER,
-      delivered_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `).catch(() => {});
-
-  // Add columns to b2b_companies for webhooks
-  await rawDb.execute(rawSql`
-    ALTER TABLE b2b_companies
-    ADD COLUMN IF NOT EXISTS webhook_url TEXT,
-    ADD COLUMN IF NOT EXISTS webhook_secret VARCHAR(255)
-  `).catch(() => {});
-
-  // Add parcel dimension columns to parcel_orders
-  await rawDb.execute(rawSql`
-    ALTER TABLE parcel_orders
-    ADD COLUMN IF NOT EXISTS length_cm NUMERIC(8,2),
-    ADD COLUMN IF NOT EXISTS width_cm NUMERIC(8,2),
-    ADD COLUMN IF NOT EXISTS height_cm NUMERIC(8,2),
-    ADD COLUMN IF NOT EXISTS volumetric_weight_kg NUMERIC(8,2),
-    ADD COLUMN IF NOT EXISTS billable_weight_kg NUMERIC(8,2),
-    ADD COLUMN IF NOT EXISTS declared_value NUMERIC(10,2) DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS is_fragile BOOLEAN DEFAULT false,
-    ADD COLUMN IF NOT EXISTS insurance_enabled BOOLEAN DEFAULT false,
-    ADD COLUMN IF NOT EXISTS insurance_premium NUMERIC(10,2) DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS parcel_description TEXT,
-    ADD COLUMN IF NOT EXISTS expected_delivery_minutes INTEGER,
-    ADD COLUMN IF NOT EXISTS proof_of_delivery JSONB,
-    ADD COLUMN IF NOT EXISTS sla_breached BOOLEAN DEFAULT false,
-    ADD COLUMN IF NOT EXISTS load_charge NUMERIC(10,2) DEFAULT 0
-  `).catch(() => {});
-
-  // Insurance settings in business_settings
-  await rawDb.execute(rawSql`
-    INSERT INTO business_settings (key_name, value, settings_type)
-    VALUES
-      ('parcel_insurance_standard_rate', '{"rate":0.02,"maxCoverage":50000}', 'parcel_settings'),
-      ('parcel_insurance_fragile_rate', '{"rate":0.035,"maxCoverage":25000}', 'parcel_settings')
-    ON CONFLICT (key_name) DO NOTHING
-  `).catch(() => {});
-
-  console.log("[PARCEL-ADV] Advanced parcel tables initialized");
+  console.log("[PARCEL-ADV] Schema verified");
 }

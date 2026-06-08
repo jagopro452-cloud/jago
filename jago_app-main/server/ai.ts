@@ -1,7 +1,8 @@
 
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
-import { getMatchingDriverCategoryIds } from "./vehicle-matching";
+import { activeDriverEligibilitySql } from "./driver-state";
+import { getMatchingDriverCategoryIds, uuidArraySql } from "./vehicle-matching";
 
 // ----------------------------------------------------------------------------
 //  JAGO Pro AI Intelligence Layer
@@ -162,6 +163,23 @@ export interface DriverMatchScore {
   avgResponseTimeSec: number;
   score: number;
   fcmToken?: string;
+  scoreBreakdown?: {
+    distance: number;
+    eta: number;
+    behavior: number;
+    rating: number;
+    responseSpeed: number;
+    completionRate: number;
+    idleBonus: number;
+    final: number;
+    etaMinutes?: number;
+    locationAgeSeconds?: number;
+  };
+}
+
+interface FindBestDriversOptions {
+  allowUnfiltered?: boolean;
+  debugContext?: string;
 }
 
 const MATCH_WEIGHTS = {
@@ -176,8 +194,17 @@ export async function findBestDrivers(
   pickupLng: number,
   vehicleCategoryId?: string,
   excludeDriverIds: string[] = [],
-  limit: number = 5
+  limit: number = 5,
+  options: FindBestDriversOptions = {},
 ): Promise<DriverMatchScore[]> {
+  if (!vehicleCategoryId && !options.allowUnfiltered) {
+    console.error(
+      `[AI_MATCH] Refusing unfiltered driver query context=${options.debugContext || "default"} ` +
+        `pickup=${pickupLat},${pickupLng}`,
+    );
+    return [];
+  }
+
   const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const safeIds = excludeDriverIds.filter(id => uuidRe.test(id));
   const excludeClause = safeIds.length > 0
@@ -186,10 +213,10 @@ export async function findBestDrivers(
   const matchingCategoryIds = await getMatchingDriverCategoryIds(vehicleCategoryId);
 
   const vcFilter = matchingCategoryIds?.length
-    ? rawSql`AND dd.vehicle_category_id = ANY(${matchingCategoryIds}::uuid[])`
+    ? rawSql`AND dd.vehicle_category_id = ANY(${uuidArraySql(matchingCategoryIds)})`
     : vehicleCategoryId
-    ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
-    : rawSql``;
+      ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid`
+      : rawSql``;
 
   const drivers = await rawDb.execute(rawSql`
     SELECT
@@ -206,11 +233,13 @@ export async function findBestDrivers(
     FROM users u
     JOIN driver_locations dl ON dl.driver_id = u.id
     JOIN driver_details dd ON dd.user_id = u.id
+    LEFT JOIN vehicle_categories vc ON vc.id = dd.vehicle_category_id
     LEFT JOIN driver_stats ds ON ds.driver_id = u.id
-    WHERE u.user_type='driver' AND u.is_active=true AND u.is_locked=false
+    WHERE u.user_type='driver' AND ${activeDriverEligibilitySql("u")}
       AND dl.is_online=true AND u.current_trip_id IS NULL
-      AND u.verification_status='approved'
-      AND dl.updated_at > NOW() - INTERVAL '30 seconds'
+      AND COALESCE(dd.availability_status, 'offline') = 'online'
+      AND dl.updated_at > NOW() - INTERVAL '2 minutes'
+      AND (dl.lat <> 0 OR dl.lng <> 0)
       ${vcFilter}
       ${excludeClause}
       AND SQRT(
@@ -221,7 +250,24 @@ export async function findBestDrivers(
     LIMIT ${limit * 2}
   `);
 
-  if (!drivers.rows.length) return [];
+  if (!drivers.rows.length) {
+    try {
+      const diag = await rawDb.execute(rawSql`
+        SELECT
+          (SELECT COUNT(*) FROM users WHERE user_type='driver' AND is_active=true AND is_locked=false) as total_active_drivers,
+          (SELECT COUNT(*) FROM driver_locations WHERE is_online=true) as online_drivers,
+          (SELECT COUNT(*) FROM driver_locations WHERE is_online=true AND updated_at > NOW() - INTERVAL '2 minutes') as recent_online,
+          (SELECT COUNT(*) FROM driver_locations WHERE is_online=true AND (lat <> 0 OR lng <> 0)) as online_with_gps,
+          (SELECT COUNT(*) FROM users u JOIN driver_details dd ON dd.user_id=u.id
+            WHERE u.user_type='driver' AND ${activeDriverEligibilitySql("u")}
+              ${matchingCategoryIds?.length ? rawSql`AND dd.vehicle_category_id = ANY(${uuidArraySql(matchingCategoryIds)})` : vehicleCategoryId ? rawSql`AND dd.vehicle_category_id = ${vehicleCategoryId}::uuid` : rawSql``}
+          ) as matching_category
+      `);
+      const d = (diag.rows[0] as any) || {};
+      console.log(`[DISPATCH_NO_MATCH] pickup=${pickupLat},${pickupLng} vehicleCategoryId=${vehicleCategoryId || 'any'} totals=${JSON.stringify(d)}`);
+    } catch (_) {}
+    return [];
+  }
 
   const scored: DriverMatchScore[] = drivers.rows.map((row: any) => {
     const d = camelize(row);
@@ -364,7 +410,7 @@ export async function getSmartSuggestions(userId: string, currentHour?: number):
       const alreadyExists = suggestions.some(s => s.destLat === Number(r.lat) && s.destLng === Number(r.lng));
       if (!alreadyExists && r.label) {
         const isRelevant = (r.label === "Work" && hour >= 7 && hour <= 10) ||
-                          (r.label === "Home" && hour >= 17 && hour <= 22);
+          (r.label === "Home" && hour >= 17 && hour <= 22);
         if (isRelevant) {
           suggestions.push({
             type: "time_based",
@@ -693,66 +739,16 @@ export function clearTripWaypoints(tripId: string): void {
 // -- 8. DB TABLES INITIALIZATION ------------------------------------------
 export async function initAiTables(): Promise<void> {
   try {
-    // Needed for gen_random_uuid() defaults used by AI tables.
-    await rawDb.execute(rawSql`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
-
-    await rawDb.execute(rawSql`
-      CREATE TABLE IF NOT EXISTS driver_stats (
-        driver_id UUID PRIMARY KEY,
-        total_trips INT DEFAULT 0,
-        completed_trips INT DEFAULT 0,
-        cancelled_trips INT DEFAULT 0,
-        avg_response_time_sec FLOAT DEFAULT 60,
-        completion_rate FLOAT DEFAULT 0.8,
-        avg_rating FLOAT DEFAULT 4.0,
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-
-    await rawDb.execute(rawSql`
-      CREATE TABLE IF NOT EXISTS ai_safety_alerts (
-        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-        trip_id UUID,
-        driver_id UUID,
-        customer_id UUID,
-        alert_type VARCHAR(50) NOT NULL,
-        severity VARCHAR(20) DEFAULT 'medium',
-        message TEXT,
-        lat DOUBLE PRECISION,
-        lng DOUBLE PRECISION,
-        acknowledged BOOLEAN DEFAULT false,
-        resolved BOOLEAN DEFAULT false,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-
-    await rawDb.execute(rawSql`
-      CREATE TABLE IF NOT EXISTS demand_predictions (
-        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-        zone_id UUID,
-        zone_name VARCHAR(255),
-        demand_level VARCHAR(20),
-        active_requests INT DEFAULT 0,
-        available_drivers INT DEFAULT 0,
-        surge_multiplier FLOAT DEFAULT 1.0,
-        prediction TEXT,
-        recorded_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-
-    await rawDb.execute(rawSql`
-      CREATE INDEX IF NOT EXISTS idx_driver_stats_driver ON driver_stats(driver_id)
-    `);
-
-    await rawDb.execute(rawSql`
-      CREATE INDEX IF NOT EXISTS idx_ai_safety_trip ON ai_safety_alerts(trip_id)
-    `);
-
-    await rawDb.execute(rawSql`
-      CREATE INDEX IF NOT EXISTS idx_ai_safety_unresolved ON ai_safety_alerts(resolved, created_at DESC)
-    `);
-
-    console.log("[AI] Tables initialized");
+    const { assertSchemaObjectsOrThrow } = await import("./schema-health");
+    await assertSchemaObjectsOrThrow({
+      tables: ["driver_stats", "ai_safety_alerts", "demand_predictions"],
+      indexes: [
+        { table: "driver_stats", pattern: "%driver_id%", description: "driver_stats driver index" },
+        { table: "ai_safety_alerts", pattern: "%trip_id%", description: "ai_safety_alerts trip index" },
+        { table: "ai_safety_alerts", pattern: "%resolved%created_at%", description: "ai_safety_alerts unresolved index" },
+      ],
+    });
+    console.log("[AI] Tables verified");
   } catch (e: any) {
     console.error("[AI] Table init error:", formatDbError(e));
   }
@@ -781,11 +777,20 @@ export async function refreshAllDriverStats(): Promise<void> {
 export async function autoOfflineInactiveDrivers(): Promise<void> {
   try {
     const r = await rawDb.execute(rawSql`
-      UPDATE driver_locations
+      UPDATE driver_locations dl
       SET is_online = false
-      WHERE is_online = true
-        AND updated_at < NOW() - INTERVAL '5 minutes'
-      RETURNING driver_id
+      FROM users u
+      WHERE dl.driver_id = u.id
+        AND dl.is_online = true
+        AND dl.updated_at < NOW() - INTERVAL '5 minutes'
+        AND u.current_trip_id IS NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM trip_requests tr
+          WHERE tr.driver_id = dl.driver_id
+            AND tr.current_status IN ('accepted', 'arrived', 'on_the_way', 'payment_pending')
+        )
+      RETURNING dl.driver_id
     `);
     if (r.rows.length > 0) {
       const ids = (r.rows as any[]).map(row => row.driver_id);
@@ -793,7 +798,7 @@ export async function autoOfflineInactiveDrivers(): Promise<void> {
       for (const driverId of ids) {
         await rawDb.execute(rawSql`
           UPDATE users SET is_online = false WHERE id = ${driverId}::uuid
-        `).catch(() => {});
+        `).catch(() => { });
       }
       console.log(`[AI] Auto-offlined ${r.rows.length} inactive drivers: ${ids.join(', ')}`);
     }

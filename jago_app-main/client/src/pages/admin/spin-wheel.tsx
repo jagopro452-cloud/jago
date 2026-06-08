@@ -2,6 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { adminConfirm } from "./components/AdminPrimitives";
 
 export default function SpinWheelPage() {
   const { toast } = useToast();
@@ -23,7 +24,7 @@ export default function SpinWheelPage() {
       toast({ title: editing ? "Updated" : "Created" });
       setEditing(null);
     },
-    onError: () => toast({ title: "Failed to save", variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Failed to save", description: e.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -32,16 +33,14 @@ export default function SpinWheelPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/spin-wheel"] });
       toast({ title: "Deleted" });
     },
+    onError: (e: any) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
   });
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       apiRequest("PATCH", `/api/spin-wheel/${id}`, { isActive }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/spin-wheel"] });
-      toast({ title: "Status updated" });
-    },
-    onError: () => toast({ title: "Failed to update status", variant: "destructive" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/spin-wheel"] }),
+    onError: (e: any) => { queryClient.invalidateQueries({ queryKey: ["/api/spin-wheel"] }); toast({ title: "Toggle failed", description: e.message, variant: "destructive" }); },
   });
 
   return (
@@ -90,17 +89,15 @@ export default function SpinWheelPage() {
                       <td>₹{item.rewardAmount}</td>
                       <td className="text-capitalize">{item.rewardType}</td>
                       <td>{item.probability}%</td>
-                      <td><span className={`badge ${item.isActive ? "bg-success" : "bg-secondary"}`}>{item.isActive ? "Active" : "Inactive"}</span></td>
                       <td>
-                        <button
-                          className={`btn btn-sm me-1 ${item.isActive ? "btn-outline-warning" : "btn-outline-success"}`}
-                          onClick={() => toggleMutation.mutate({ id: item.id, isActive: !item.isActive })}
-                          title={item.isActive ? "Deactivate" : "Activate"}
-                        >
-                          <i className={`bi ${item.isActive ? "bi-toggle-on" : "bi-toggle-off"}`}></i>
-                        </button>
+                        <label className="switcher">
+                          <input className="switcher_input" type="checkbox" checked={!!item.isActive} onChange={e => toggleMutation.mutate({ id: item.id, isActive: e.target.checked })} />
+                          <span className="switcher_control"></span>
+                        </label>
+                      </td>
+                      <td>
                         <button className="btn btn-sm btn-outline-primary me-1" onClick={() => { setEditing(item); setForm({ label: item.label, rewardAmount: item.rewardAmount, rewardType: item.rewardType, probability: item.probability, isActive: item.isActive }); setShowModal(true); }}><i className="bi bi-pencil-fill"></i></button>
-                        <button className="btn btn-sm btn-outline-danger" onClick={() => { if (confirm("Delete?")) deleteMutation.mutate(item.id); }}><i className="bi bi-trash-fill"></i></button>
+                        <button className="btn btn-sm btn-outline-danger" onClick={async () => { if (await adminConfirm("Delete this spin wheel slot?")) deleteMutation.mutate(item.id); }}><i className="bi bi-trash-fill"></i></button>
                       </td>
                     </tr>
                   ))}

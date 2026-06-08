@@ -15,6 +15,7 @@
 
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
+import { assertSchemaObjectsOrThrow } from "./schema-health";
 
 // ── In-memory LRU cache ──────────────────────────────────────────────────────
 
@@ -172,7 +173,10 @@ export async function geocodeWithCache(address: string): Promise<GeocodeResult |
 
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
-    const r = await fetch(url, { signal: controller.signal });
+    const r = await fetch(url, { 
+      signal: controller.signal,
+      headers: { 'Referer': 'https://jagopro.org' }
+    });
     if (!r.ok) return null;
     const data = await r.json() as any;
     if (data?.status !== "OK" || !data.results?.length) return null;
@@ -243,7 +247,10 @@ export async function getDistanceWithCache(
     const timeout = setTimeout(() => controller.abort(), 5000);
     try {
       const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${originLat},${originLng}&destinations=${destLat},${destLng}&key=${apiKey}`;
-      const r = await fetch(url, { signal: controller.signal });
+      const r = await fetch(url, { 
+        signal: controller.signal,
+        headers: { 'Referer': 'https://jagopro.org' }
+      });
       if (r.ok) {
         const data = await r.json() as any;
         const element = data?.rows?.[0]?.elements?.[0];
@@ -311,7 +318,10 @@ export async function getRouteWithCache(
 
   try {
     const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${originLat},${originLng}&destination=${destLat},${destLng}&key=${apiKey}`;
-    const r = await fetch(url, { signal: controller.signal });
+    const r = await fetch(url, { 
+      signal: controller.signal,
+      headers: { 'Referer': 'https://jagopro.org' }
+    });
     if (!r.ok) return null;
     const data = await r.json() as any;
 
@@ -426,39 +436,18 @@ export function clearAllCaches(): void {
 
 export async function initMapsCacheTables(): Promise<void> {
   try {
-    await rawDb.execute(rawSql`
-      CREATE TABLE IF NOT EXISTS maps_cache (
-        id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-        cache_type VARCHAR(50) NOT NULL,
-        cache_key TEXT NOT NULL,
-        lat DOUBLE PRECISION,
-        lng DOUBLE PRECISION,
-        formatted_address TEXT,
-        data_json JSONB,
-        distance_km FLOAT,
-        duration_min FLOAT,
-        expires_at TIMESTAMPTZ NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        updated_at TIMESTAMPTZ DEFAULT NOW(),
-        UNIQUE(cache_type, cache_key)
-      )
-    `);
+    await assertSchemaObjectsOrThrow({
+      tables: ["maps_cache"],
+    });
 
-    await rawDb.execute(rawSql`CREATE INDEX IF NOT EXISTS idx_maps_cache_lookup ON maps_cache(cache_type, cache_key, expires_at)`);
-    await rawDb.execute(rawSql`CREATE INDEX IF NOT EXISTS idx_maps_cache_expiry ON maps_cache(expires_at)`);
-
-    // Cleanup expired entries periodically (at startup + every 30 min)
     await rawDb.execute(rawSql`DELETE FROM maps_cache WHERE expires_at < NOW()`).catch(() => {});
 
-    console.log("[MAPS-CACHE] Tables initialized");
+    console.log("[MAPS-CACHE] Schema verified");
   } catch (e: any) {
     console.error("[MAPS-CACHE] Table init error:", e.message);
   }
 }
 
-/**
- * Start cache cleanup background job — removes expired DB cache entries every 30 minutes.
- */
 let cacheCleanupInterval: ReturnType<typeof setInterval> | null = null;
 
 export function startCacheCleanup(): void {

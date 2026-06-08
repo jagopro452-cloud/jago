@@ -14,6 +14,7 @@ import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
 import { sendNotificationWithFailsafe, logInfo, logWarn, logError, logCritical, recordNoShow, loadHardeningSettings } from "./hardening";
 import { canWalletCoverCharge } from "./utils/stability-guards";
+import { applyWalletChange } from "./revenue-engine";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BOOKING VALIDATION (Before trip_requests INSERT)
@@ -230,10 +231,13 @@ export async function validateFareAccuracy(
     const refundAmount = actualFare - cappedFare;
     
     // Refund customer
-    await rawDb.execute(rawSql`
-      UPDATE users SET wallet_balance = wallet_balance + ${refundAmount}
-      WHERE id=${customerId}::uuid
-    `).catch(() => {});
+    await applyWalletChange({
+      userId: customerId,
+      amount: refundAmount,
+      type: "CREDIT",
+      reason: "fare_cap_refund",
+      refId: tripId,
+    }).catch(() => {});
     
     await logWarn('FARE-VALIDATION', `Fare capped - customer refunded`, {
       tripId: tripId.toString().slice(0, 8),
@@ -353,10 +357,13 @@ export async function recordCustomerCancellation(
       return { penaltyApplied: false, penaltyAmount: 0 };
     }
 
-    await rawDb.execute(rawSql`
-      UPDATE users SET wallet_balance = wallet_balance - ${penaltyAmount}
-      WHERE id=${customerId}::uuid AND wallet_balance >= ${penaltyAmount}
-    `).catch(() => {});
+    await applyWalletChange({
+      userId: customerId,
+      amount: penaltyAmount,
+      type: "DEBIT",
+      reason: "customer_cancel_penalty",
+      refId: tripId,
+    }).catch(() => {});
     
     await logWarn('CANCEL-PENALTY', `Customer cancel penalty applied`, {
       customerId: customerId.toString().slice(0, 8),
@@ -522,16 +529,20 @@ export async function boostrFareOffer(
   const boostAmount = newFare - trip.estimated_fare;
   
   // Charge customer the boost amount immediately
-  const chargeR = await rawDb.execute(rawSql`
-    UPDATE users SET wallet_balance = wallet_balance - ${boostAmount}
-    WHERE id=${customerId}::uuid
-      AND wallet_balance >= ${boostAmount}
-    RETURNING wallet_balance
+  const walletR = await rawDb.execute(rawSql`
+    SELECT wallet_balance FROM users WHERE id=${customerId}::uuid LIMIT 1
   `).catch(() => ({ rows: [] as any[] }));
-  
-  if (!chargeR.rows.length) {
+  const currentBalance = parseFloat((walletR.rows[0] as any)?.wallet_balance || "0");
+  if (!canWalletCoverCharge(currentBalance, boostAmount)) {
     return { success: false, newFare: 0, error: 'Insufficient wallet balance' };
   }
+  await applyWalletChange({
+    userId: customerId,
+    amount: boostAmount,
+    type: "DEBIT",
+    reason: "fare_boost",
+    refId: tripId,
+  });
   
   // Update trip fare
   await rawDb.execute(rawSql`

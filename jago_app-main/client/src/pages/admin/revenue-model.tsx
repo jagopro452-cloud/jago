@@ -4,64 +4,51 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 const MODULE_META: Record<string, { label: string; icon: string; color: string; bg: string }> = {
-  ride:       { label: "Ride",       icon: "bi-car-front-fill",  color: "#1a73e8", bg: "#EBF4FF" },
-  parcel:     { label: "Parcel",     icon: "bi-box-seam-fill",   color: "#16a34a", bg: "#f0fdf4" },
-  carpool:    { label: "Carpool",    icon: "bi-people-fill",     color: "#7c3aed", bg: "#f5f3ff" },
-  outstation: { label: "Outstation", icon: "bi-signpost-2-fill", color: "#d97706", bg: "#fefce8" },
-  b2b:        { label: "B2B",        icon: "bi-building-fill",   color: "#0891b2", bg: "#ecfeff" },
+  ride:       { label: "Ride",       icon: "bi-car-front-fill",      color: "#1a73e8", bg: "#EBF4FF" },
+  parcel:     { label: "Parcel",     icon: "bi-box-seam-fill",       color: "#16a34a", bg: "#f0fdf4" },
+  carpool:    { label: "Carpool",    icon: "bi-people-fill",         color: "#7c3aed", bg: "#f5f3ff" },
+  outstation: { label: "Outstation", icon: "bi-signpost-2-fill",     color: "#d97706", bg: "#fefce8" },
+  b2b:        { label: "B2B",        icon: "bi-building-fill",       color: "#0891b2", bg: "#ecfeff" },
 };
 
 type ModuleConfig = {
   moduleName: string;
-  revenueModel: "commission" | "subscription" | "free";
-  commissionType: "percentage" | "flat";
+  revenueModel: "commission" | "subscription";
   commissionPercentage: number;
-  commissionFlatAmount: number;
   commissionGstPercentage: number;
   subscriptionRequired: boolean;
   isActive: boolean;
   notes: string;
 };
 
-function calcPreview(form: ModuleConfig, exFare: number) {
-  if (form.revenueModel !== "commission") return { comm: 0, gst: 0, driver: exFare };
-  const comm = form.commissionType === "flat"
-    ? form.commissionFlatAmount
-    : exFare * (form.commissionPercentage / 100);
-  const gst = comm * (form.commissionGstPercentage / 100);
-  return { comm, gst, driver: exFare - comm - gst };
-}
-
 function ModuleRow({ mod, onSaved }: { mod: ModuleConfig; onSaved: () => void }) {
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<ModuleConfig>(mod);
-  const [exFare, setExFare] = useState(200);
   const meta = MODULE_META[mod.moduleName] || { label: mod.moduleName, icon: "bi-gear", color: "#64748b", bg: "#f1f5f9" };
 
   const saveMut = useMutation({
     mutationFn: (data: any) => apiRequest("PUT", `/api/admin/module-revenue/${mod.moduleName}`, data),
-    onSuccess: () => { toast({ title: `${meta.label} saved` }); setEditing(false); onSaved(); },
+    onSuccess: () => {
+      toast({ title: `${meta.label} revenue config saved` });
+      setEditing(false);
+      onSaved();
+    },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
   const set = (key: keyof ModuleConfig, val: any) => setForm(f => ({ ...f, [key]: val }));
-  const { comm, gst, driver } = calcPreview(form, exFare);
 
-  // Display badge for current config
-  const configBadge = () => {
-    if (mod.revenueModel === "commission") {
-      return mod.commissionType === "flat"
-        ? `₹${mod.commissionFlatAmount}/ride`
-        : `${mod.commissionPercentage}%`;
-    }
-    return mod.revenueModel;
-  };
+  const eff = form.commissionPercentage;
+  const gst = form.commissionGstPercentage;
+  const exFare = 200;
+  const commAmt = exFare * (eff / 100);
+  const gstAmt = commAmt * (gst / 100);
+  const driverGet = exFare - commAmt - gstAmt;
 
   return (
     <tr style={{ verticalAlign: "middle" }}>
-      {/* Service */}
-      <td className="ps-3 py-3">
+      <td className="ps-3">
         <div className="d-flex align-items-center gap-2">
           <div className="rounded-2 d-flex align-items-center justify-content-center flex-shrink-0"
             style={{ width: 34, height: 34, background: meta.bg, color: meta.color }}>
@@ -69,12 +56,10 @@ function ModuleRow({ mod, onSaved }: { mod: ModuleConfig; onSaved: () => void })
           </div>
           <div>
             <div className="fw-semibold" style={{ fontSize: 13 }}>{meta.label}</div>
-            {mod.notes && <div className="text-muted" style={{ fontSize: 11 }}>{mod.notes}</div>}
+            {form.notes && <div className="text-muted" style={{ fontSize: 11 }}>{form.notes}</div>}
           </div>
         </div>
       </td>
-
-      {/* Config summary */}
       <td>
         {editing ? (
           <select className="form-select form-select-sm" value={form.revenueModel}
@@ -84,68 +69,49 @@ function ModuleRow({ mod, onSaved }: { mod: ModuleConfig; onSaved: () => void })
             <option value="free">Free</option>
           </select>
         ) : (
-          <span className={`badge rounded-pill ${mod.revenueModel === "commission" ? "bg-primary" : mod.revenueModel === "subscription" ? "bg-success" : "bg-secondary"}`}
+          <span className={`badge rounded-pill ${form.revenueModel === "commission" ? "bg-primary" : form.revenueModel === "subscription" ? "bg-success" : "bg-secondary"}`}
             style={{ fontSize: 11 }}>
-            {mod.revenueModel.charAt(0).toUpperCase() + mod.revenueModel.slice(1)}
+            {form.revenueModel.charAt(0).toUpperCase() + form.revenueModel.slice(1)}
           </span>
         )}
       </td>
-
-      {/* Commission type + value */}
       <td>
-        {editing && form.revenueModel === "commission" ? (
-          <div style={{ minWidth: 220 }}>
-            {/* Toggle: % or ₹ */}
-            <div className="btn-group btn-group-sm mb-2" role="group">
-              <button type="button"
-                className={`btn ${form.commissionType === "percentage" ? "btn-primary" : "btn-outline-secondary"}`}
-                onClick={() => set("commissionType", "percentage")}>
-                % Percentage
-              </button>
-              <button type="button"
-                className={`btn ${form.commissionType === "flat" ? "btn-primary" : "btn-outline-secondary"}`}
-                onClick={() => set("commissionType", "flat")}>
-                ₹ Fixed Amount
-              </button>
-            </div>
-            {form.commissionType === "percentage" ? (
-              <div className="d-flex align-items-center gap-1">
-                <input type="number" className="form-control form-control-sm" value={form.commissionPercentage}
-                  onChange={e => set("commissionPercentage", parseFloat(e.target.value) || 0)}
-                  style={{ width: 80 }} min={0} max={100} step={0.5} />
-                <span className="text-muted fw-semibold">%</span>
-                <span className="text-muted" style={{ fontSize: 11 }}>of fare</span>
-              </div>
-            ) : (
-              <div className="d-flex align-items-center gap-1">
-                <span className="text-muted fw-semibold">₹</span>
-                <input type="number" className="form-control form-control-sm" value={form.commissionFlatAmount}
-                  onChange={e => set("commissionFlatAmount", parseFloat(e.target.value) || 0)}
-                  style={{ width: 80 }} min={0} step={0.5} />
-                <span className="text-muted" style={{ fontSize: 11 }}>per ride</span>
-              </div>
-            )}
+        {editing ? (
+          <div className="d-flex align-items-center gap-1">
+            <input type="number" className="form-control form-control-sm" value={form.commissionPercentage}
+              onChange={e => set("commissionPercentage", parseFloat(e.target.value) || 0)}
+              style={{ width: 72 }} min={0} max={100} step={0.5} />
+            <span className="text-muted" style={{ fontSize: 13 }}>%</span>
           </div>
         ) : (
-          <span className="fw-bold" style={{ color: meta.color, fontSize: 14 }}>{configBadge()}</span>
+          <span className="fw-semibold" style={{ fontSize: 13, color: "#1a73e8" }}>{form.commissionPercentage}%</span>
         )}
       </td>
-
-      {/* GST % */}
       <td>
         {editing ? (
           <div className="d-flex align-items-center gap-1">
             <input type="number" className="form-control form-control-sm" value={form.commissionGstPercentage}
               onChange={e => set("commissionGstPercentage", parseFloat(e.target.value) || 0)}
-              style={{ width: 70 }} min={0} max={30} step={0.5} />
+              style={{ width: 72 }} min={0} max={30} step={0.5} />
             <span className="text-muted" style={{ fontSize: 13 }}>%</span>
           </div>
         ) : (
-          <span style={{ fontSize: 13 }}>{mod.commissionGstPercentage}%</span>
+          <span style={{ fontSize: 13 }}>{form.commissionGstPercentage}%</span>
         )}
       </td>
-
-      {/* Active */}
+      <td>
+        {editing ? (
+          <div className="form-check form-switch mb-0">
+            <input className="form-check-input" type="checkbox" checked={form.subscriptionRequired}
+              onChange={e => set("subscriptionRequired", e.target.checked)} />
+          </div>
+        ) : (
+          <span className={`badge ${form.subscriptionRequired ? "bg-warning text-dark" : "bg-light text-secondary"}`}
+            style={{ fontSize: 10 }}>
+            {form.subscriptionRequired ? "Required" : "Not Required"}
+          </span>
+        )}
+      </td>
       <td>
         <div className="form-check form-switch mb-0">
           <input className="form-check-input" type="checkbox" checked={form.isActive}
@@ -156,31 +122,12 @@ function ModuleRow({ mod, onSaved }: { mod: ModuleConfig; onSaved: () => void })
             }} />
         </div>
       </td>
-
-      {/* Live preview */}
       <td>
-        <div style={{ fontSize: 11, lineHeight: 1.6, minWidth: 200 }}>
-          {editing ? (
-            <>
-              <div className="d-flex align-items-center gap-1 mb-1">
-                <span className="text-muted">Test fare ₹</span>
-                <input type="number" className="form-control form-control-sm py-0" value={exFare}
-                  onChange={e => setExFare(parseFloat(e.target.value) || 200)}
-                  style={{ width: 70, height: 22, fontSize: 11 }} min={10} />
-              </div>
-              <div>Platform: <strong style={{ color: "#1a73e8" }}>₹{comm.toFixed(2)}</strong> + GST <strong>₹{gst.toFixed(2)}</strong></div>
-              <div>Driver gets: <strong style={{ color: "#16a34a" }}>₹{driver.toFixed(2)}</strong></div>
-            </>
-          ) : (
-            <>
-              <div>₹200 fare → driver: <strong style={{ color: "#16a34a" }}>₹{calcPreview(mod, 200).driver.toFixed(0)}</strong></div>
-              <div className="text-muted">Platform: ₹{calcPreview(mod, 200).comm.toFixed(0)} + GST ₹{calcPreview(mod, 200).gst.toFixed(0)}</div>
-            </>
-          )}
+        <div className="text-muted" style={{ fontSize: 11, lineHeight: 1.4 }}>
+          <div>₹{exFare} fare → driver gets <strong style={{ color: "#16a34a" }}>₹{driverGet.toFixed(0)}</strong></div>
+          <div>Platform: ₹{commAmt.toFixed(0)} + GST ₹{gstAmt.toFixed(0)}</div>
         </div>
       </td>
-
-      {/* Actions */}
       <td className="pe-3">
         {editing ? (
           <div className="d-flex gap-1">
@@ -213,14 +160,17 @@ export default function RevenueModelPage() {
   const modules: ModuleConfig[] = (data?.modules || []).map((m: any) => ({
     moduleName: m.moduleName,
     revenueModel: m.revenueModel || "commission",
-    commissionType: m.commissionType || "percentage",
-    commissionPercentage: parseFloat(m.commissionPercentage) || 0,
-    commissionFlatAmount: parseFloat(m.commissionFlatAmount) || 0,
+    commissionPercentage: parseFloat(m.commissionPercentage) || 15,
     commissionGstPercentage: parseFloat(m.commissionGstPercentage) || 18,
     subscriptionRequired: !!m.subscriptionRequired,
     isActive: m.isActive !== false,
     notes: m.notes || "",
   }));
+
+  const totalCommission = modules.filter(m => m.revenueModel === "commission" && m.isActive);
+  const avgComm = totalCommission.length
+    ? (totalCommission.reduce((s, m) => s + m.commissionPercentage, 0) / totalCommission.length).toFixed(1)
+    : "0";
 
   return (
     <div className="p-4">
@@ -232,32 +182,19 @@ export default function RevenueModelPage() {
         </div>
         <div>
           <h4 className="mb-0 fw-bold" style={{ fontSize: 20 }}>Revenue Model</h4>
-          <p className="mb-0 text-muted" style={{ fontSize: 13 }}>
-            Per service: set % commission or fixed ₹ amount per ride — your choice
-          </p>
+          <p className="mb-0 text-muted" style={{ fontSize: 13 }}>Configure per-service revenue model — commission or subscription</p>
         </div>
       </div>
 
-      {/* Info banner */}
-      <div className="alert border-0 mb-4 d-flex gap-3 align-items-start" style={{ background: "#f0f9ff", borderRadius: 12 }}>
-        <i className="bi bi-info-circle-fill mt-1" style={{ color: "#1a73e8", fontSize: 16, flexShrink: 0 }}></i>
-        <div style={{ fontSize: 13 }}>
-          <strong>Two commission types available:</strong>
-          <span className="ms-2"><strong>% Percentage</strong> — e.g. 15% of fare (higher fare = more platform revenue)</span>
-          <span className="ms-3"><strong>₹ Fixed Amount</strong> — e.g. ₹1 per ride regardless of fare (predictable for driver)</span>
-          <br />GST is calculated on top of commission amount in both cases.
-        </div>
-      </div>
-
-      {/* Summary cards */}
+      {/* Stats row */}
       <div className="row g-3 mb-4">
         {[
-          { label: "Active Services", value: modules.filter(m => m.isActive).length, icon: "bi-check-circle-fill", color: "#16a34a", bg: "#f0fdf4" },
-          { label: "% Based", value: modules.filter(m => m.revenueModel === "commission" && m.commissionType === "percentage").length, icon: "bi-percent", color: "#1a73e8", bg: "#EBF4FF" },
-          { label: "Fixed ₹ Amount", value: modules.filter(m => m.revenueModel === "commission" && m.commissionType === "flat").length, icon: "bi-currency-rupee", color: "#d97706", bg: "#fefce8" },
-          { label: "Subscription", value: modules.filter(m => m.revenueModel === "subscription").length, icon: "bi-card-checklist", color: "#7c3aed", bg: "#f5f3ff" },
+          { label: "Active Modules", value: modules.filter(m => m.isActive).length, icon: "bi-check-circle-fill", color: "#16a34a", bg: "#f0fdf4" },
+          { label: "Commission Modules", value: modules.filter(m => m.revenueModel === "commission").length, icon: "bi-percent", color: "#1a73e8", bg: "#EBF4FF" },
+          { label: "Subscription Modules", value: modules.filter(m => m.revenueModel === "subscription").length, icon: "bi-card-checklist", color: "#7c3aed", bg: "#f5f3ff" },
+          { label: "Avg Commission Rate", value: `${avgComm}%`, icon: "bi-graph-up-arrow", color: "#d97706", bg: "#fefce8" },
         ].map((s, i) => (
-          <div className="col-6 col-md-3" key={i}>
+          <div className="col-md-3" key={i}>
             <div className="card border-0 h-100" style={{ borderRadius: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
               <div className="card-body d-flex align-items-center gap-3 p-3">
                 <div className="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0"
@@ -274,16 +211,20 @@ export default function RevenueModelPage() {
         ))}
       </div>
 
-      {/* Table */}
+      {/* Module config table */}
       <div className="card border-0" style={{ borderRadius: 16, boxShadow: "0 1px 8px rgba(0,0,0,0.07)" }}>
         <div className="card-body p-0">
-          <div className="px-4 py-3" style={{ borderBottom: "1px solid #f1f5f9" }}>
-            <h6 className="mb-0 fw-semibold">Service Revenue Configuration</h6>
-            <p className="mb-0 text-muted" style={{ fontSize: 12 }}>Click Edit on any row — choose % or ₹ and enter your value</p>
+          <div className="d-flex align-items-center justify-content-between px-4 py-3"
+            style={{ borderBottom: "1px solid #f1f5f9" }}>
+            <div>
+              <h6 className="mb-0 fw-semibold">Service Revenue Configuration</h6>
+              <p className="mb-0 text-muted" style={{ fontSize: 12 }}>Each service can have independent commission % or subscription requirement</p>
+            </div>
           </div>
           {isLoading ? (
             <div className="text-center py-5">
               <div className="spinner-border text-primary spinner-border-sm"></div>
+              <p className="mt-2 text-muted small">Loading...</p>
             </div>
           ) : (
             <div className="table-responsive">
@@ -291,20 +232,22 @@ export default function RevenueModelPage() {
                 <thead style={{ background: "#f8fafc" }}>
                   <tr>
                     <th className="ps-3 py-3" style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>SERVICE</th>
-                    <th style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>MODEL</th>
-                    <th style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>COMMISSION (% or ₹)</th>
+                    <th style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>REVENUE MODEL</th>
+                    <th style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>COMMISSION %</th>
                     <th style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>GST ON COMMISSION</th>
+                    <th style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>SUBSCRIPTION REQ.</th>
                     <th style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>ACTIVE</th>
-                    <th style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>LIVE PREVIEW</th>
+                    <th style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>CALCULATOR (₹200 FARE)</th>
                     <th className="pe-3" style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>ACTIONS</th>
                   </tr>
                 </thead>
                 <tbody>
                   {modules.length === 0 ? (
-                    <tr><td colSpan={7}>
+                    <tr><td colSpan={8}>
                       <div className="text-center py-5 text-muted">
                         <i className="bi bi-diagram-3 fs-1 d-block mb-2" style={{ opacity: 0.3 }}></i>
                         <p className="mb-0">No modules configured yet</p>
+                        <p className="small">Check server logs — default data should seed automatically</p>
                       </div>
                     </td></tr>
                   ) : (
@@ -317,6 +260,17 @@ export default function RevenueModelPage() {
               </table>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Info card */}
+      <div className="mt-4 p-3 rounded-3 d-flex gap-3" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+        <i className="bi bi-info-circle-fill text-success mt-1" style={{ fontSize: 16, flexShrink: 0 }}></i>
+        <div style={{ fontSize: 13 }}>
+          <strong>How it works:</strong> When a driver accepts a trip, the system looks up the revenue config for that service type.
+          If <em>commission</em>, the configured % is deducted from the fare and credited to admin.
+          If <em>subscription</em>, the driver must have an active subscription plan — otherwise the trip is blocked.
+          Changes apply immediately to new trips without any app update.
         </div>
       </div>
     </div>

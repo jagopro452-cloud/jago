@@ -19,7 +19,9 @@ import '../call/call_screen.dart';
 import '../chat/trip_chat_sheet.dart';
 
 import '../main_screen.dart';
+// ignore: unused_import
 import '../booking/booking_screen.dart';
+import 'trip_completion_screen.dart';
 
 class TrackingScreen extends StatefulWidget {
   final String tripId;
@@ -36,7 +38,6 @@ class _TrackingScreenState extends State<TrackingScreen>
   LatLng? _driverLatLng;
   String _status = 'searching';
   Map<String, dynamic>? _trip;
-  int _rated = 0;
   double _walletPendingAmount =
       0; // amount customer still owes after wallet deduction
   List<String> _cancelReasons = [];
@@ -51,16 +52,14 @@ class _TrackingScreenState extends State<TrackingScreen>
   Timer? _searchTimeoutTimer;
   bool _boostLoading = false;
   Timer? _nearbyDriversTimer;
+  Timer? _driverAnimationTimer;
   final Map<String, BitmapDescriptor> _markerIconCache = {};
   List<Map<String, dynamic>> _nearbyDrivers = [];
+  double _driverHeading = 0;
 
-  bool _isConnected = true;
-  StreamSubscription? _connSub;
   Timer? _pollTimer;
 
   bool _isArriving = false; // "Pilot is about to arrive" flag
-  int _hoveredStars = 0;
-  bool _isRatingSubmitted = false;
 
   // Custom Top Banner state
   String? _bannerMessage;
@@ -75,9 +74,8 @@ class _TrackingScreenState extends State<TrackingScreen>
     _pulseCtrl =
         AnimationController(vsync: this, duration: const Duration(seconds: 2))
           ..repeat(reverse: true);
-    _connSub = _socket.onConnectionChanged.listen((connected) {
+    _subs.add(_socket.onConnectionChanged.listen((connected) {
       if (mounted) {
-        setState(() => _isConnected = connected);
         if (!connected) {
           _showStatusBanner('Waiting for connection...', Colors.orange);
         } else {
@@ -90,7 +88,7 @@ class _TrackingScreenState extends State<TrackingScreen>
           Future.delayed(const Duration(milliseconds: 2500), _pollStatus);
         }
       }
-    });
+    }));
     _connectSocket();
     _pollStatus();
     _loadCancelReasons();
@@ -105,6 +103,7 @@ class _TrackingScreenState extends State<TrackingScreen>
   }
 
   void _connectSocket() {
+    CallService().init();
     // Eagerly join the trip room
     _socket.trackTrip(widget.tripId);
 
@@ -112,18 +111,19 @@ class _TrackingScreenState extends State<TrackingScreen>
       if (!mounted) return;
       final lat = double.tryParse(data['lat']?.toString() ?? '');
       final lng = double.tryParse(data['lng']?.toString() ?? '');
+      final heading =
+          double.tryParse(data['heading']?.toString() ?? '') ?? _driverHeading;
       if (lat != null && lng != null) {
         _checkArrivingStatus(lat, lng);
-        setState(() {
-          _driverLatLng = LatLng(lat, lng);
-          _updateMapMarkers();
-          _fetchRouteForStatus(); // Keep route updated as driver moves
-        });
+        _setDriverLocation(
+          LatLng(lat, lng),
+          heading: heading,
+          animate: true,
+        );
       }
     }));
 
     _subs.add(_socket.onTripStatus.listen((data) {
-      if (data == null) return;
       try {
         final newStatus = data['status']?.toString();
         if (newStatus == null) return;
@@ -150,8 +150,8 @@ class _TrackingScreenState extends State<TrackingScreen>
 
         if (newStatus != _status) {
           debugPrint('[SOCKET] Trip status transition: $_status -> $newStatus');
-          setState(() {
-            _status = newStatus;
+        setState(() {
+          _status = newStatus;
 
             final Map<String, dynamic> update = {};
 
@@ -203,7 +203,12 @@ class _TrackingScreenState extends State<TrackingScreen>
             }
 
             _trip = (_trip != null) ? {..._trip!, ...update} : update;
-          });
+        });
+
+        if (!_isRideSafetyCallActive(newStatus) &&
+            CallService().activeCallTripId == widget.tripId) {
+          CallService().hangUp();
+        }
 
           // UI transitions & feedback
           _handleStatusTransition(newStatus);
@@ -242,30 +247,44 @@ class _TrackingScreenState extends State<TrackingScreen>
         if (driverId != null) update['driverId'] = driverId;
 
         if (driverMap != null) {
-          update['driverName'] =
-              driverMap['fullName'] ?? driverMap['full_name'] ?? '';
-          update['driverPhone'] = driverMap['phone'] ?? '';
+          update['driverName'] = driverMap['fullName'] ??
+              driverMap['full_name'] ??
+              driverMap['name'] ??
+              'Jago Pilot';
+          update['driverPhone'] =
+              driverMap['phone'] ?? driverMap['mobile'] ?? '';
           update['driverRating'] =
-              driverMap['rating'] ?? driverMap['avgRating'];
+              driverMap['rating'] ?? driverMap['avgRating'] ?? 5.0;
           update['driverPhoto'] =
               driverMap['photo'] ?? driverMap['profilePhoto'] ?? '';
-          update['driverVehicleNumber'] =
-              driverMap['vehicleNumber'] ?? driverMap['vehicle_number'] ?? '';
-          update['driverVehicleModel'] =
-              driverMap['vehicleModel'] ?? driverMap['vehicle_model'] ?? '';
+          update['driverVehicleNumber'] = driverMap['vehicleNumber'] ??
+              driverMap['vehicle_number'] ??
+              driverMap['vehicle_no'] ??
+              '';
+          update['driverVehicleModel'] = driverMap['vehicleModel'] ??
+              driverMap['vehicle_model'] ??
+              driverMap['model'] ??
+              '';
           update['vehicleName'] = driverMap['vehicleCategory'] ??
               driverMap['vehicle_category'] ??
-              '';
+              driverMap['vehicle_name'] ??
+              'Pilot';
           update['driverLat'] = driverMap['lat'];
           update['driverLng'] = driverMap['lng'];
-        } else if (data['driverName'] != null) {
-          update['driverName'] = data['driverName'];
-          update['driverPhone'] = data['driverPhone'];
-          update['driverRating'] = data['driverRating'];
-          update['driverPhoto'] = data['driverPhoto'];
-          update['driverVehicleNumber'] = data['driverVehicleNumber'];
-          update['driverVehicleModel'] = data['driverVehicleModel'];
-          update['vehicleName'] = data['vehicleName'];
+          update['driverHeading'] =
+              driverMap['heading'] ?? driverMap['driverHeading'];
+        } else {
+          update['driverName'] =
+              data['driverName'] ?? data['driver_name'] ?? 'Jago Pilot';
+          update['driverPhone'] = data['driverPhone'] ?? data['driver_phone'];
+          update['driverRating'] = data['driverRating'] ?? data['driver_rating'];
+          update['driverPhoto'] = data['driverPhoto'] ?? data['driver_photo'];
+          update['driverVehicleNumber'] =
+              data['driverVehicleNumber'] ?? data['driver_vehicle_number'];
+          update['driverVehicleModel'] =
+              data['driverVehicleModel'] ?? data['driver_vehicle_model'];
+          update['vehicleName'] =
+              data['vehicleName'] ?? data['vehicle_name'] ?? 'Pilot';
         }
 
         if (_trip != null) {
@@ -278,8 +297,13 @@ class _TrackingScreenState extends State<TrackingScreen>
       final dLat = double.tryParse(_trip?['driverLat']?.toString() ?? '');
       final dLng = double.tryParse(_trip?['driverLng']?.toString() ?? '');
       if (dLat != null && dLng != null && dLat != 0) {
-        _driverLatLng = LatLng(dLat, dLng);
-        _updateMapMarkers();
+        _setDriverLocation(
+          LatLng(dLat, dLng),
+          heading:
+              double.tryParse(_trip?['driverHeading']?.toString() ?? '') ??
+                  _driverHeading,
+          animate: false,
+        );
       }
 
       _showStatusBanner('Pilot accepted your ride', JT.primary);
@@ -330,42 +354,6 @@ class _TrackingScreenState extends State<TrackingScreen>
     _showStatusBanner('No pilots nearby. Try again!', const Color(0xFFDC2626));
   }
 
-  // Retry booking using the same trip's original params
-  void _retryBooking() {
-    final t = _trip;
-    if (t == null) {
-      Navigator.pushAndRemoveUntil(context,
-          MaterialPageRoute(builder: (_) => const MainScreen()), (_) => false);
-      return;
-    }
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (_) => BookingScreen(
-          pickup: t['pickupAddress']?.toString() ??
-              t['pickup_address']?.toString() ??
-              'Pickup',
-          destination: t['destinationAddress']?.toString() ??
-              t['destination_address']?.toString() ??
-              'Destination',
-          pickupLat: double.tryParse(t['pickupLat']?.toString() ?? '') ?? 0.0,
-          pickupLng: double.tryParse(t['pickupLng']?.toString() ?? '') ?? 0.0,
-          destLat:
-              double.tryParse(t['destinationLat']?.toString() ?? '') ?? 0.0,
-          destLng:
-              double.tryParse(t['destinationLng']?.toString() ?? '') ?? 0.0,
-          vehicleCategoryId: t['vehicleCategoryId']?.toString(),
-          vehicleCategoryName: t['vehicleName']?.toString(),
-          category: (t['tripType']?.toString() == 'parcel' ||
-                  t['trip_type']?.toString() == 'parcel')
-              ? 'parcel'
-              : 'ride',
-        ),
-      ),
-      (_) => false,
-    );
-  }
-
   Future<void> _startNearbyDriversPolling() async {
     _nearbyDriversTimer?.cancel();
     if (!mounted || _status != 'searching') return;
@@ -385,13 +373,20 @@ class _TrackingScreenState extends State<TrackingScreen>
       final pLat = double.tryParse(_trip?['pickupLat']?.toString() ?? '');
       final pLng = double.tryParse(_trip?['pickupLng']?.toString() ?? '');
       if (pLat == null || pLng == null) return;
+      final vehicleCategoryId = _trip?['vehicleCategoryId']?.toString() ??
+          _trip?['vehicle_category_id']?.toString();
 
       final headers = await AuthService.getHeaders();
-      final uri = Uri.parse(ApiConfig.nearbyDrivers).replace(queryParameters: {
+      final queryParameters = <String, String>{
         'lat': pLat.toString(),
         'lng': pLng.toString(),
         'radius': '3',
-      });
+      };
+      if (vehicleCategoryId != null && vehicleCategoryId.isNotEmpty) {
+        queryParameters['vehicleCategoryId'] = vehicleCategoryId;
+      }
+      final uri = Uri.parse(ApiConfig.nearbyDrivers)
+          .replace(queryParameters: queryParameters);
       final r = await http
           .get(uri, headers: headers)
           .timeout(const Duration(seconds: 5));
@@ -438,8 +433,13 @@ class _TrackingScreenState extends State<TrackingScreen>
     canvas.drawCircle(
         const Offset(size / 2, size / 2), size / 2 - 12, borderPaint);
 
-    final emoji =
-        (type.contains('auto')) ? '🛺' : (type.contains('bike') ? '🏍️' : '🚗');
+    final t = type.toLowerCase();
+    final emoji = t.contains('auto') ? '🛺'
+        : t.contains('bike') || t.contains('moto') || t.contains('scooter') ? '🏍️'
+        : t.contains('parcel') ? '📦'
+        : t.contains('cargo') || t.contains('truck') || t.contains('tempo') ? '🚚'
+        : t.contains('intercity') || t.contains('outstation') ? '🚘'
+        : '🚗';
     final tp = TextPainter(
         text: TextSpan(text: emoji, style: const TextStyle(fontSize: 48)),
         textDirection: TextDirection.ltr)
@@ -479,25 +479,53 @@ class _TrackingScreenState extends State<TrackingScreen>
 
   void _handleStatusTransition(String newStatus) {
     if (newStatus == 'accepted' || newStatus == 'driver_assigned') {
+      _searchTimeoutTimer?.cancel();
+      _nearbyDriversTimer?.cancel();
       _showStatusBanner('Pilot accepted your ride', JT.primary);
       _announceStatus('accepted');
       _updateMapMarkers();
     } else if (newStatus == 'arrived') {
+      _searchTimeoutTimer?.cancel();
+      _nearbyDriversTimer?.cancel();
       _showStatusBanner('Your pilot has arrived', const Color(0xFF10B981));
       _announceStatus('arrived');
       _updateMapMarkers();
     } else if (newStatus == 'in_progress' || newStatus == 'on_the_way') {
+      _searchTimeoutTimer?.cancel();
+      _nearbyDriversTimer?.cancel();
       _animateToDestination();
       _showStatusBanner('Ride started • Have a safe journey!', JT.primary);
       _fetchRouteForStatus();
       _updateMapMarkers();
     } else if (newStatus == 'completed') {
+      _searchTimeoutTimer?.cancel();
+      _nearbyDriversTimer?.cancel();
       _showStatusBanner('Trip Completed • Thank you!', const Color(0xFF10B981));
       setState(() => _polylines.clear());
       _updateMapMarkers();
+      
+      // Navigate to premium completion screen
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => TripCompletionScreen(
+                trip: _trip ?? {'id': widget.tripId},
+                walletPendingAmount: _walletPendingAmount,
+              ),
+            ),
+          );
+        }
+      });
     } else if (newStatus == 'cancelled') {
+      _searchTimeoutTimer?.cancel();
+      _nearbyDriversTimer?.cancel();
       _showStatusBanner('Trip Cancelled', const Color(0xFFDC2626));
       setState(() => _polylines.clear());
+    } else if (newStatus == 'searching') {
+      _startSearchTimeoutTimer();
+      _startNearbyDriversPolling();
     }
   }
 
@@ -634,6 +662,92 @@ class _TrackingScreenState extends State<TrackingScreen>
     _mapController?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 120));
   }
 
+  void _setDriverLocation(
+    LatLng target, {
+    double? heading,
+    bool animate = true,
+  }) {
+    final nextHeading = _normalizeHeading(heading ?? _driverHeading);
+    final current = _driverLatLng;
+    if (!animate || current == null) {
+      _driverAnimationTimer?.cancel();
+      if (!mounted) return;
+      setState(() {
+        _driverLatLng = target;
+        _driverHeading = nextHeading;
+      });
+      _updateMapMarkers();
+      _fetchRouteForStatus();
+      return;
+    }
+
+    final distanceMeters = _distanceMeters(current, target);
+    if (distanceMeters < 2) {
+      if (!mounted) return;
+      setState(() {
+        _driverLatLng = target;
+        _driverHeading = nextHeading;
+      });
+      _updateMapMarkers();
+      _fetchRouteForStatus();
+      return;
+    }
+
+    _driverAnimationTimer?.cancel();
+    const totalSteps = 12;
+    const frameGap = Duration(milliseconds: 75);
+    var step = 0;
+    final start = current;
+    final startHeading = _driverHeading;
+
+    _driverAnimationTimer = Timer.periodic(frameGap, (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      step++;
+      final t = step / totalSteps;
+      final eased = Curves.easeOutCubic.transform(t.clamp(0.0, 1.0));
+      final lat =
+          start.latitude + ((target.latitude - start.latitude) * eased);
+      final lng =
+          start.longitude + ((target.longitude - start.longitude) * eased);
+
+      setState(() {
+        _driverLatLng = LatLng(lat, lng);
+        _driverHeading = _interpolateHeading(startHeading, nextHeading, eased);
+      });
+      _updateMapMarkers();
+
+      if (step >= totalSteps) {
+        timer.cancel();
+        _fetchRouteForStatus();
+      }
+    });
+  }
+
+  double _normalizeHeading(double heading) {
+    final normalized = heading % 360;
+    return normalized < 0 ? normalized + 360 : normalized;
+  }
+
+  double _interpolateHeading(double start, double end, double t) {
+    final normalizedStart = _normalizeHeading(start);
+    final normalizedEnd = _normalizeHeading(end);
+    final delta = ((normalizedEnd - normalizedStart + 540) % 360) - 180;
+    return _normalizeHeading(normalizedStart + (delta * t));
+  }
+
+  double _distanceMeters(LatLng from, LatLng to) {
+    return _calculateDistance(
+          from.latitude,
+          from.longitude,
+          to.latitude,
+          to.longitude,
+        ) *
+        1000;
+  }
+
   void _updateMapMarkers() async {
     final Set<Marker> newMarkers = {};
 
@@ -661,7 +775,9 @@ class _TrackingScreenState extends State<TrackingScreen>
         markerId: const MarkerId('driver'),
         position: _driverLatLng!,
         icon: await _getMarkerIcon(vName),
+        rotation: _driverHeading,
         anchor: const Offset(0.5, 0.5),
+        flat: true,
       ));
       if (_status != 'completed') {
         _mapController
@@ -713,11 +829,14 @@ class _TrackingScreenState extends State<TrackingScreen>
         final id = d['id']?.toString() ?? '';
         final vName =
             (d['vehicleCategoryName'] ?? d['vehicleName'] ?? 'bike').toString();
+        final heading = double.tryParse(d['heading']?.toString() ?? '0') ?? 0;
         newMarkers.add(Marker(
           markerId: MarkerId('nearby_$id'),
           position: LatLng(dLat, dLng),
           icon: await _getMarkerIcon(vName, isSearching: true),
+          rotation: heading,
           anchor: const Offset(0.5, 0.5),
+          flat: true,
         ));
       }
     }
@@ -771,6 +890,8 @@ class _TrackingScreenState extends State<TrackingScreen>
     _incomingCallSub?.cancel();
     _pollTimer?.cancel();
     _searchTimeoutTimer?.cancel();
+    _nearbyDriversTimer?.cancel();
+    _driverAnimationTimer?.cancel();
     _pulseCtrl.dispose();
     _tts.stop();
     // Don't disconnect socket — it's a shared singleton
@@ -805,6 +926,14 @@ class _TrackingScreenState extends State<TrackingScreen>
       ));
     });
   }
+
+  bool _isRideSafetyCallActive(String status) => const {
+        'driver_assigned',
+        'accepted',
+        'arrived',
+        'in_progress',
+        'on_the_way',
+      }.contains(status);
 
   Future<void> _initTts() async {
     try {
@@ -1168,7 +1297,14 @@ class _TrackingScreenState extends State<TrackingScreen>
                   'driverLng',
                   'pickupOtp',
                   'destinationAddress',
-                  'pickupAddress'
+                  'pickupAddress',
+                  'pickupShortName',
+                  'destinationShortName',
+                  'actualFare',
+                  'estimatedFare',
+                  'estimatedDistance',
+                  'type',
+                  'tripType',
                 ];
                 for (var key in criticalKeys) {
                   if ((trip[key] == null || trip[key].toString().isEmpty) &&
@@ -1200,9 +1336,15 @@ class _TrackingScreenState extends State<TrackingScreen>
 
           final dLat = double.tryParse(trip['driverLat']?.toString() ?? '');
           final dLng = double.tryParse(trip['driverLng']?.toString() ?? '');
+          final heading =
+              double.tryParse(trip['driverHeading']?.toString() ?? '') ??
+                  _driverHeading;
           if (dLat != null && dLng != null && dLat != 0) {
-            _driverLatLng = LatLng(dLat, dLng);
-            _updateMapMarkers();
+            _setDriverLocation(
+              LatLng(dLat, dLng),
+              heading: heading,
+              animate: true,
+            );
           }
 
           if (_status == 'completed' || _status == 'cancelled') {
@@ -1247,19 +1389,6 @@ class _TrackingScreenState extends State<TrackingScreen>
         MaterialPageRoute(builder: (_) => const MainScreen()), (_) => false);
   }
 
-  Future<void> _rateDriver(int stars) async {
-    setState(() => _rated = stars);
-    try {
-      final headers = await AuthService.getHeaders();
-      await http.post(Uri.parse(ApiConfig.rateDriver),
-          headers: headers,
-          body: jsonEncode({
-            'tripId': _trip?['id'] ?? widget.tripId,
-            'driverId': _trip?['driverId'],
-            'rating': stars,
-          }));
-    } catch (_) {}
-  }
 
   void _showCancelDialog() {
     final reasons = _cancelReasons.isNotEmpty
@@ -1329,7 +1458,7 @@ class _TrackingScreenState extends State<TrackingScreen>
     final otp =
         trip?['pickupOtp']?.toString() ?? trip?['pickup_otp']?.toString();
     final driverName =
-        trip?['driverName']?.toString() ?? trip?['driver_name']?.toString();
+        trip?['driverName']?.toString() ?? trip?['driver_name']?.toString() ?? (_status != 'searching' ? 'Jago Pilot' : null);
     final driverPhone =
         trip?['driverPhone']?.toString() ?? trip?['driver_phone']?.toString();
     final driverRating = trip?['driverRating'] ?? trip?['driver_rating'];
@@ -1354,151 +1483,238 @@ class _TrackingScreenState extends State<TrackingScreen>
         }
       },
       child: Scaffold(
-        backgroundColor: JT.bg,
-        body: Stack(children: [
-          GoogleMap(
-            initialCameraPosition: CameraPosition(target: _center, zoom: 15),
-            onMapCreated: (c) {
-              _mapController = c;
-              if (_driverLatLng != null) {
-                _updateMapMarkers();
-                _fetchRouteForStatus();
-              }
-            },
-            markers: _markers,
-            polylines: _polylines,
-            circles: {
-              if (_status == 'searching' && _trip != null)
-                Circle(
-                  circleId: const CircleId('search_radius'),
-                  center: LatLng(
-                      double.tryParse(_trip?['pickupLat']?.toString() ?? '0') ??
-                          0,
-                      double.tryParse(_trip?['pickupLng']?.toString() ?? '0') ??
-                          0),
-                  radius: 400,
-                  fillColor: const Color(0xFF2F7BFF).withValues(alpha: 0.05),
-                  strokeColor: const Color(0xFF2F7BFF).withValues(alpha: 0.3),
-                  strokeWidth: 2,
+        backgroundColor: const Color(0xFFF5F3FF),
+        body: Column(
+          children: [
+            // Global Header
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        if (_status == 'completed' || _status == 'cancelled') {
+                          Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(builder: (_) => const MainScreen()),
+                              (_) => false);
+                        }
+                      },
+                      child: JT.logoBlue(height: 56),
+                    ),
+                    Row(
+                      children: [
+                        _headerAction(Icons.account_balance_wallet_outlined),
+                        const SizedBox(width: 12),
+                        _headerAction(Icons.notifications_none_rounded),
+                      ],
+                    ),
+                  ],
                 ),
-            },
-            myLocationEnabled: true,
-            zoomControlsEnabled: false,
-            mapToolbarEnabled: false,
-          ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.62),
-              decoration: BoxDecoration(
-                color: panelBg,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(28)),
-                boxShadow: const [
-                  BoxShadow(color: Color(0x22000000), blurRadius: 24)
-                ],
               ),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 10, bottom: 4),
-                    decoration: BoxDecoration(
-                        color: JT.border,
-                        borderRadius: BorderRadius.circular(2))),
-                Flexible(
-                    child: SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildPremiumHeader(statusInfo, otp),
-                          const SizedBox(height: 14),
-                          if (_status != 'searching') ...[
-                            if (driverName != null)
-                              _buildPremiumDriverCard(
-                                name: driverName,
-                                rating: driverRating,
-                                photo: driverPhoto,
-                                vehicleNum: trip?['driverVehicleNumber'] ?? '',
-                                vehicleModel: trip?['driverVehicleModel'] ?? '',
-                                phone: driverPhone,
-                              )
-                            else
-                              const Center(
-                                  child: Padding(
-                                padding: EdgeInsets.symmetric(vertical: 20),
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )),
-                            const SizedBox(height: 16),
-                            if (driverName != null) ...[
-                              _buildCommunicationRow(driverName),
-                              const SizedBox(height: 16),
-                            ],
-                          ] else if (_status == 'searching') ...[
-                            _buildSearchingIndicator(
-                                statusInfo['color'] as Color),
-                            const SizedBox(height: 16),
-                          ],
-                          if (trip != null) ...[
-                            if (_status == 'in_progress' ||
-                                _status == 'on_the_way')
-                              _buildInProgressPanel(trip)
-                            else ...[
-                              _buildFareRow(trip, actualFare, estimatedFare),
-                            ],
-                          ],
-                          if (_status == 'completed') ...[
-                            const SizedBox(height: 16),
-                            _buildCompletedCard(actualFare,
-                                walletPendingAmount: _walletPendingAmount),
-                          ] else if (_status == 'cancelled') ...[
-                            const SizedBox(height: 16),
-                            _buildCancelledCard(),
-                          ] else ...[
-                            const SizedBox(height: 20),
-                            Center(
-                              child: TextButton.icon(
-                                onPressed: _showCancelDialog,
-                                icon: const Icon(Icons.close_rounded,
-                                    size: 16, color: Color(0xFF64748B)),
-                                label: const Text('Cancel Ride',
-                                    style: TextStyle(
-                                        color: Color(0xFF64748B),
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500)),
-                              ),
-                            ),
-                          ],
-                        ]),
-                  ),
-                )),
-              ]),
             ),
-          ),
 
-          // --- Premium Top Status Banner ---
-          if (_bannerMessage != null)
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeOutBack,
-              top: MediaQuery.of(context).padding.top + 12,
-              left: 20,
-              right: 20,
-              child: _buildTopBannerWidget(),
+            Expanded(
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                ),
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final panelMaxHeight =
+                          math.min(constraints.maxHeight * 0.56, 420.0);
+                      final mapBottomPadding =
+                          math.min(panelMaxHeight * 0.72, 260.0);
+                      return Stack(children: [
+                        GoogleMap(
+                          initialCameraPosition:
+                              CameraPosition(target: _center, zoom: 15),
+                          onMapCreated: (c) {
+                            _mapController = c;
+                            if (_driverLatLng != null) {
+                              _updateMapMarkers();
+                              _fetchRouteForStatus();
+                            }
+                          },
+                          markers: _markers,
+                          polylines: _polylines,
+                          circles: {
+                            if (_status == 'searching' && _trip != null)
+                              Circle(
+                                circleId: const CircleId('search_radius'),
+                                center: LatLng(
+                                    double.tryParse(
+                                            _trip?['pickupLat']?.toString() ??
+                                                '0') ??
+                                        0,
+                                    double.tryParse(
+                                            _trip?['pickupLng']?.toString() ??
+                                                '0') ??
+                                        0),
+                                radius: 400,
+                                fillColor: const Color(0xFF2F7BFF)
+                                    .withValues(alpha: 0.05),
+                                strokeColor: const Color(0xFF2F7BFF)
+                                    .withValues(alpha: 0.3),
+                                strokeWidth: 2,
+                              ),
+                          },
+                          myLocationEnabled: true,
+                          zoomControlsEnabled: false,
+                          mapToolbarEnabled: false,
+                          padding: EdgeInsets.only(bottom: mapBottomPadding),
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          child: Container(
+                            constraints:
+                                BoxConstraints(maxHeight: panelMaxHeight),
+                            decoration: BoxDecoration(
+                              color: panelBg,
+                              borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(28)),
+                              boxShadow: const [
+                                BoxShadow(
+                                    color: Color(0x22000000), blurRadius: 24)
+                              ],
+                            ),
+                            child:
+                                Column(mainAxisSize: MainAxisSize.min, children: [
+                              Container(
+                                  width: 40,
+                                  height: 4,
+                                  margin:
+                                      const EdgeInsets.only(top: 10, bottom: 4),
+                                  decoration: BoxDecoration(
+                                      color: JT.border,
+                                      borderRadius: BorderRadius.circular(2))),
+                              Flexible(
+                                  child: SingleChildScrollView(
+                                physics: const ClampingScrollPhysics(),
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                                  child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        _buildPremiumHeader(statusInfo, otp),
+                                        const SizedBox(height: 14),
+                                        if (_status != 'searching') ...[
+                                          if (driverName != null)
+                                            _buildPremiumDriverCard(
+                                              name: driverName,
+                                              rating: driverRating,
+                                              photo: driverPhoto,
+                                              vehicleNum:
+                                                  trip?['driverVehicleNumber'] ??
+                                                      '',
+                                              vehicleModel:
+                                                  trip?['driverVehicleModel'] ??
+                                                      '',
+                                              phone: driverPhone,
+                                            )
+                                          else
+                                            const Center(
+                                                child: Padding(
+                                              padding: EdgeInsets.symmetric(
+                                                  vertical: 20),
+                                              child: CircularProgressIndicator(
+                                                  strokeWidth: 2),
+                                            )),
+                                          const SizedBox(height: 16),
+                                          if (driverName != null) ...[
+                                            _buildCommunicationRow(driverName),
+                                            const SizedBox(height: 16),
+                                          ],
+                                        ] else if (_status == 'searching') ...[
+                                          _buildSearchingIndicator(
+                                              statusInfo['color'] as Color),
+                                          const SizedBox(height: 16),
+                                        ],
+                                        if (trip != null) ...[
+                                          if (_status == 'in_progress' ||
+                                              _status == 'on_the_way')
+                                            _buildInProgressPanel(trip)
+                                          else ...[
+                                            _buildFareRow(
+                                                trip, actualFare, estimatedFare),
+                                          ],
+                                        ],
+                                        if (_status == 'completed') ...[
+                                          const SizedBox(height: 40),
+                                          const Center(
+                                              child: CircularProgressIndicator(
+                                                  strokeWidth: 2)),
+                                          const SizedBox(height: 20),
+                                          Center(
+                                              child: Text('Ending your trip...',
+                                                  style: GoogleFonts.poppins(
+                                                      color:
+                                                          JT.textSecondary))),
+                                        ] else if (_status == 'cancelled') ...[
+                                          const SizedBox(height: 16),
+                                          _buildCancelledCard(),
+                                        ] else if (_status != 'arrived' &&
+                                            _status != 'in_progress' &&
+                                            _status != 'on_the_way') ...[
+                                          const SizedBox(height: 20),
+                                          Center(
+                                            child: TextButton.icon(
+                                              onPressed: _showCancelDialog,
+                                              icon: const Icon(
+                                                  Icons.close_rounded,
+                                                  size: 16,
+                                                  color: Color(0xFF64748B)),
+                                              label: const Text('Cancel Ride',
+                                                  style: TextStyle(
+                                                      color: Color(0xFF64748B),
+                                                      fontSize: 13,
+                                                      fontWeight:
+                                                          FontWeight.w500)),
+                                            ),
+                                          ),
+                                        ],
+                                      ]),
+                                ),
+                              )),
+                            ]),
+                          ),
+                        ),
+                        if (_bannerMessage != null)
+                          AnimatedPositioned(
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.easeOutBack,
+                            top: 12,
+                            left: 20,
+                            right: 20,
+                            child: _buildTopBannerWidget(),
+                          ),
+                      ]);
+                    },
+                  ),
+                ),
+              ),
             ),
-        ]),
+          ],
+        ),
+        bottomNavigationBar: _buildBottomNav(),
       ),
     );
   }
 
   void _startInAppCall(String driverName) {
+    if (!_isRideSafetyCallActive(_status)) {
+      _showStatusBanner('Calling is available only during an active ride.', const Color(0xFFDC2626));
+      return;
+    }
     final driverId =
         _trip?['driverId']?.toString() ?? _trip?['driver_id']?.toString();
     if (driverId != null && driverId.isNotEmpty) {
@@ -1509,9 +1725,8 @@ class _TrackingScreenState extends State<TrackingScreen>
           targetUserId: driverId,
         ),
       ));
-    } else if ((_trip?['driverPhone'] ?? _trip?['driver_phone']) != null) {
-      launchUrl(
-          Uri.parse('tel:${_trip!['driverPhone'] ?? _trip!['driver_phone']}'));
+    } else {
+      _showStatusBanner('Driver calling is not available right now.', const Color(0xFFDC2626));
     }
   }
 
@@ -1527,21 +1742,9 @@ class _TrackingScreenState extends State<TrackingScreen>
     );
   }
 
-  Future<String> _getSupportPhone() async {
-    try {
-      final r = await http.get(Uri.parse(ApiConfig.configs));
-      if (r.statusCode == 200) {
-        final data = jsonDecode(r.body);
-        return data['configs']?['support_phone'] ?? '+916303000000';
-      }
-    } catch (_) {}
-    return '+916303000000';
-  }
-
   // ── Premium UI Components ──────────────────────────────────────────────────
 
   Widget _buildPremiumHeader(Map<String, dynamic> statusInfo, String? otp) {
-    final color = statusInfo['color'] as Color;
     final showOtp = otp != null &&
         otp.isNotEmpty &&
         (_status == 'driver_assigned' ||
@@ -1850,20 +2053,22 @@ class _TrackingScreenState extends State<TrackingScreen>
           ),
         ),
         const SizedBox(width: 12),
-        GestureDetector(
-          onTap: () => _startInAppCall(driverName),
-          child: Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: JT.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: JT.primary, width: 1.2),
+        if (_isRideSafetyCallActive(_status)) ...[
+          GestureDetector(
+            onTap: () => _startInAppCall(driverName),
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: JT.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: JT.primary, width: 1.2),
+              ),
+              child: const Icon(Icons.call_rounded, color: JT.primary, size: 22),
             ),
-            child: const Icon(Icons.call_rounded, color: JT.primary, size: 22),
           ),
-        ),
-        const SizedBox(width: 12),
+          const SizedBox(width: 12),
+        ],
         GestureDetector(
           onTap: _triggerSos,
           child: Container(
@@ -1967,7 +2172,7 @@ class _TrackingScreenState extends State<TrackingScreen>
   Future<void> _shareRide() async {
     final tripId = widget.tripId;
     final shareText =
-        '🚗 Track my JAGO ride!\nLive location: https://jagopro.org/track/$tripId\nDownload JAGO Pro: https://jagopro.org/download';
+        '🚗 Track my JAGO ride!\nLive location: https://jagopro.org/track/$tripId\nDownload Jago: https://jagopro.org/download';
     final encoded = Uri.encodeComponent(shareText);
     final uri = Uri.parse('whatsapp://send?text=$encoded');
     if (await canLaunchUrl(uri)) {
@@ -2066,189 +2271,6 @@ class _TrackingScreenState extends State<TrackingScreen>
     );
   }
 
-  Widget _buildCompletedCard(dynamic actualFare,
-      {double walletPendingAmount = 0}) {
-    final from =
-        _trip?['pickupShortName'] ?? _trip?['pickupAddress'] ?? 'Pickup';
-    final to = _trip?['destinationShortName'] ??
-        _trip?['destinationAddress'] ??
-        'Destination';
-
-    return Column(children: [
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: const Color(0xFFF1F5F9), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 30,
-              offset: const Offset(0, 15),
-            )
-          ],
-        ),
-        child: Column(children: [
-          // Header with Gradient
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF10B981).withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.check_circle_rounded,
-                color: Color(0xFF10B981), size: 40),
-          ),
-          const SizedBox(height: 16),
-          Text('Thank you for choosing Jago!',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
-                color: const Color(0xFF0F172A),
-              )),
-          const SizedBox(height: 6),
-          Text('Your journey has ended safely.',
-              style: GoogleFonts.poppins(
-                  fontSize: 13, color: const Color(0xFF64748B))),
-
-          const SizedBox(height: 24),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
-          const SizedBox(height: 24),
-
-          // Route Summary
-          Row(children: [
-            Column(children: [
-              const Icon(Icons.circle, size: 8, color: JT.primary),
-              Container(width: 1, height: 20, color: const Color(0xFFE2E8F0)),
-              const Icon(Icons.location_on_rounded,
-                  size: 14, color: Color(0xFFEF4444)),
-            ]),
-            const SizedBox(width: 12),
-            Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                  Text(from.toString(),
-                      style: GoogleFonts.poppins(
-                          fontSize: 13, color: const Color(0xFF475569)),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 8),
-                  Text(to.toString(),
-                      style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF0F172A)),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                ])),
-          ]),
-
-          const SizedBox(height: 28),
-
-          // Fare Display
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFF),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Final Fare',
-                    style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: const Color(0xFF64748B))),
-                Text('₹$actualFare',
-                    style: GoogleFonts.poppins(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: JT.primaryDark)),
-              ],
-            ),
-          ),
-
-          if (walletPendingAmount > 0) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF7ED),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFED7AA)),
-              ),
-              child: Row(children: [
-                const Icon(Icons.info_outline_rounded,
-                    color: Color(0xFFEA580C), size: 16),
-                const SizedBox(width: 8),
-                Expanded(
-                    child: Text(
-                        '₹${walletPendingAmount.toStringAsFixed(2)} to be paid in cash/UPI',
-                        style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF9A3412)))),
-              ]),
-            ),
-          ],
-
-          const SizedBox(height: 32),
-          // Rating Section
-          Text(_isRatingSubmitted ? 'Rating received!' : 'Rate your Pilot',
-              style: GoogleFonts.poppins(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: const Color(0xFF1E293B))),
-          const SizedBox(height: 14),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(5, (index) {
-              final starIndex = index + 1;
-              final isFull = _isRatingSubmitted
-                  ? starIndex <= _rated
-                  : starIndex <= (_hoveredStars > 0 ? _hoveredStars : _rated);
-
-              return GestureDetector(
-                onTap: _isRatingSubmitted
-                    ? null
-                    : () {
-                        _rateDriver(starIndex);
-                        setState(() => _isRatingSubmitted = true);
-                        HapticFeedback.heavyImpact();
-                      },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Icon(
-                    isFull ? Icons.star_rounded : Icons.star_outline_rounded,
-                    size: 42,
-                    color: isFull
-                        ? const Color(0xFFFFB800)
-                        : const Color(0xFFE2E8F0),
-                  ),
-                ),
-              );
-            }),
-          ),
-        ]),
-      ),
-      const SizedBox(height: 24),
-      JT.gradientButton(
-        label: 'Finished',
-        onTap: () {
-          _socket.stopTrackingTrip(widget.tripId);
-          Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => const MainScreen()),
-              (_) => false);
-        },
-      ),
-      const SizedBox(height: 20),
-    ]);
-  }
 
   Widget _buildCancelledCard() {
     return Container(
@@ -2423,10 +2445,6 @@ class _TrackingScreenState extends State<TrackingScreen>
     );
   }
 
-  void _showArrivalBanner() {
-    _showStatusBanner('Your pilot is arrived', const Color(0xFF10B981));
-  }
-
   Widget _buildInProgressPanel(Map<String, dynamic> trip) {
     final dest = trip['destinationShortName'] ??
         trip['destinationAddress'] ??
@@ -2518,6 +2536,105 @@ class _TrackingScreenState extends State<TrackingScreen>
       height: 8,
       decoration:
           const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+    );
+  }
+
+  Widget _headerAction(IconData icon) {
+    return GestureDetector(
+      onTap: () {
+        if (_status == 'completed' || _status == 'cancelled') {
+          Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const MainScreen()),
+              (_) => false);
+        } else {
+          _showStatusBanner('Active trip in progress', JT.primary);
+        }
+      },
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4)),
+          ],
+        ),
+        child: Icon(icon, color: const Color(0xFF64748B), size: 24),
+      ),
+    );
+  }
+
+  Widget _buildBottomNav() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Colors.grey.shade100, width: 1)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _navItem(0, Icons.home_rounded, Icons.home_outlined, 'Home'),
+              _navItem(1, Icons.receipt_long_rounded, Icons.receipt_long_outlined, 'Trips'),
+              _navItem(2, Icons.account_balance_wallet_rounded, Icons.account_balance_wallet_outlined, 'Wallet'),
+              _navItem(3, Icons.person_rounded, Icons.person_outline_rounded, 'Profile'),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _navItem(int index, IconData activeIcon, IconData inactiveIcon, String label) {
+    bool isSelected = index == 0;
+    return GestureDetector(
+      onTap: () {
+        if (_status == 'completed' || _status == 'cancelled') {
+          Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const MainScreen()),
+              (_) => false);
+        } else {
+          _showStatusBanner('Active trip in progress', JT.primary);
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: isSelected
+            ? BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF7C3AED), Color(0xFF6366F1)], 
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(color: const Color(0xFF7C3AED).withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4)),
+                ],
+              )
+            : null,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isSelected ? activeIcon : inactiveIcon,
+              color: isSelected ? Colors.white : const Color(0xFF94A3B8),
+              size: 22,
+            ),
+            if (isSelected) ...[
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: GoogleFonts.poppins(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ]
+          ],
+        ),
+      ),
     );
   }
 }

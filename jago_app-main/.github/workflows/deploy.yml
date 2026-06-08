@@ -2,7 +2,7 @@ name: Deploy to DigitalOcean
 
 on:
   push:
-    branches: [master]
+    branches: [main]
 
 jobs:
   deploy:
@@ -21,7 +21,7 @@ jobs:
           script: |
             set -e
             cd /var/www/jago
-            git pull origin master
+            git pull origin main
             npm ci --prefer-offline
             npm run build
             set -a && source /var/www/jago/.env && set +a

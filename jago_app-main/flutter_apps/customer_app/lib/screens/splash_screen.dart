@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/jago_theme.dart';
 import '../services/auth_service.dart';
 import 'auth/login_screen.dart';
-import 'home/home_screen.dart';
 import 'main_screen.dart';
 import 'onboarding/onboarding_screen.dart';
 import 'onboarding/terms_screen.dart';
@@ -96,14 +95,16 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     if (!onboardingSeen) {
       destination = const OnboardingScreen();
     } else if (token != null && token.isNotEmpty) {
-      final profile = await AuthService.getProfile();
+      final profileCheck = await AuthService.getProfileStatus();
       if (!mounted) return;
-      if (profile != null) {
+      if (profileCheck['success'] == true) {
         destination = const MainScreen();
+      } else if (profileCheck['authorized'] == false) {
+        await AuthService.handle401();
+        return;
       } else {
-        await prefs.remove('auth_token');
-        await prefs.remove('user_data');
-        destination = const LoginScreen();
+        // Temporary API/network failure should not force a logout.
+        destination = const MainScreen();
       }
     } else {
       destination = const LoginScreen();

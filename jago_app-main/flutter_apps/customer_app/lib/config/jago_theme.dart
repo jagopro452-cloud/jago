@@ -1,8 +1,20 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class JT {
+  /// Haversine formula to calculate distance between two points in km
+  static double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const double p = 0.017453292519943295;
+    final double a = 0.5 -
+        math.cos((lat2 - lat1) * p) / 2 +
+        math.cos(lat1 * p) *
+            math.cos(lat2 * p) *
+            (1 - math.cos((lon2 - lon1) * p)) /
+            2;
+    return 12742 * math.asin(math.sqrt(a));
+  }
+
   // ── PREMIUM DESIGN SYSTEM (v3 Senior-Level) ────────────────────────────
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -211,6 +223,7 @@ class JT {
   static Widget gradientButton({
     required String label,
     required VoidCallback onTap,
+    IconData? icon,
     bool loading = false,
     double height = 54,
     double radius = 16,
@@ -236,7 +249,16 @@ class JT {
                     strokeWidth: 2.5,
                   ),
                 )
-              : Text(label, style: btnText),
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (icon != null) ...[
+                      Icon(icon, color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
+                    ],
+                    Text(label, style: btnText),
+                  ],
+                ),
         ),
       ),
     );
@@ -323,14 +345,16 @@ class JT {
 
   // ── LOGOS ──
   static Widget logoBlue({double height = 36}) =>
-      SvgPicture.asset('assets/images/jago_logo_full.svg',
+      Image.asset('assets/images/jago_logo_new.png',
           height: height, fit: BoxFit.contain);
 
   static Widget logoWhite({double height = 36}) =>
-      SvgPicture.asset('assets/images/jago_logo_full_white.svg',
-          height: height, 
-          fit: BoxFit.contain, 
-          colorFilter: const ColorFilter.mode(Color(0xFF4F4ACF), BlendMode.srcIn));
+      ColorFiltered(
+        colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+        child: Image.asset('assets/images/jago_logo_new.png',
+            height: height,
+            fit: BoxFit.contain),
+      );
 
   // ── MODERN SPACING SYSTEM ──
   static const double spacing2 = 2;

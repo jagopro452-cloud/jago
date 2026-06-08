@@ -8,13 +8,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import '../../services/heatmap_service.dart';
 import '../../config/api_config.dart';
 import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
+import '../../services/vehicle_status_service.dart';
 import '../../services/alarm_service.dart';
 import '../../widgets/incoming_trip_sheet.dart';
 import '../../widgets/incoming_parcel_sheet.dart';
@@ -24,17 +24,17 @@ import '../auth/pending_verification_screen.dart';
 import '../wallet/wallet_screen.dart';
 import '../history/trips_history_screen.dart';
 import '../profile/profile_screen.dart';
-import '../break_mode/break_mode_screen.dart';
 import '../fatigue/fatigue_screen.dart';
 import '../trip/trip_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../referral/referral_screen.dart';
 import '../profile/support_chat_screen.dart';
 import '../onboarding/model_selection_screen.dart';
-import '../onboarding/subscription_plans_screen.dart';
 import '../earnings/earnings_screen.dart';
-import '../kyc/kyc_documents_screen.dart';
 import '../parcel/parcel_delivery_screen.dart';
+import '../profile/activated_services_screen.dart';
+import '../local_pool/local_pool_screen.dart';
+import '../outstation_pool/outstation_pool_trip_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -62,7 +62,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   String _vehicleCategory = '';
   String _vehicleNumber = '';
   String _vehicleModel = '';
-  String _zone = '';
   bool _hasValidLocationFix = false;
   bool _hasLiveLocationAccess = false;
   Timer? _locationTimer;
@@ -71,43 +70,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   late AnimationController _pulseCtrl;
   final List<StreamSubscription> _subs = [];
   int _navIndex = 0;
-  bool _inFreePeriod = false;
-  int _freeDaysRemaining = 0;
+  final VehicleStatusService _vehicleStatusService = VehicleStatusService();
+  Map<String, VehicleStatus> _vehicleStatuses = {
+    for (final status in VehicleStatusService.fallbackStatuses) status.key: status,
+  };
+  StreamSubscription<Map<String, VehicleStatus>>? _vehicleStatusSub;
+  bool _serviceUnavailableNoticeShown = false;
 
   // ── Heatmap ────────────────────────────────────────────────────────────
   final HeatmapService _heatmap = HeatmapService();
   Set<Circle> _heatmapCircles = {};
   bool _showHeatmap = true;
   HeatmapZone? _nearestHighZone;
-  HeatmapSuggestion? _heatmapSuggestion;
   Timer? _idleTimer;
   int _idleSeconds = 0;
   bool _idleSuggestionShown = false;
 
   // ── Eligible Services ──────────────────────────────────────────────────
-  List<Map<String, dynamic>> _eligibleServices = [];
-
-  // ── Revenue Config ─────────────────────────────────────────────────────
-  Map<String, Map<String, dynamic>> _revenueConfig = {};
-
-  String _getTimeGreeting() {
-    final h = DateTime.now().hour;
-    if (h < 12) return 'Good Morning';
-    if (h < 17) return 'Good Afternoon';
-    if (h < 20) return 'Good Evening';
-    return 'Good Night';
-  }
-
-  String _ordinal(int day) {
-    if (day >= 11 && day <= 13) return '${day}th';
-    switch (day % 10) {
-      case 1: return '${day}st';
-      case 2: return '${day}nd';
-      case 3: return '${day}rd';
-      default: return '${day}th';
-    }
-  }
-
   bool _mapReadyToLoad = false;
 
   @override
@@ -130,6 +109,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       _fetchLaunchBenefit();
       _fetchEligibleServices();
       _fetchRevenueConfig();
+      _watchVehicleAvailability();
       _connectSocket();
       
       await _recoverActiveTrip();
@@ -181,16 +161,84 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final trip = data['trip'];
       if (trip == null) return;
-      final status = trip['currentStatus'] ?? trip['current_status'] ?? '';
-      if (!['accepted', 'arrived', 'on_the_way', 'driver_assigned'].contains(status)) return;
+      final tripData = Map<String, dynamic>.from(trip as Map);
+      final status = tripData['currentStatus'] ?? tripData['current_status'] ?? '';
+      final serviceType = (tripData['type'] ??
+              tripData['tripType'] ??
+              tripData['serviceType'] ??
+              tripData['service_type'] ??
+              '')
+          .toString()
+          .toLowerCase();
+      final isParcel = serviceType.contains('parcel') || serviceType.contains('cargo');
+      final validStatuses = isParcel
+          ? ['accepted', 'driver_assigned', 'arrived', 'in_transit']
+          : ['accepted', 'arrived', 'on_the_way', 'in_progress', 'driver_assigned'];
+      if (!validStatuses.contains(status)) return;
       if (!mounted) return;
       // Navigate directly to trip screen — driver was mid-trip when app crashed
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => TripScreen(trip: trip),
+          builder: (_) => isParcel
+              ? ParcelDeliveryScreen(order: tripData)
+              : TripScreen(trip: tripData),
         ),
       );
+      return;
+    } catch (_) {}
+
+    try {
+      final headers = await AuthService.getHeaders();
+      final poolSessionRes = await http.get(
+        Uri.parse(ApiConfig.localPoolSessionActive),
+        headers: headers,
+      );
+      if (poolSessionRes.statusCode == 200) {
+        final payload = jsonDecode(poolSessionRes.body) as Map<String, dynamic>;
+        final data = payload['data'] is Map<String, dynamic> ? payload['data'] as Map<String, dynamic> : payload;
+        if (data['session'] != null && mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const LocalPoolScreen()),
+          );
+          return;
+        }
+      }
+    } catch (_) {}
+
+    try {
+      final headers = await AuthService.getHeaders();
+      final ridesRes = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/app/driver/outstation-pool/rides'),
+        headers: headers,
+      );
+      if (ridesRes.statusCode != 200) return;
+      final payload = jsonDecode(ridesRes.body) as Map<String, dynamic>;
+      final rawItems = payload['data'] is List
+          ? payload['data'] as List
+          : payload['rides'] is List
+              ? payload['rides'] as List
+              : const [];
+      final items = rawItems
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+      final activeRide = items.cast<Map<String, dynamic>?>().firstWhere(
+            (ride) {
+              final state = ride?['status']?.toString() ?? '';
+              return state == 'scheduled' || state == 'active';
+            },
+            orElse: () => null,
+          );
+      if (activeRide != null && mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OutstationPoolTripScreen(ride: activeRide),
+          ),
+        );
+      }
     } catch (_) {}
   }
 
@@ -203,6 +251,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       if (pendingTripStr != null && pendingTripStr.isNotEmpty) {
         await prefs.remove('pending_trip_data');
         final tripData = jsonDecode(pendingTripStr) as Map<String, dynamic>;
+        if (!_canReceiveTripPayload(tripData)) {
+          _showUnavailableByAdminOnce();
+          return;
+        }
         if (mounted && _incomingTrip == null) {
           await Future.delayed(const Duration(milliseconds: 300));
           if (!mounted) return;
@@ -224,7 +276,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           _showIncomingParcel();
         }
       }
+
+      final pendingPoolStr = prefs.getString('pending_pool_data');
+      if (pendingPoolStr != null && pendingPoolStr.isNotEmpty) {
+        await prefs.remove('pending_pool_data');
+        await _recoverActiveTrip();
+      }
     } catch (_) {}
+  }
+
+  bool _canReceiveTripPayload(Map<String, dynamic> trip) {
+    final tripVehicle = (trip['vehicleCategory'] ??
+            trip['vehicleCategoryName'] ??
+            trip['vehicle_type'] ??
+            trip['vehicleType'] ??
+            _vehicleCategory)
+        .toString();
+    return VehicleStatusService.isActive(_vehicleStatuses, tripVehicle);
+  }
+
+  void _showUnavailableByAdminOnce() {
+    if (_serviceUnavailableNoticeShown) return;
+    _serviceUnavailableNoticeShown = true;
+    _showSnack('Your service is temporarily unavailable by admin', error: true);
+    Future.delayed(const Duration(seconds: 4), () {
+      _serviceUnavailableNoticeShown = false;
+    });
   }
 
   Future<void> _connectSocket() async {
@@ -236,6 +313,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
 
     _subs.add(_socket.onNewTrip.listen((trip) {
       if (!mounted) return;
+      if (!_canReceiveTripPayload(trip)) {
+        _showUnavailableByAdminOnce();
+        return;
+      }
       if (_incomingTrip == null) {
         setState(() => _incomingTrip = trip);
         _showIncomingTrip();
@@ -322,6 +403,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       if (!mounted || !_isOnline) return;
       final type = data['type'] ?? '';
       if (type == 'new_trip' && _incomingTrip == null && _incomingParcel == null) {
+        if (!_canReceiveTripPayload(data)) {
+          _showUnavailableByAdminOnce();
+          return;
+        }
         setState(() => _incomingTrip = data);
         _showIncomingTrip();
       } else if (type == 'new_parcel' && _incomingParcel == null && _incomingTrip == null) {
@@ -335,6 +420,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     for (final s in _subs) s.cancel();
+    _vehicleStatusSub?.cancel();
     _locationTimer?.cancel();
     _posStream?.cancel();
     _idleTimer?.cancel();
@@ -423,6 +509,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       _userName = prefs.getString('user_name') ?? 'Pilot';
       _userPhone = prefs.getString('user_phone') ?? '';
     });
+  }
+
+  bool get _isDriverVehicleActive {
+    if (_vehicleCategory.trim().isEmpty) return true;
+    return VehicleStatusService.isActive(_vehicleStatuses, _vehicleCategory);
+  }
+
+  void _watchVehicleAvailability() {
+    _vehicleStatusSub?.cancel();
+    _vehicleStatusSub = _vehicleStatusService.watchVehicleStatuses().listen((statuses) {
+      if (!mounted) return;
+      setState(() => _vehicleStatuses = statuses);
+      if (_isOnline && !_isDriverVehicleActive) {
+        _forceOfflineForInactiveService();
+      }
+    });
+  }
+
+  Future<void> _forceOfflineForInactiveService() async {
+    if (!mounted) return;
+    setState(() => _isOnline = false);
+    _stopLocationStreaming();
+    _stopHeatmap();
+    _socket.setOnlineStatus(
+      isOnline: false,
+      lat: _center.latitude,
+      lng: _center.longitude,
+    );
+    _showSnack('Your service is temporarily unavailable by admin', error: true);
+    try {
+      final headers = await AuthService.getHeaders();
+      await http.patch(
+        Uri.parse(ApiConfig.driverOnlineStatus),
+        headers: headers,
+        body: jsonEncode({
+          'isOnline': false,
+          'lat': _center.latitude,
+          'lng': _center.longitude,
+        }),
+      ).timeout(const Duration(seconds: 4));
+    } catch (_) {}
   }
 
   Future<void> _getLocation() async {
@@ -563,7 +690,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           _vehicleCategory = data['vehicleCategory'] ?? '';
           _vehicleNumber = data['vehicleNumber'] ?? '';
           _vehicleModel = data['vehicleModel'] ?? '';
-          _zone = data['zone'] ?? '';
           _driverRating = double.tryParse(data['rating']?.toString() ?? '') ?? _driverRating;
         });
         if (_isOnline) {
@@ -596,12 +722,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse(ApiConfig.launchBenefit), headers: headers);
       if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
         if (mounted) {
-          setState(() {
-            _inFreePeriod = data['active'] == true;
-            _freeDaysRemaining = data['freeDaysRemaining'] ?? 0;
-          });
+          setState(() {});
         }
       }
     } catch (_) {}
@@ -612,9 +734,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse(ApiConfig.eligibleServices), headers: headers);
       if (res.statusCode == 200 && mounted) {
-        final data = jsonDecode(res.body);
-        final list = (data['services'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
-        setState(() => _eligibleServices = list);
+        setState(() {});
       }
     } catch (_) {}
   }
@@ -624,14 +744,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       final headers = await AuthService.getHeaders();
       final res = await http.get(Uri.parse(ApiConfig.revenueConfig), headers: headers);
       if (res.statusCode == 200 && mounted) {
-        final data = jsonDecode(res.body);
-        final modules = (data['modules'] as List<dynamic>?) ?? [];
-        final map = <String, Map<String, dynamic>>{};
-        for (final m in modules) {
-          final name = m['moduleName']?.toString() ?? '';
-          if (name.isNotEmpty) map[name] = Map<String, dynamic>.from(m as Map);
-        }
-        setState(() => _revenueConfig = map);
+        setState(() {});
       }
     } catch (_) {}
   }
@@ -701,6 +814,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             if (trip != null && stage == 'new_request' && _incomingTrip == null) {
               final tripMap = Map<String, dynamic>.from(trip as Map);
               tripMap['tripId'] = tripMap['tripId'] ?? tripMap['id'];
+              if (!_canReceiveTripPayload(tripMap)) {
+                _showUnavailableByAdminOnce();
+                return;
+              }
               setState(() => _incomingTrip = tripMap);
               _showIncomingTrip();
             }
@@ -741,7 +858,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     _idleSeconds = 0;
     _idleSuggestionShown = false;
     _heatmap.stopRefresh();
-    if (mounted) setState(() { _heatmapCircles = {}; _nearestHighZone = null; _heatmapSuggestion = null; });
+    if (mounted) setState(() { _heatmapCircles = {}; _nearestHighZone = null; });
   }
 
   void _toggleHeatmap() {
@@ -773,7 +890,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   Future<void> _triggerIdleSuggestion() async {
     final sugg = await _heatmap.fetchSuggestion(_center.latitude, _center.longitude);
     if (sugg == null || !mounted) return;
-    setState(() => _heatmapSuggestion = sugg);
     _showIdleSuggestionDialog(sugg);
   }
 
@@ -879,6 +995,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     Map<String, dynamic> trip, {
     bool closePopup = false,
   }) async {
+    if (!_canReceiveTripPayload(trip)) {
+      if (closePopup && mounted) {
+        Navigator.pop(context);
+      }
+      if (mounted) setState(() => _incomingTrip = null);
+      await FcmService().dismissTripNotification();
+      _showUnavailableByAdminOnce();
+      return;
+    }
     if (closePopup && mounted) {
       Navigator.pop(context);
     }
@@ -911,37 +1036,57 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
       } catch (_) {}
     }
     if (!mounted) return;
+    if (accepted) {
+      _socket.setActiveTrip(tripId);
+    }
 
-    Map<String, dynamic>? fullTrip;
-    try {
-      final hdrs = await AuthService.getHeaders();
-      final res = await http.get(
-        Uri.parse(ApiConfig.driverActiveTrip),
-        headers: hdrs,
-      ).timeout(const Duration(seconds: 30));
-      if (res.statusCode == 200) {
+    Future<Map<String, dynamic>?> fetchAcceptedTrip() async {
+      try {
+        final hdrs = await AuthService.getHeaders();
+        final res = await http.get(
+          Uri.parse(ApiConfig.driverActiveTrip),
+          headers: hdrs,
+        ).timeout(const Duration(seconds: 30));
+        if (res.statusCode != 200) return null;
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final activeTrip = data['trip'];
-        if (activeTrip is Map) {
-          final serverTrip = Map<String, dynamic>.from(activeTrip);
-          final serverTripId = (serverTrip['id'] ?? serverTrip['tripId'] ?? '').toString();
-          if (serverTripId == tripId) {
-            fullTrip = Map<String, dynamic>.from(trip)..addAll(serverTrip);
-          }
+        if (activeTrip is! Map) return null;
+        final serverTrip = Map<String, dynamic>.from(activeTrip);
+        final serverTripId =
+            (serverTrip['id'] ?? serverTrip['tripId'] ?? '').toString();
+        if (serverTripId != tripId) return null;
+        return Map<String, dynamic>.from(trip)..addAll(serverTrip);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    Map<String, dynamic>? fullTrip = await fetchAcceptedTrip();
+    if (fullTrip == null) {
+      for (final delayMs in const [350, 900, 1600]) {
+        await Future.delayed(Duration(milliseconds: delayMs));
+        if (!mounted) return;
+        fullTrip = await fetchAcceptedTrip();
+        if (fullTrip != null) {
+          accepted = true;
+          break;
         }
       }
-    } catch (_) {}
+    }
     if (!mounted) return;
+    if (fullTrip == null && accepted) {
+      // Fallback: use what we have from the socket/notification payload
+      fullTrip = Map<String, dynamic>.from(trip);
+    }
+    
     if (fullTrip == null) {
       _showSnack(
-        accepted
-            ? 'Trip accepted but server did not confirm full trip data yet. Please wait for refresh.'
-            : 'Could not accept this trip. Please try the next request.',
+        'Could not accept this trip. Please try the next request.',
         error: true,
       );
       return;
     }
-    Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: fullTrip)));
+    Navigator.push(context, MaterialPageRoute(builder: (_) => TripScreen(trip: fullTrip!)));
   }
 
   Future<void> _rejectIncomingTrip(
@@ -1018,83 +1163,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     ));
   }
 
-  void _showWalletLockedDialog(String message) {
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: JT.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: JT.error.withValues(alpha: 0.3), width: 1),
-        ),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            width: 70, height: 70,
-            decoration: BoxDecoration(
-              color: JT.error.withValues(alpha: 0.08),
-              shape: BoxShape.circle,
-              border: Border.all(color: JT.error.withValues(alpha: 0.25)),
-            ),
-            child: const Icon(Icons.account_balance_wallet_rounded, color: JT.error, size: 34),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Wallet Balance Low',
-            style: GoogleFonts.poppins(
-              color: JT.textPrimary,
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            message,
-            style: GoogleFonts.poppins(color: JT.textSecondary, fontSize: 13),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: JT.primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              icon: const Icon(Icons.add_circle_outline, color: Colors.white, size: 20),
-              label: Text(
-                'Recharge Wallet Now',
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 15,
-                ),
-              ),
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen()));
-              },
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Later', style: GoogleFonts.poppins(color: JT.textSecondary)),
-          ),
-        ]),
-      ),
-    );
-  }
-
-  Future<bool> _checkFaceVerificationAndProceed() async {
-    return false;
-  }
 
   Future<void> _toggleOnline() async {
     HapticFeedback.mediumImpact();
     final newStatus = !_isOnline;
+    if (newStatus && !_isDriverVehicleActive) {
+      _showSnack('Your service is temporarily unavailable by admin', error: true);
+      return;
+    }
 
     // 1. INSTANT OPTIMISTIC UI UPDATE
     setState(() {
@@ -1117,8 +1193,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     Future.microtask(() async {
       try {
         if (newStatus) {
-          final redirected = await _checkFaceVerificationAndProceed();
-          if (redirected) return;
           await _getLocation();
         }
 
@@ -1163,17 +1237,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
           if (_navIndex == 0) ...[
             // Full-screen map (Deferred to prevent stutter)
             if (_mapReadyToLoad)
-              GoogleMap(
-                initialCameraPosition: CameraPosition(target: _center, zoom: 14),
-                onMapCreated: (c) { _mapController = c; },
-                myLocationEnabled: true,
-                myLocationButtonEnabled: false,
-                zoomControlsEnabled: false,
-                mapToolbarEnabled: false,
-                circles: _heatmapCircles,
+              Positioned.fill(
+                child: GoogleMap(
+                  initialCameraPosition: CameraPosition(target: _center, zoom: 14),
+                  onMapCreated: (c) { _mapController = c; },
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                  mapToolbarEnabled: false,
+                  markers: {
+                    Marker(
+                      markerId: const MarkerId('driver_location'),
+                      position: _center,
+                      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+                      infoWindow: const InfoWindow(title: 'You are here'),
+                    ),
+                  },
+                  circles: _heatmapCircles,
+                ),
               )
             else
-              Container(color: const Color(0xFFF1F5F9)),
+              Positioned.fill(
+                child: Container(color: const Color(0xFFF1F5F9)),
+              ),
               
             // Clean white gradient overlay at top for readability
             Positioned(
@@ -1241,6 +1327,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 const Expanded(child: InlineEarningsView()),
               ] else if (_navIndex == 3) ...[
                 const Expanded(child: InlineWalletView()),
+              ] else if (_navIndex == 4) ...[
+                Expanded(child: InlineRatingsView(rating: _driverRating)),
               ]
             ]),
           ),
@@ -1394,12 +1482,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
             child: Align(
               alignment: Alignment.topCenter,
               child: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: SvgPicture.asset(
-                  'assets/images/pilot_logo_full_white.svg',
-                  height: 44, // Bigger size compared to old 32
-                  colorFilter: const ColorFilter.mode(Color(0xFF2D8CFF), BlendMode.srcIn), // Better brand color instead of black
-                ),
+                padding: const EdgeInsets.only(top: 12),
+                child: JT.logoBlue(height: 64),
               ),
             ),
           ),
@@ -1540,7 +1624,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   icon: Icons.currency_rupee_rounded,
                   value: '₹${_earningsToday.toStringAsFixed(2)}',
                   label: 'Earnings',
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EarningsScreen())),
+                  onTap: () => setState(() => _navIndex = 2),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1550,7 +1634,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   icon: Icons.directions_car_rounded,
                   value: '$_tripsToday',
                   label: 'Trips',
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen())),
+                  onTap: () => setState(() => _navIndex = 1),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1560,7 +1644,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   icon: Icons.star_rounded,
                   value: _driverRating.toStringAsFixed(1),
                   label: 'Rating',
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TripsHistoryScreen())),
+                  onTap: () => setState(() => _navIndex = 4),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1570,7 +1654,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                   icon: Icons.account_balance_wallet_rounded,
                   value: '₹${_walletBalance.toStringAsFixed(2)}',
                   label: 'Wallet',
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
+                  onTap: () => setState(() => _navIndex = 3),
                 ),
               ),
             ],
@@ -1848,7 +1932,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(Icons.verified_rounded, color: Colors.white, size: 14),
                       const SizedBox(width: 6),
-                      SvgPicture.asset('assets/images/pilot_logo_full_white.svg', height: 12),
+                      JT.logoWhite(height: 12),
                     ]),
                   ),
                 ]),
@@ -1877,6 +1961,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
                 _drawerItem(Icons.person_outline_rounded, 'Profile', null, () {
                   Navigator.pop(context);
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
+                }),
+                _drawerItem(Icons.verified_user_outlined, 'Activated Services', null, () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const ActivatedServicesScreen()));
                 }),
                 _drawerItem(Icons.health_and_safety_outlined, 'Safety & Fatigue', null, () {
                   Navigator.pop(context);
@@ -2336,7 +2424,6 @@ class _InlineTripsViewState extends State<InlineTripsView> {
     final rawStatus = (trip['currentStatus'] ?? trip['status'] ?? 'completed').toString().toLowerCase();
     final statusColor = _statusColor(rawStatus);
     final statusLabel = _statusLabel(rawStatus);
-    final isCompleted = rawStatus == 'completed';
     final type = (trip['type'] ?? 'ride').toString();
 
     return GestureDetector(
@@ -3159,6 +3246,168 @@ class _InlineWalletViewState extends State<InlineWalletView> with SingleTickerPr
           Text(subtitle, textAlign: TextAlign.center, style: GoogleFonts.poppins(color: const Color(0xFF94A3B8), fontSize: 13, height: 1.5)),
         ]),
       ),
+    );
+  }
+}
+
+class InlineRatingsView extends StatefulWidget {
+  final double rating;
+  const InlineRatingsView({super.key, required this.rating});
+
+  @override
+  State<InlineRatingsView> createState() => _InlineRatingsViewState();
+}
+
+class _InlineRatingsViewState extends State<InlineRatingsView> {
+  bool _loading = true;
+  List<Map<String, dynamic>> _feedbacks = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    if (!mounted) return;
+    setState(() => _loading = true);
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http.get(Uri.parse(ApiConfig.performance), headers: headers);
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        setState(() {
+          _feedbacks = (data['feedbacks'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+        });
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      child: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF2D8CFF), Color(0xFF1A50D0)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF2D8CFF).withValues(alpha: 0.3),
+                      blurRadius: 15,
+                      offset: const Offset(0, 8),
+                    )
+                  ],
+                ),
+                child: Column(children: [
+                  Text(
+                    'Overall Rating',
+                    style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.9), fontSize: 14, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Text(
+                      widget.rating.toStringAsFixed(1),
+                      style: GoogleFonts.poppins(color: Colors.white, fontSize: 48, fontWeight: FontWeight.w700, height: 1),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8, left: 4),
+                      child: Text('/ 5.0', style: GoogleFonts.poppins(color: Colors.white.withValues(alpha: 0.8), fontSize: 18, fontWeight: FontWeight.w600)),
+                    ),
+                  ]),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (i) {
+                      return Icon(
+                        i < widget.rating.floor() ? Icons.star_rounded : Icons.star_outline_rounded,
+                        color: Colors.amber,
+                        size: 24,
+                      );
+                    }),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Text(
+                'Recent Feedback',
+                style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: const Color(0xFF0F172A)),
+              ),
+            ),
+          ),
+          if (_loading)
+            const SliverFillRemaining(child: Center(child: CircularProgressIndicator(color: Color(0xFF2D8CFF))))
+          else if (_feedbacks.isEmpty)
+            SliverFillRemaining(
+              child: Center(
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Container(
+                    width: 80, height: 80,
+                    decoration: BoxDecoration(color: const Color(0xFFF1F5F9), shape: BoxShape.circle),
+                    child: const Icon(Icons.star_outline_rounded, color: Color(0xFF94A3B8), size: 40),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('No ratings yet', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 16, color: const Color(0xFF1E293B))),
+                  const SizedBox(height: 4),
+                  Text('Your customer reviews will appear here', style: GoogleFonts.poppins(color: const Color(0xFF64748B), fontSize: 13)),
+                  const SizedBox(height: 100), // Push up for visual balance
+                ]),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => _feedbackTile(_feedbacks[index]),
+                  childCount: _feedbacks.length,
+                ),
+              ),
+            ),
+          const SliverPadding(padding: EdgeInsets.only(bottom: 100)),
+        ],
+      ),
+    );
+  }
+
+  Widget _feedbackTile(Map<String, dynamic> f) {
+    final stars = int.tryParse(f['rating']?.toString() ?? '5') ?? 5;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF1F5F9)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text(f['customerName'] ?? 'Verified Rider', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 14, color: const Color(0xFF1E293B))),
+          Row(children: List.generate(5, (i) => Icon(Icons.star_rounded, color: i < stars ? Colors.amber : const Color(0xFFE2E8F0), size: 14))),
+        ]),
+        const SizedBox(height: 8),
+        if ((f['comment'] ?? '').isNotEmpty)
+          Text('"${f['comment']}"', style: GoogleFonts.poppins(color: const Color(0xFF475569), fontSize: 13, fontStyle: FontStyle.italic, height: 1.4)),
+        const SizedBox(height: 10),
+        Text(f['date'] ?? 'Just now', style: GoogleFonts.poppins(color: const Color(0xFF94A3B8), fontSize: 11)),
+      ]),
     );
   }
 }

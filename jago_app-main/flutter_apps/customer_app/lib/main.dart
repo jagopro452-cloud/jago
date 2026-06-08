@@ -1,15 +1,21 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:app_links/app_links.dart';
+import 'package:google_maps_flutter_android/google_maps_flutter_android.dart';
+import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'screens/splash_screen.dart';
 import 'services/fcm_service.dart';
 import 'services/localization_service.dart';
+import 'services/socket_service.dart';
+import 'services/runtime_config_service.dart';
+import 'config/api_config.dart';
 import 'screens/booking/voice_booking_screen.dart';
 
 // Global navigator key — used for 401 auto-logout and deep-link navigation
@@ -21,15 +27,31 @@ Future<void> loadThemePreference() async {
   themeNotifier.value = ThemeMode.light;
 }
 
-Future<void> saveThemePreference(String pref) async {
+Future<void> saveThemePreference(String _) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setString('theme_pref', 'light');
   await prefs.setString('theme_mode', 'light');
   themeNotifier.value = ThemeMode.light;
 }
 
+Future<void> configureAndroidGoogleMaps() async {
+  if (!Platform.isAndroid) return;
+  final mapsImplementation = GoogleMapsFlutterPlatform.instance;
+  if (mapsImplementation is GoogleMapsFlutterAndroid) {
+    mapsImplementation.useAndroidViewSurface = true;
+    try {
+      final renderer =
+          await mapsImplementation.initializeWithRenderer(AndroidMapRenderer.platformDefault);
+      debugPrint('[MAP] Customer Android renderer initialized: $renderer useAndroidViewSurface=${mapsImplementation.useAndroidViewSurface}');
+    } catch (e, st) {
+      debugPrint('[MAP] Customer Android renderer init failed: $e\n$st');
+    }
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await configureAndroidGoogleMaps();
   await loadThemePreference();
   await L.init();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
@@ -37,7 +59,9 @@ void main() async {
     await Firebase.initializeApp();
     await FcmService().init();
     await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
-  } catch (_) {}
+  } catch (e, st) {
+    debugPrint('[Firebase init] FAILED: $e\n$st');
+  }
   // Forward Flutter framework errors to Crashlytics
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
@@ -87,7 +111,7 @@ class JagoCustomerApp extends StatefulWidget {
   State<JagoCustomerApp> createState() => _JagoCustomerAppState();
 }
 
-class _JagoCustomerAppState extends State<JagoCustomerApp> {
+class _JagoCustomerAppState extends State<JagoCustomerApp> with WidgetsBindingObserver {
   final GlobalKey<NavigatorState> _navKey = navigatorKey;
   StreamSubscription<Uri>? _linkSub;
   bool _voiceRouteOpen = false;
@@ -95,13 +119,39 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initDeepLinks();
+    unawaited(_ensureSocketAlive());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _linkSub?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // When the app comes back from background, Android may have suspended the
+    // socket connection. Force a reconnect so trip events resume immediately
+    // instead of waiting for the user to tap something that triggers an HTTP
+    // request first.
+    if (state == AppLifecycleState.resumed) {
+      _ensureSocketAlive();
+    }
+  }
+
+  Future<void> _ensureSocketAlive() async {
+    try {
+      final socket = SocketService();
+      final config = RuntimeConfigService();
+      if (!socket.isConnected) {
+        await socket.connect(ApiConfig.socketUrl);
+      }
+      await config.initialize();
+      await config.refresh();
+    } catch (_) {}
   }
 
   bool _isVoiceBookingUri(Uri uri) {
@@ -157,7 +207,6 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
         primary: primary,
         secondary: Color(0xFF5B9DFF),
         surface: card,
-        background: bg,
         onPrimary: Colors.white,
         onSecondary: Colors.white,
         onSurface: Color(0xFF111827),
@@ -264,10 +313,6 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
     );
   }
 
-  static ThemeData _darkTheme() {
-    return _lightTheme();
-  }
-
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<String>(
@@ -276,16 +321,14 @@ class _JagoCustomerAppState extends State<JagoCustomerApp> {
         return ValueListenableBuilder<ThemeMode>(
           valueListenable: themeNotifier,
           builder: (_, mode, __) {
-            const isDark = false;
             SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
               statusBarColor: Colors.transparent,
-              statusBarIconBrightness:
-                  isDark ? Brightness.light : Brightness.dark,
+              statusBarIconBrightness: Brightness.dark,
               systemNavigationBarColor: Colors.white,
               systemNavigationBarIconBrightness: Brightness.dark,
             ));
             return MaterialApp(
-              title: 'JAGO Pro',
+              title: 'Jago',
               debugShowCheckedModeBanner: false,
               navigatorKey: _navKey,
               themeMode: ThemeMode.light,

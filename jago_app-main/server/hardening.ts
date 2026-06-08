@@ -14,8 +14,9 @@
 
 import { db as rawDb } from "./db";
 import { sql as rawSql } from "drizzle-orm";
-import { io } from "./socket";
+import { hasActiveDriverSocket, io } from "./socket";
 import { sendFcmNotification } from "./fcm";
+import { sendAlert as sendObservabilityAlert } from "./observability";
 // Removed legacy SMS notification logic. Only FCM and socket notifications are supported.
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -116,16 +117,24 @@ export async function logCritical(tag: string, message: string, data?: any) {
  * Send critical alert to monitoring system (Slack, email, DataDog, etc.)
  */
 export async function sendAlert(opts: { severity: string; title: string; body: string }) {
-  // Slack webhook or email
-  // TODO: Implement based on your alert infrastructure
   console.warn(`[ALERT-${opts.severity.toUpperCase()}] ${opts.title}: ${opts.body}`);
+  await sendObservabilityAlert({
+    level: opts.severity === "critical" ? "critical" : "error",
+    source: "hardening",
+    message: opts.title,
+    details: opts.body,
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ✅ FIX #1: DRIVER ACCEPT VALIDATION (Ping Verification)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const driverPingTracker = new Map<string, { tripId: string; timer: NodeJS.Timeout }>();
+const driverPingTracker = new Map<string, {
+  tripId: string;
+  timer: NodeJS.Timeout;
+  resolve: (result: boolean) => void;
+}>();
 
 /**
  * After driver accepts a trip, verify they're still active within 5 seconds.
@@ -137,6 +146,11 @@ export async function verifyDriverAfterAccept(
 ): Promise<boolean> {
   const config = await loadHardeningSettings();
   const timeoutMs = config.driver_ping_timeout_ms || 5000;
+
+  if (await hasActiveDriverSocket(driverId)) {
+    await logInfo('DRIVER-VERIFY', 'Driver already has an active socket after accept', { driverId, tripId });
+    return true;
+  }
   
   return new Promise((resolve) => {
     // Request socket ping from driver
@@ -144,11 +158,47 @@ export async function verifyDriverAfterAccept(
     
     if (io) {
       io.to(`driver:${driverId}`).emit('system:ping_request', requireResponse);
+      io.to(`user:${driverId}`).emit('system:ping_request', requireResponse);
     }
     
     // Set timeout for ping response
     const timer = setTimeout(async () => {
+      const tracked = driverPingTracker.get(driverId);
+      if (!tracked || tracked.tripId !== tripId) {
+        resolve(false);
+        return;
+      }
       driverPingTracker.delete(driverId);
+
+      const activeTripCheck = await rawDb.execute(rawSql`
+        SELECT
+          t.current_status,
+          u.current_trip_id,
+          dl.is_online,
+          dl.updated_at
+        FROM trip_requests t
+        LEFT JOIN users u ON u.id=${driverId}::uuid
+        LEFT JOIN driver_locations dl ON dl.driver_id=${driverId}::uuid
+        WHERE t.id=${tripId}::uuid
+        LIMIT 1
+      `).catch(() => ({ rows: [] as any[] }));
+      const activeTrip = activeTripCheck.rows[0] as any;
+      const stillClaimed =
+        activeTrip &&
+        String(activeTrip.current_status || "") === "accepted" &&
+        String(activeTrip.current_trip_id || "") === tripId &&
+        (
+          (await hasActiveDriverSocket(driverId)) ||
+          (activeTrip.is_online === true && activeTrip.updated_at && (Date.now() - new Date(activeTrip.updated_at).getTime()) <= 30_000)
+        );
+      if (stillClaimed) {
+        await logInfo('DRIVER-VERIFY', 'Driver accept verified from current-trip state without ping response', {
+          driverId,
+          tripId,
+        });
+        resolve(true);
+        return;
+      }
       
       await logWarn('DRIVER-VERIFY', 'Driver ping timeout - ghost acceptance', {
         driverId,
@@ -161,7 +211,7 @@ export async function verifyDriverAfterAccept(
       resolve(false);
     }, timeoutMs);
     
-    driverPingTracker.set(driverId, { tripId, timer });
+    driverPingTracker.set(driverId, { tripId, timer, resolve });
     
     // Driver responds within timeout → clear timer and resolve true
     // (Response handled in socket handler below)
@@ -176,6 +226,7 @@ export function handleDriverPingResponse(driverId: string) {
   if (entry) {
     clearTimeout(entry.timer);
     driverPingTracker.delete(driverId);
+    entry.resolve(true);
     
     logInfo('DRIVER-VERIFY', 'Driver ping OK', { driverId, tripId: entry.tripId }).catch(() => {});
     return true;
@@ -193,19 +244,85 @@ async function reassignTripToNextDriver(
 ) {
   await logCritical('DISPATCH-REASSIGN', `Trip ${tripId} reassigning due to ${reason}`, { failedDriverId });
   
+  await rawDb.execute(rawSql`
+    UPDATE users
+    SET current_trip_id = NULL
+    WHERE id=${failedDriverId}::uuid
+      AND current_trip_id=${tripId}::uuid
+  `).catch(() => {});
+
+  // Reset trip back to searching and remember the failed driver so dispatch skips them.
+  await rawDb.execute(rawSql`
+    UPDATE trip_requests
+    SET current_status='searching',
+        driver_id=NULL,
+        driver_accepted_at=NULL,
+        driver_arriving_at=NULL,
+        updated_at=NOW(),
+        rejected_driver_ids = CASE
+          WHEN ${failedDriverId}::uuid = ANY(COALESCE(rejected_driver_ids, '{}'::uuid[])) THEN COALESCE(rejected_driver_ids, '{}'::uuid[])
+          ELSE array_append(COALESCE(rejected_driver_ids, '{}'::uuid[]), ${failedDriverId}::uuid)
+        END
+    WHERE id=${tripId}::uuid
+  `).catch(() => {});
+
   // Get trip details
   const tripR = await rawDb.execute(rawSql`
-    SELECT customer_id, pickup_lat, pickup_lng, estimated_fare 
-    FROM trip_requests WHERE id=${tripId}::uuid LIMIT 1
+    SELECT
+      t.id,
+      t.customer_id,
+      t.pickup_lat,
+      t.pickup_lng,
+      t.pickup_address,
+      t.destination_address,
+      t.estimated_distance,
+      t.estimated_fare,
+      t.payment_method,
+      t.trip_type,
+      t.vehicle_category_id,
+      t.ref_id,
+      u.full_name AS customer_name,
+      vc.name AS vehicle_name
+    FROM trip_requests t
+    JOIN users u ON u.id = t.customer_id
+    LEFT JOIN vehicle_categories vc ON vc.id = t.vehicle_category_id
+    WHERE t.id=${tripId}::uuid
+    LIMIT 1
   `);
   
   if (!tripR.rows.length) return;
   
   const trip = tripR.rows[0] as any;
   
-  // Restart dispatch with same trip
-  // (Reuse existing dispatch engine, skip the failed driver)
-  // TODO: Call startDispatch again with exclusion list
+  const { startDispatch, resolveServiceType } = await import("./dispatch");
+  const serviceType = resolveServiceType(trip.trip_type || "ride", trip.vehicle_name || "");
+
+  await notifyCustomerTripStatus(String(trip.customer_id), tripId, "searching", {
+    reason,
+    message: "Reassigning you to the next available pilot",
+  });
+
+  await startDispatch(
+    String(tripId),
+    String(trip.customer_id),
+    Number(trip.pickup_lat),
+    Number(trip.pickup_lng),
+    trip.vehicle_category_id ? String(trip.vehicle_category_id) : undefined,
+    serviceType,
+    {
+      refId: String(trip.ref_id || ""),
+      customerName: String(trip.customer_name || "Customer"),
+      pickupAddress: String(trip.pickup_address || ""),
+      destinationAddress: String(trip.destination_address || ""),
+      pickupLat: Number(trip.pickup_lat),
+      pickupLng: Number(trip.pickup_lng),
+      estimatedFare: Number(trip.estimated_fare || 0),
+      estimatedDistance: Number(trip.estimated_distance || 0),
+      paymentMethod: String(trip.payment_method || "cash"),
+      tripType: String(trip.trip_type || "ride"),
+    },
+    trip.vehicle_name ? String(trip.vehicle_name) : undefined,
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -284,7 +401,7 @@ export async function sendNotificationWithFailsafe(opts: {
   
   if (io) {
     try {
-      io.to(`driver:${opts.recipientId}`).emit('notification', {
+      io.to(`user:${opts.recipientId}`).emit('notification', {
         title: opts.title,
         body: opts.body,
         data: opts.data,

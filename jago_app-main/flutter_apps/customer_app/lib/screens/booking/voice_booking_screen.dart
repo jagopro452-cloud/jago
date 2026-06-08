@@ -98,18 +98,17 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
         perm = await Geolocator.requestPermission();
       }
       if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
-      var pos = await Geolocator.getLastKnownPosition();
-      pos ??= await Geolocator.getCurrentPosition(
-
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-      ).timeout(const Duration(seconds: 8));
+      final pos = await Geolocator.getLastKnownPosition() ??
+          await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+          ).timeout(const Duration(seconds: 8));
       if (!mounted) return;
-      setState(() { _currentLat = pos!.latitude; _currentLng = pos!.longitude; });
+      setState(() { _currentLat = pos.latitude; _currentLng = pos.longitude; });
       // Try server proxy
       try {
         final headers = await AuthService.getHeaders();
         final r = await http.get(
-          Uri.parse('${ApiConfig.reverseGeocode}?lat=${pos!.latitude}&lng=${pos!.longitude}'),
+          Uri.parse('${ApiConfig.reverseGeocode}?lat=${pos.latitude}&lng=${pos.longitude}'),
           headers: headers,
         ).timeout(const Duration(seconds: 6));
         if (r.statusCode == 200) {
@@ -125,7 +124,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
       try {
         final r = await http.get(
           Uri.parse(
-              'https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos!.latitude}&lon=${pos!.longitude}'),
+              'https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.latitude}&lon=${pos.longitude}'),
           headers: const {'User-Agent': 'JagoPro/1.0'},
         ).timeout(const Duration(seconds: 5));
         if (r.statusCode == 200) {
@@ -217,7 +216,7 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
 
   Future<void> _speakWelcome() async {
     await Future.delayed(const Duration(milliseconds: 800));
-    await _speak('Welcome to JAGO Pro Voice Assistant. You can book a ride, send a parcel, or book an intercity trip. Tap the mic and speak.');
+    await _speak('Welcome to Jago Voice Assistant. You can book a ride, send a parcel, or book an intercity trip. Tap the mic and speak.');
   }
 
   // ─── Language picker ─────────────────────────────────────────────────────
@@ -263,6 +262,26 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
       setState(() => _selectedLang = chosen);
       _speakWelcome();
     }
+  }
+
+  String? _normalizeVehicleType(String? raw) {
+    final key = (raw ?? '').trim().toLowerCase();
+    if (key.isEmpty) return null;
+    if (key.contains('bike parcel')) return 'bike_parcel';
+    if (key.contains('parcel auto')) return 'auto_parcel';
+    if (key.contains('mini truck') || key.contains('tata ace')) return 'tata_ace';
+    if (key.contains('pickup')) return 'pickup_truck';
+    if (key.contains('tempo')) return 'tempo_407';
+    if (key.contains('bike')) return 'bike';
+    if (key.contains('auto')) return 'auto';
+    if (key.contains('cab') ||
+        key.contains('car') ||
+        key.contains('sedan') ||
+        key.contains('suv') ||
+        key.contains('premium')) {
+      return 'car';
+    }
+    return null;
   }
 
   // ─── Listening ────────────────────────────────────────────────────────────
@@ -597,21 +616,46 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
       final fare = _allFares[_selectedFareIndex];
       final vcId = fare['vehicleCategoryId']?.toString() ?? fare['id']?.toString()
           ?? _parsedIntent!['vehicleCategoryId']?.toString();
+      final vehicleType = _normalizeVehicleType(
+        fare['vehicleType']?.toString() ??
+            fare['type']?.toString() ??
+            fare['vehicleCategoryName']?.toString() ??
+            fare['name']?.toString() ??
+            _parsedIntent!['vehicleType']?.toString(),
+      );
+      final vehicleName =
+          fare['vehicleCategoryName']?.toString() ??
+          fare['vehicleName']?.toString() ??
+          fare['name']?.toString() ??
+          'Bike';
+      if ((vcId == null || vcId.isEmpty) && vehicleType == null) {
+        _showSnack('Vehicle selection not ready. Please pick a vehicle again.');
+        await _speak('Vehicle selection is not ready yet. Please try again.');
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
       final headers = await AuthService.getHeaders();
+      final payload = <String, dynamic>{
+        'pickupLat': _parsedIntent!['pickupLat'],
+        'pickupLng': _parsedIntent!['pickupLng'],
+        'destinationLat': _parsedIntent!['destLat'],
+        'destinationLng': _parsedIntent!['destLng'],
+        'pickupAddress': _parsedIntent!['pickup'],
+        'destinationAddress': _parsedIntent!['destination'],
+        if (vcId != null && vcId.isNotEmpty) 'vehicleCategoryId': vcId,
+        if (vehicleType != null) 'vehicleType': vehicleType,
+        'vehicleCategoryName': vehicleName,
+        'vehicleName': vehicleName,
+        'estimatedFare': fare['estimatedFare'] ?? 0,
+        'estimatedDistance': _distanceKm,
+        'paymentMethod': 'cash',
+        'tripType': 'normal',
+      };
+      debugPrint('[VOICE_BOOK_RIDE] payload=${jsonEncode(payload)}');
       final res = await http.post(
-        Uri.parse('${ApiConfig.baseUrl}/api/app/customer/book-ride'),
+        Uri.parse(ApiConfig.bookRide),
         headers: {...headers, 'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'pickupLat': _parsedIntent!['pickupLat'],
-          'pickupLng': _parsedIntent!['pickupLng'],
-          'destinationLat': _parsedIntent!['destLat'],
-          'destinationLng': _parsedIntent!['destLng'],
-          'pickupAddress': _parsedIntent!['pickup'],
-          'destinationAddress': _parsedIntent!['destination'],
-          if (vcId != null && vcId.isNotEmpty) 'vehicleCategoryId': vcId,
-          'paymentMethod': 'cash',
-          'tripType': 'normal',
-        }),
+        body: jsonEncode(payload),
       );
       if (res.statusCode == 200) {
         HapticFeedback.heavyImpact();
@@ -645,11 +689,10 @@ class _VoiceBookingScreenState extends State<VoiceBookingScreen>
 
   @override
   Widget build(BuildContext context) {
-    const isDark = false;
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0F1724) : JT.bg,
+      backgroundColor: JT.bg,
       appBar: AppBar(
-        backgroundColor: isDark ? const Color(0xFF162030) : JT.bg,
+        backgroundColor: JT.bg,
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back_ios_new_rounded, color: JT.textPrimary, size: 18),

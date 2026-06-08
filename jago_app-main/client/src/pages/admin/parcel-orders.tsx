@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import AdminLayout from "./layout";
+import { adminFetch } from "@/lib/queryClient";
 
 interface ParcelOrder {
   id: string;
@@ -36,8 +36,9 @@ const VEHICLE_LABELS: Record<string, string> = {
   bike_parcel:  "Bike Parcel",
   auto_parcel:  "Auto Parcel",
   tata_ace:     "Tata Ace",
-  cargo_car:    "Cargo Car",
   bolero_cargo: "Bolero Cargo",
+  pickup_truck: "Pickup Truck",
+  tempo_407:    "Tempo 407",
 };
 
 interface DetailModalProps { order: ParcelOrder; onClose: () => void }
@@ -165,7 +166,7 @@ export default function ParcelOrdersPage() {
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (b2bOnly) params.set("b2b", "true");
-      const r = await fetch(`/api/admin/parcel-orders?${params}`);
+      const r = await adminFetch(`/api/admin/parcel-orders?${params}`);
       if (!r.ok) throw new Error("Failed");
       return r.json();
     },
@@ -182,7 +183,6 @@ export default function ParcelOrdersPage() {
   };
 
   return (
-    <AdminLayout>
       <div style={{ padding: "28px 32px", maxWidth: 1200 }}>
 
         {/* Header */}
@@ -319,6 +319,5 @@ export default function ParcelOrdersPage() {
 
         {selectedOrder && <DetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />}
       </div>
-    </AdminLayout>
   );
 }

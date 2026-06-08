@@ -8,11 +8,12 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 
-const String _tripAlertChannelId = 'trip_alerts';
+const String _tripAlertChannelId = 'trip_alerts_v2';
 const String _tripAlertChannelName = 'Trip Alerts';
 const String _tripAlertChannelDescription = 'Incoming ride and parcel requests';
 const String _tripDataKey = 'pending_trip_data';
 const String _parcelDataKey = 'pending_parcel_data';
+const String _poolDataKey = 'pending_pool_data';
 const String _alertActionKey = 'pending_driver_alert_action';
 const int _tripNotificationId = 42;
 const int _parcelNotificationId = 43;
@@ -22,7 +23,8 @@ const String _parcelOpenActionId = 'parcel_open';
 
 bool _isTripAlert(Map<String, dynamic> data) => (data['type'] ?? '') == 'new_trip';
 bool _isParcelAlert(Map<String, dynamic> data) => (data['type'] ?? '') == 'new_parcel';
-bool _isDriverAlert(Map<String, dynamic> data) => _isTripAlert(data) || _isParcelAlert(data);
+bool _isPoolAlert(Map<String, dynamic> data) => (data['type'] ?? '').toString().startsWith('pool_');
+bool _isDriverAlert(Map<String, dynamic> data) => _isTripAlert(data) || _isParcelAlert(data) || _isPoolAlert(data);
 
 Future<void> _persistPendingAlert(Map<String, dynamic> data) async {
   try {
@@ -32,6 +34,9 @@ Future<void> _persistPendingAlert(Map<String, dynamic> data) async {
     }
     if (_isParcelAlert(data)) {
       await prefs.setString(_parcelDataKey, jsonEncode(data));
+    }
+    if (_isPoolAlert(data)) {
+      await prefs.setString(_poolDataKey, jsonEncode(data));
     }
   } catch (_) {}
 }
@@ -247,8 +252,6 @@ class FcmService {
         description: 'Status updates for active trips',
         importance: Importance.high,
       ));
-      await androidPlugin?.requestExactAlarmsPermission();
-
       const initSettings = InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(
@@ -288,7 +291,10 @@ class FcmService {
     debugPrint('[FCM-FG] type=$type');
 
     if (type == 'new_trip' || type == 'new_parcel') {
-      _foregroundAlertController.add(Map<String, dynamic>.from(message.data));
+      final data = Map<String, dynamic>.from(message.data);
+      _persistPendingAlert(data);
+      _showDriverAlertNotification(_localNotif, data);
+      _foregroundAlertController.add(data);
       return;
     }
 
@@ -419,7 +425,9 @@ class FcmService {
         debugPrint('[FCM-PILOT] getToken returned null');
         return;
       }
-      debugPrint('[FCM-PILOT] token ${token.substring(0, 20)}...');
+      if (kDebugMode) {
+        debugPrint('[FCM-PILOT] token obtained');
+      }
       await _saveTokenToServer(token);
     } catch (e) {
       debugPrint('[FCM-PILOT] getToken failed: $e');

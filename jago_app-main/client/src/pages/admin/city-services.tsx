@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { adminFetch } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface CityData {
   city_name: string;
@@ -17,13 +19,14 @@ interface PlatformService {
 
 export default function CityServices() {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [newCity, setNewCity] = useState({ name: "", lat: "", lng: "", radius: "30" });
   const [showAddCity, setShowAddCity] = useState(false);
 
   const { data: cities = [], isLoading } = useQuery<CityData[]>({
     queryKey: ["/api/admin/city-services"],
     queryFn: async () => {
-      const r = await fetch("/api/admin/city-services");
+      const r = await adminFetch("/api/admin/city-services");
       if (!r.ok) throw new Error("Failed");
       const d = await r.json();
       return d.cities;
@@ -31,9 +34,9 @@ export default function CityServices() {
   });
 
   const { data: allServices = [] } = useQuery<PlatformService[]>({
-    queryKey: ["/api/admin/all-platform-services"],
+    queryKey: ["/api/platform-services"],
     queryFn: async () => {
-      const r = await fetch("/api/platform-services");
+      const r = await adminFetch("/api/platform-services");
       if (!r.ok) return [];
       const data = await r.json();
       return (data as any[]).map(s => ({ key: s.service_key, name: s.service_name, icon: s.icon }));
@@ -42,7 +45,7 @@ export default function CityServices() {
 
   const toggleMut = useMutation({
     mutationFn: async ({ city, serviceKey, isActive }: { city: string; serviceKey: string; isActive: boolean }) => {
-      const r = await fetch("/api/admin/city-services/toggle", {
+      const r = await adminFetch("/api/admin/city-services/toggle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cityName: city, serviceKey, isActive }),
@@ -50,11 +53,12 @@ export default function CityServices() {
       if (!r.ok) throw new Error("Failed");
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/admin/city-services"] }),
+    onError: (e: any) => { qc.invalidateQueries({ queryKey: ["/api/admin/city-services"] }); toast({ title: "Toggle failed", description: e.message, variant: "destructive" }); },
   });
 
   const addCityMut = useMutation({
     mutationFn: async ({ cityName, cityLat, cityLng, serviceKey, radiusKm }: any) => {
-      const r = await fetch("/api/admin/city-services/add", {
+      const r = await adminFetch("/api/admin/city-services/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cityName, cityLat, cityLng, serviceKey, radiusKm }),
@@ -64,6 +68,7 @@ export default function CityServices() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/admin/city-services"] });
     },
+    onError: (e: any) => toast({ title: "Failed to add city service", description: e.message, variant: "destructive" }),
   });
 
   const enableAllServicesForCity = async (cityName: string, lat: number, lng: number) => {

@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' show sin, cos, asin, pi, sqrt, pow;
+import 'dart:io' show Platform;
+import 'dart:math' show min, max;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -14,9 +17,16 @@ import '../../config/jago_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/socket_service.dart';
 import '../../services/call_service.dart';
+import '../../services/trip_service.dart';
 import '../call/call_screen.dart';
 import '../chat/trip_chat_sheet.dart';
 import '../home/home_screen.dart';
+
+void _tripDebugLog(String message) {
+  if (kDebugMode) {
+    debugPrint(message);
+  }
+}
 
 // Quick polyline decoder (no extra package needed)
 List<LatLng> _decodePolyline(String encoded) {
@@ -58,6 +68,7 @@ class TripScreen extends StatefulWidget {
 class _TripScreenState extends State<TripScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   final SocketService _socket = SocketService();
+  final FlutterTts _tts = FlutterTts();
   GoogleMapController? _mapController;
   LatLng _center = const LatLng(17.3850, 78.4867);
   String _status = 'accepted';
@@ -73,8 +84,10 @@ class _TripScreenState extends State<TripScreen>
   List<String> _cancelReasons = [];
   StreamSubscription? _cancelSub;
   StreamSubscription? _incomingCallSub;
+  StreamSubscription? _tripStatusSub;
   bool _locationWarningShown = false;
   bool _hasLiveLocationAccess = false;
+  String _lastVoiceCue = '';
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
 
@@ -97,10 +110,12 @@ class _TripScreenState extends State<TripScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _socket.setAppInBackground(false);
     _pulseCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat(reverse: true);
     _socket.connect(ApiConfig.socketUrl);
+    _initVoiceGuidance();
     _trip = widget.trip;
     if (_trip != null) {
       _status = _trip!['currentStatus'] ?? _trip!['status'] ?? 'accepted';
@@ -115,6 +130,7 @@ class _TripScreenState extends State<TripScreen>
     _startStatePoll();
     _loadCancelReasons();
     _listenForCancel();
+    _listenForTripStatus();
     CallService().init();
     _listenForIncomingCalls();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -122,16 +138,10 @@ class _TripScreenState extends State<TripScreen>
       _fetchRouteForCurrentStatus();
       if (_status == 'in_progress' || _status == 'on_the_way') {
         _startTripTimer();
-        // Already in progress on screen open (e.g. app was killed & relaunched)
-        // Auto-open navigation to destination so driver never gets stranded
-        Future.delayed(const Duration(milliseconds: 600), _openNavigation);
-      } else if (_status == 'accepted' || _status == 'driver_assigned') {
-        // Auto-navigate to pickup on first screen load after acceptance
-        Future.delayed(const Duration(milliseconds: 600), _openNavigation);
       }
       _validateActiveTrip();
     });
-    print(
+    _tripDebugLog(
         '[TRIP] Screen init — tripId=${_trip?['tripId'] ?? _trip?['id']} status=$_status');
   }
 
@@ -229,13 +239,8 @@ class _TripScreenState extends State<TripScreen>
               previousStatus != 'in_progress' &&
               previousStatus != 'on_the_way') {
             _startTripTimer();
-            // Trip started via poll (socket missed) — open navigation to destination
-            Future.delayed(const Duration(milliseconds: 300), _openNavigation);
-          } else if ((serverStatus == 'accepted' || serverStatus == 'driver_assigned') &&
-              previousStatus == 'searching') {
-            Future.delayed(const Duration(milliseconds: 300), _openNavigation);
           }
-          print('[TRIP] Poll sync: $previousStatus → $serverStatus');
+          _tripDebugLog('[TRIP] Poll sync: $previousStatus → $serverStatus');
         }
       }
     } catch (_) {} // network error — keep polling
@@ -277,6 +282,149 @@ class _TripScreenState extends State<TripScreen>
     if (m <= 0) return '--';
     if (m < 1000) return '${m.round()} m';
     return '${(m / 1000).toStringAsFixed(1)} km';
+  }
+
+  bool get _isHeadingToPickup =>
+      _status == 'accepted' || _status == 'driver_assigned';
+
+  bool get _isWaitingAtPickup => _status == 'arrived';
+
+  bool get _isTripLive =>
+      _status == 'in_progress' || _status == 'on_the_way';
+
+  bool get _canUseRideSafetyCall => const {
+        'driver_assigned',
+        'accepted',
+        'arrived',
+        'in_progress',
+        'on_the_way',
+      }.contains(_status);
+
+  String get _routeStageTitle {
+    if (_isHeadingToPickup) return 'Pickup Route Ready';
+    if (_isWaitingAtPickup) return 'Waiting at Pickup';
+    if (_isTripLive) return 'Destination Route Ready';
+    return 'Ride Route';
+  }
+
+  String get _routeStageSubtitle {
+    if (_isHeadingToPickup) {
+      return 'Open the pickup route and reach the customer using the in-app map.';
+    }
+    if (_isWaitingAtPickup) {
+      return 'You have arrived. Collect the OTP to unlock the destination route.';
+    }
+    if (_isTripLive) {
+      return 'Destination guidance is live. Follow the map and complete the ride cleanly.';
+    }
+    return 'Route preview is ready.';
+  }
+
+  String get _routeOpenActionLabel {
+    if (_isHeadingToPickup) return 'Open Pickup Map';
+    if (_isWaitingAtPickup) return 'Preview Destination';
+    if (_isTripLive) return 'Open Destination Map';
+    return 'Open Route';
+  }
+
+  String get _routeFocusActionLabel {
+    if (_isHeadingToPickup) return 'Show Pickup In App';
+    if (_isWaitingAtPickup) return 'Keep Pickup Visible';
+    if (_isTripLive) return 'Show Destination In App';
+    return 'Show In App';
+  }
+
+  List<_LifecycleStep> get _lifecycleSteps {
+    final currentIndex = switch (_status) {
+      'driver_assigned' || 'accepted' => 0,
+      'arrived' => 1,
+      'in_progress' || 'on_the_way' => 2,
+      _ => 3,
+    };
+
+    return [
+      _LifecycleStep(
+        label: 'Accepted',
+        icon: Icons.check_circle_rounded,
+        isComplete: currentIndex > 0,
+        isActive: currentIndex == 0,
+      ),
+      _LifecycleStep(
+        label: 'Pickup',
+        icon: Icons.store_mall_directory_rounded,
+        isComplete: currentIndex > 1,
+        isActive: currentIndex == 1,
+      ),
+      _LifecycleStep(
+        label: 'On Trip',
+        icon: Icons.alt_route_rounded,
+        isComplete: currentIndex > 2,
+        isActive: currentIndex == 2,
+      ),
+      _LifecycleStep(
+        label: 'Complete',
+        icon: Icons.payments_rounded,
+        isComplete: currentIndex > 2,
+        isActive: currentIndex >= 3,
+      ),
+    ];
+  }
+
+  double _resolveCoord(List<String> keys) {
+    for (final key in keys) {
+      final value = double.tryParse(_trip?[key]?.toString() ?? '');
+      if (value != null && value != 0) return value;
+    }
+    return 0;
+  }
+
+  String _resolveTargetLabel() {
+    if (_isHeadingToPickup) {
+      return _shortLocation((_trip?['pickupShortName'] ??
+              _trip?['pickupAddress'] ??
+              _trip?['pickup_address'] ??
+              'Pickup')
+          .toString());
+    }
+    return _shortLocation((_trip?['destinationShortName'] ??
+            _trip?['destinationAddress'] ??
+            _trip?['destination_address'] ??
+            'Destination')
+        .toString());
+  }
+
+  Future<void> _focusRouteOnMap({bool showReadySnack = false}) async {
+    final tLat = _isHeadingToPickup
+        ? _resolveCoord(['pickupLat', 'pickup_lat'])
+        : _resolveCoord(['destinationLat', 'destination_lat']);
+    final tLng = _isHeadingToPickup
+        ? _resolveCoord(['pickupLng', 'pickup_lng'])
+        : _resolveCoord(['destinationLng', 'destination_lng']);
+    if (tLat == 0 || tLng == 0) return;
+
+    final origin = _lastTripPosition;
+    final fromLat = origin?.latitude ?? _center.latitude;
+    final fromLng = origin?.longitude ?? _center.longitude;
+    await _fetchRoute(fromLat, fromLng, tLat, tLng);
+
+    if (_mapController != null) {
+      final swLat = min(fromLat, tLat);
+      final swLng = min(fromLng, tLng);
+      final neLat = max(fromLat, tLat);
+      final neLng = max(fromLng, tLng);
+      await _mapController!.animateCamera(
+        CameraUpdate.newLatLngBounds(
+          LatLngBounds(
+            southwest: LatLng(swLat, swLng),
+            northeast: LatLng(neLat, neLng),
+          ),
+          84,
+        ),
+      );
+      if (showReadySnack) {
+        _showSnack('Route ready inside app for ${_resolveTargetLabel()}');
+      }
+    }
   }
 
   // ── Socket listeners ──────────────────────────────────────────────────────
@@ -341,6 +489,104 @@ class _TripScreenState extends State<TripScreen>
     });
   }
 
+  void _listenForTripStatus() {
+    _tripStatusSub = _socket.onTripStatus.listen((data) {
+      if (!mounted) return;
+      final incomingTripId = data['tripId']?.toString() ?? '';
+      final currentTripId =
+          _trip?['id']?.toString() ?? _trip?['tripId']?.toString() ?? '';
+      if (incomingTripId.isEmpty ||
+          currentTripId.isEmpty ||
+          incomingTripId != currentTripId) {
+        return;
+      }
+      final incomingStatus = data['status']?.toString() ?? '';
+      if (incomingStatus.isEmpty) return;
+      setState(() {
+        _status = incomingStatus;
+        _trip = _mergeTripState(_trip, data);
+        _loading = false;
+      });
+      final currentTripIdAfterUpdate =
+          _trip?['id']?.toString() ?? _trip?['tripId']?.toString() ?? '';
+      if (!_canUseRideSafetyCall &&
+          currentTripIdAfterUpdate.isNotEmpty &&
+          CallService().activeCallTripId == currentTripIdAfterUpdate) {
+        CallService().hangUp();
+      }
+      if (_isTripLive) {
+        _startTripTimer();
+      }
+      _fetchRouteForCurrentStatus();
+      _announceStatusCue(incomingStatus);
+    });
+  }
+
+  Map<String, dynamic>? _mergeTripState(
+      Map<String, dynamic>? previousTrip, Map<String, dynamic>? nextTrip) {
+    if (previousTrip == null) {
+      return nextTrip == null ? null : Map<String, dynamic>.from(nextTrip);
+    }
+    if (nextTrip == null) return previousTrip;
+    final merged = Map<String, dynamic>.from(previousTrip);
+    nextTrip.forEach((key, value) {
+      final lower = key.toLowerCase();
+      final isCoord = lower.contains('lat') || lower.contains('lng');
+      final asString = value?.toString().trim() ?? '';
+      if (isCoord && (value == null || asString.isEmpty || asString == '0' || asString == '0.0')) {
+        return;
+      }
+      merged[key] = value;
+    });
+    for (final field in [
+      'id',
+      'tripId',
+      'pickupLat',
+      'pickupLng',
+      'pickup_lat',
+      'pickup_lng',
+      'destinationLat',
+      'destinationLng',
+      'destination_lat',
+      'destination_lng',
+      'pickupAddress',
+      'destinationAddress',
+    ]) {
+      merged[field] ??= previousTrip[field];
+    }
+    return merged;
+  }
+
+  Future<void> _refreshTripFromServer({bool openOtpIfArrived = false}) async {
+    final tripId = _trip?['id']?.toString() ?? _trip?['tripId']?.toString() ?? '';
+    if (tripId.isEmpty) return;
+    try {
+      final headers = await AuthService.getHeaders();
+      final res = await http
+          .get(Uri.parse(ApiConfig.driverActiveTrip), headers: headers)
+          .timeout(const Duration(seconds: 6));
+      if (!mounted || res.statusCode != 200) return;
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final serverTrip = data['trip'] as Map<String, dynamic>?;
+      if (serverTrip == null) return;
+      final serverTripId =
+          serverTrip['id']?.toString() ?? serverTrip['tripId']?.toString() ?? '';
+      if (serverTripId != tripId) return;
+      final serverStatus =
+          (serverTrip['currentStatus'] ?? serverTrip['current_status'] ?? _status)
+              .toString();
+      setState(() {
+        _trip = _mergeTripState(_trip, serverTrip);
+        _status = serverStatus;
+      });
+      _fetchRouteForCurrentStatus();
+      _announceStatusCue(serverStatus);
+      if (openOtpIfArrived && _status == 'arrived') {
+        _showOtpBottomSheet();
+      }
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -351,13 +597,57 @@ class _TripScreenState extends State<TripScreen>
     _stopStatePoll();
     _cancelSub?.cancel();
     _incomingCallSub?.cancel();
+    _tripStatusSub?.cancel();
     _pulseCtrl.dispose();
+    try {
+      _tts.stop();
+    } catch (_) {}
     super.dispose();
+  }
+
+  Future<void> _initVoiceGuidance() async {
+    try {
+      await _tts.setLanguage('en-IN');
+      await _tts.setSpeechRate(0.45);
+      await _tts.setVolume(1.0);
+      await _tts.setPitch(1.0);
+    } catch (_) {}
+  }
+
+  Future<void> _speakCue(String message, {String? dedupeKey}) async {
+    final key = dedupeKey ?? message;
+    if (key == _lastVoiceCue) return;
+    _lastVoiceCue = key;
+    try {
+      await _tts.stop();
+      await _tts.speak(message);
+    } catch (_) {}
+  }
+
+  void _announceStatusCue(String status) {
+    if (!mounted) return;
+    if (status == 'accepted' || status == 'driver_assigned') {
+      _speakCue(
+        'Trip accepted. Follow the in app route to pickup.',
+        dedupeKey: 'status_pickup',
+      );
+    } else if (status == 'arrived') {
+      _speakCue(
+        'You have arrived at pickup. Ask the customer for OTP.',
+        dedupeKey: 'status_arrived',
+      );
+    } else if (status == 'in_progress' || status == 'on_the_way') {
+      _speakCue(
+        'Trip started. Follow the in app route to destination.',
+        dedupeKey: 'status_destination',
+      );
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _socket.setAppInBackground(false);
       if (!_socket.isConnected) {
         _socket.connect(ApiConfig.socketUrl);
       }
@@ -365,7 +655,17 @@ class _TripScreenState extends State<TripScreen>
       if (tid != null) {
         _socket.setActiveTrip(tid);
       }
+      if (_posStream == null || _locationTimer == null) {
+        _startLocationUpdates();
+      }
       _syncTripState();
+      return;
+    }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _socket.setAppInBackground(true);
     }
   }
 
@@ -427,7 +727,7 @@ class _TripScreenState extends State<TripScreen>
         position: LatLng(lat, lng),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
         infoWindow: const InfoWindow(title: 'You'),
-        zIndex: 2,
+        zIndexInt: 2,
       ));
     });
   }
@@ -542,10 +842,10 @@ class _TripScreenState extends State<TripScreen>
           0;
     }
     if (destLat == 0 || destLng == 0) {
-      print('[ROUTE] Skipping fetch — no valid destination coords (status=$_status)');
+      _tripDebugLog('[ROUTE] Skipping fetch — no valid destination coords (status=$_status)');
       return;
     }
-    print('[ROUTE] Fetching route from ($myLat,$myLng) → ($destLat,$destLng) [status=$_status]');
+    _tripDebugLog('[ROUTE] Fetching route from ($myLat,$myLng) → ($destLat,$destLng) [status=$_status]');
     await _fetchRoute(myLat, myLng, destLat, destLng);
   }
 
@@ -685,6 +985,13 @@ class _TripScreenState extends State<TripScreen>
         setState(() => _nearPickup = near);
         if (near) _showSnack('You are near the pickup location!');
       }
+    } else {
+      if (dm <= 300) {
+        _speakCue(
+          'You are nearing the destination. Follow the highlighted route.',
+          dedupeKey: 'near_destination',
+        );
+      }
     }
   }
 
@@ -709,30 +1016,48 @@ class _TripScreenState extends State<TripScreen>
   // ── Trip actions ──────────────────────────────────────────────────────────
 
   Future<void> _nextStep() async {
+    if (_loading) return;
     if (_status == 'arrived') {
       _showOtpBottomSheet();
       return;
     }
+    if (_status != 'accepted' &&
+        _status != 'driver_assigned' &&
+        _status != 'in_progress' &&
+        _status != 'on_the_way') {
+      _showSnack('Invalid trip status for this action', error: true);
+      return;
+    }
     setState(() => _loading = true);
     final h = await AuthService.getHeaders();
-    final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
+    final tripId = (_trip?['id'] ?? _trip?['tripId'] ?? '').toString();
+    if (tripId.isEmpty) {
+      _showSnack('Trip ID missing', error: true);
+      setState(() => _loading = false);
+      return;
+    }
 
     try {
       if (_status == 'accepted' || _status == 'driver_assigned') {
-        final res = await http.post(Uri.parse(ApiConfig.driverArrived),
-            headers: {...h, 'Content-Type': 'application/json'},
-            body: jsonEncode({'tripId': tripId}));
+        final body = await TripService.markArrived(tripId);
         if (!mounted) return;
-        if (res.statusCode == 200) {
+        if (body['success'] == true ||
+            (body['trip'] != null && body['idempotent'] == true)) {
           setState(() {
             _status = 'arrived';
+            _trip = _mergeTripState(
+              _trip,
+              body['trip'] is Map<String, dynamic>
+                  ? body['trip'] as Map<String, dynamic>
+                  : null,
+            );
             _loading = false;
           });
-          print('[TRIP] ✅ Arrived at pickup — tripId=$tripId');
+          _tripDebugLog('[TRIP] ✅ Arrived at pickup — tripId=$tripId');
           _showSnack('Arrived! Ask customer for OTP 📍');
           // Pre-fetch route to destination while driver waits for OTP
           // (polylines will be ready the moment trip starts)
-          await _fetchRouteForCurrentStatus(); // status is now 'arrived' → fetches pickup
+          await _refreshTripFromServer();
           // Actually we want destination route pre-loaded, fetch it explicitly
           final t = _trip;
           if (t != null) {
@@ -746,18 +1071,65 @@ class _TripScreenState extends State<TripScreen>
             }
           }
         } else {
-          final err = jsonDecode(res.body);
-          _showSnack(err['message'] ?? 'Error', error: true);
+          await _refreshTripFromServer(openOtpIfArrived: true);
+          if (_status == 'arrived') {
+            setState(() => _loading = false);
+            return;
+          }
+          final code = (body['code'] ?? '').toString();
+          _showSnack(
+            _arrivedErrorMessage(
+              code,
+              body['message']?.toString() ?? body['error']?.toString(),
+            ),
+            error: code != 'TRIP_ALREADY_STARTED',
+          );
           setState(() => _loading = false);
         }
       } else if (_status == 'in_progress' || _status == 'on_the_way') {
         await _completeTrip(h);
         return;
       }
+    } on TimeoutException {
+      if (!mounted) return;
+      await _refreshTripFromServer(openOtpIfArrived: true);
+      if (_status != 'arrived') {
+        _showSnack(
+            'Unable to update trip status. Checking latest trip state...',
+            error: true);
+      }
+      setState(() => _loading = false);
     } catch (_) {
       if (!mounted) return;
-      _showSnack('Network error. Try again.', error: true);
+      await _refreshTripFromServer(openOtpIfArrived: true);
+      if (_status != 'arrived') {
+        _showSnack('Network issue while updating arrival. Retrying sync...',
+            error: true);
+      }
       setState(() => _loading = false);
+    }
+  }
+
+  String _arrivedErrorMessage(String code, String? fallback) {
+    switch (code) {
+      case 'TRIP_ALREADY_STARTED':
+        return 'Ride already started on server. Syncing latest trip state...';
+      case 'TRIP_OWNERSHIP_MISMATCH':
+        return 'This trip is already assigned to another driver.';
+      case 'TRIP_CANCELLED':
+        return 'Trip was cancelled by customer.';
+      case 'TRIP_ALREADY_COMPLETED':
+        return 'Trip already completed.';
+      case 'TRIP_NOT_FOUND':
+        return 'Trip not found. Refreshing latest trip state...';
+      case 'INVALID_TRIP_STATUS':
+        return fallback?.isNotEmpty == true
+            ? fallback!
+            : 'Trip status changed. Refreshing latest trip state...';
+      default:
+        return fallback?.isNotEmpty == true
+            ? fallback!
+            : 'Unable to update trip status. Checking latest trip state...';
     }
   }
 
@@ -787,7 +1159,7 @@ class _TripScreenState extends State<TripScreen>
         _locationTimer?.cancel();
         _posStream?.cancel();
         _stopTripTimer();
-        print(
+        _tripDebugLog(
             '[TRIP] ✅ Ride completed — tripId=$tripId fare=$rideFare earnings=$driverEarnings');
         if (!mounted) return;
         _showCompletionSheet(
@@ -805,7 +1177,7 @@ class _TripScreenState extends State<TripScreen>
         setState(() => _loading = false);
       }
     } catch (e) {
-      print('[TRIP] ❌ complete-trip network error: $e');
+      _tripDebugLog('[TRIP] ❌ complete-trip network error: $e');
       if (!mounted) return;
       _showSnack('Network error. Please tap "Complete" again.', error: true);
       setState(() => _loading = false);
@@ -966,38 +1338,26 @@ class _TripScreenState extends State<TripScreen>
       final res = await http.post(Uri.parse(ApiConfig.driverVerifyOtp),
           headers: {...h, 'Content-Type': 'application/json'},
           body: jsonEncode({'tripId': tripId, 'otp': otp}));
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final serverTrip = body['trip'] is Map<String, dynamic>
+          ? body['trip'] as Map<String, dynamic>
+          : null;
       if (res.statusCode == 200) {
-        print('[TRIP] ✅ OTP verified — trip started — tripId=$tripId');
+        _tripDebugLog('[TRIP] ✅ OTP verified — trip started — tripId=$tripId');
         if (!mounted) return;
         setState(() {
-          _status = 'in_progress';
+          _trip = _mergeTripState(_trip, serverTrip);
+          _status = (serverTrip?['currentStatus'] ??
+                  serverTrip?['current_status'] ??
+                  'on_the_way')
+              .toString();
           _loading = false;
         });
         _startTripTimer();
 
-        // Use real GPS position as route origin (not stale map center)
-        final origin = _lastTripPosition;
-        final fromLat = origin?.latitude ?? _center.latitude;
-        final fromLng = origin?.longitude ?? _center.longitude;
-
-        // Animate map + fetch route to destination
-        final dLat = double.tryParse(_trip?['destinationLat']?.toString() ??
-                _trip?['destination_lat']?.toString() ??
-                '') ??
-            0;
-        final dLng = double.tryParse(_trip?['destinationLng']?.toString() ??
-                _trip?['destination_lng']?.toString() ??
-                '') ??
-            0;
-        if (dLat != 0 && dLng != 0) {
-          _mapController?.animateCamera(
-              CameraUpdate.newLatLngZoom(LatLng(dLat, dLng), 15));
-          // Fetch polyline using actual GPS position, not default map center
-          await _fetchRoute(fromLat, fromLng, dLat, dLng);
-        }
-        _showSnack('Trip started! Follow the map to reach destination');
-        // Open external nav AFTER route fetch (so it runs concurrently with nav app opening)
-        _openNavigation();
+        await _focusRouteOnMap(showReadySnack: true);
+        _announceStatusCue(_status);
+        _showSnack('Trip started! Destination route is live inside the app');
         _showPickupPhotoPrompt(tripId);
       } else {
         final err = jsonDecode(res.body);
@@ -1130,6 +1490,7 @@ class _TripScreenState extends State<TripScreen>
     final tripId = _trip?['id'] ?? _trip?['tripId'] ?? '';
     final pm = _trip?['paymentMethod'] ?? _trip?['payment_method'] ?? 'cash';
     final isCash = pm == 'cash';
+    bool paymentConfirmed = !isCash;
     final netEarnings = double.tryParse(driverEarnings) ?? 0.0;
     final commissionAmt = double.tryParse(commission) ?? 0.0;
     final fullFare = double.tryParse(fare) ?? 0.0;
@@ -1218,6 +1579,64 @@ class _TripScreenState extends State<TripScreen>
               ]),
             ),
             const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: JT.surfaceAlt,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: JT.border),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.receipt_long_rounded,
+                          color: JT.primary, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Ride Summary',
+                          style: GoogleFonts.poppins(
+                            color: JT.textPrimary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        tripId.toString().isEmpty ? 'Trip' : '#$tripId',
+                        style: GoogleFonts.poppins(
+                          color: JT.textSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _completionSummaryTile(
+                          'Payment',
+                          isCash ? 'Cash' : 'Online',
+                          isCash ? JT.success : JT.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _completionSummaryTile(
+                          'Amount',
+                          '₹${fullFare.toStringAsFixed(0)}',
+                          JT.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
             // Payment instruction
             if (isCash)
               Container(
@@ -1283,6 +1702,38 @@ class _TripScreenState extends State<TripScreen>
                       ])),
                 ]),
               ),
+            if (isCash) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: paymentConfirmed
+                      ? null
+                      : () => setS(() => paymentConfirmed = true),
+                  icon: Icon(
+                    paymentConfirmed
+                        ? Icons.check_circle_rounded
+                        : Icons.payments_rounded,
+                    size: 18,
+                  ),
+                  label: Text(
+                    paymentConfirmed
+                        ? 'Cash Collected Confirmed'
+                        : 'Mark Cash Collected',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: JT.success,
+                    side: BorderSide(
+                      color: JT.success.withValues(alpha: 0.35),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
             // Rating
             Container(
@@ -1347,19 +1798,25 @@ class _TripScreenState extends State<TripScreen>
               height: 56,
               child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: JT.primary,
-                      foregroundColor: Colors.white,
+                      backgroundColor:
+                          paymentConfirmed ? JT.primary : JT.border,
+                      foregroundColor:
+                          paymentConfirmed ? Colors.white : JT.textSecondary,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16)),
                       elevation: 0),
-                  onPressed: () {
+                  onPressed: paymentConfirmed
+                      ? () {
                     Navigator.pop(ctx);
                     Navigator.pushAndRemoveUntil(
                         context,
                         MaterialPageRoute(builder: (_) => const HomeScreen()),
                         (_) => false);
-                  },
-                  child: Text('Back to Home →',
+                  }
+                      : null,
+                  child: Text(isCash
+                      ? 'Cash Confirmed → Close Ride'
+                      : 'Back to Home →',
                       style: GoogleFonts.poppins(
                           fontWeight: FontWeight.w400, fontSize: 16))),
             ),
@@ -1380,6 +1837,39 @@ class _TripScreenState extends State<TripScreen>
               fontSize: 10,
               fontWeight: FontWeight.w400)),
     ]);
+  }
+
+  Widget _completionSummaryTile(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              color: JT.textSecondary,
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: GoogleFonts.poppins(
+              color: color,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // ── Cancel dialog ─────────────────────────────────────────────────────────
@@ -1564,6 +2054,10 @@ class _TripScreenState extends State<TripScreen>
   // ── Call / Navigation / SOS ───────────────────────────────────────────────
 
   void _startInAppCall(String contactName) {
+    if (!_canUseRideSafetyCall) {
+      _showSnack('Calling is available only during an active ride.', error: true);
+      return;
+    }
     final customerId =
         _trip?['customerId']?.toString() ?? _trip?['customer_id']?.toString();
     final tripId =
@@ -1587,46 +2081,66 @@ class _TripScreenState extends State<TripScreen>
   }
 
   Future<void> _openNavigation() async {
-    final toPickup = _status == 'accepted' || _status == 'driver_assigned';
-    final tLat = toPickup
-        ? (double.tryParse(_trip?['pickupLat']?.toString() ??
-                _trip?['pickup_lat']?.toString() ??
-                '') ??
-            0.0)
-        : (double.tryParse(_trip?['destinationLat']?.toString() ??
-                _trip?['destination_lat']?.toString() ??
-                '') ??
-            0.0);
-    final tLng = toPickup
-        ? (double.tryParse(_trip?['pickupLng']?.toString() ??
-                _trip?['pickup_lng']?.toString() ??
-                '') ??
-            0.0)
-        : (double.tryParse(_trip?['destinationLng']?.toString() ??
-                _trip?['destination_lng']?.toString() ??
-                '') ??
-            0.0);
-    final label = toPickup
-        ? _shortLocation(_trip?['pickupShortName']?.toString() ??
-            _trip?['pickupAddress']?.toString() ??
-            'Pickup')
-        : _shortLocation(_trip?['destinationShortName']?.toString() ??
-            _trip?['destinationAddress']?.toString() ??
-            'Destination');
+    final tLat = _isHeadingToPickup
+        ? _resolveCoord(['pickupLat', 'pickup_lat'])
+        : _resolveCoord(['destinationLat', 'destination_lat']);
+    final tLng = _isHeadingToPickup
+        ? _resolveCoord(['pickupLng', 'pickup_lng'])
+        : _resolveCoord(['destinationLng', 'destination_lng']);
+    final label = _resolveTargetLabel();
 
-    final Uri uri;
     if (tLat != 0 && tLng != 0) {
-      uri = Uri.parse(
-          'https://www.google.com/maps/dir/?api=1&destination=$tLat,$tLng&travelmode=driving');
-    } else {
-      uri = Uri.parse(
+      await _focusRouteOnMap(showReadySnack: true);
+      if (_mapController != null) {
+        return;
+      }
+    }
+
+    if (tLat == 0 || tLng == 0) {
+      if (label.trim().isEmpty) {
+        _showSnack('Location data not available for navigation', error: true);
+        return;
+      }
+      final fallbackUri = Uri.parse(
           'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(label)}');
-    }
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
+      try {
+        if (await canLaunchUrl(fallbackUri)) {
+          await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+          return;
+        }
+      } catch (_) {}
       _showSnack('Cannot open navigation', error: true);
+      return;
     }
+
+    if (tLat < -90 || tLat > 90 || tLng < -180 || tLng > 180) {
+      _showSnack('Location coordinates invalid', error: true);
+      return;
+    }
+
+    final navUris = <Uri>[
+      if (Platform.isAndroid)
+        Uri.parse('google.navigation:q=$tLat,$tLng&mode=d'),
+      if (Platform.isAndroid)
+        Uri.parse('geo:$tLat,$tLng?q=$tLat,$tLng(${Uri.encodeComponent(label)})'),
+      Uri.parse(
+          'https://www.google.com/maps/dir/?api=1&destination=$tLat,$tLng&travelmode=driving'),
+      Uri.parse(
+          'https://www.google.com/maps/search/?api=1&query=$tLat,$tLng'),
+    ];
+
+    for (final uri in navUris) {
+      try {
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          return;
+        }
+      } catch (_) {
+        // Keep trying the next fallback URI.
+      }
+    }
+
+    _showSnack('Google Maps not available', error: true);
   }
 
   Future<void> _triggerSos() async {
@@ -1721,7 +2235,12 @@ class _TripScreenState extends State<TripScreen>
       canPop: false,
       child: Scaffold(
         backgroundColor: JT.bg,
-        body: Stack(children: [
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final panelMaxHeight =
+                (constraints.maxHeight * 0.48).clamp(280.0, 430.0).toDouble();
+            final mapBottomPadding = panelMaxHeight + 24;
+            return Stack(children: [
           // ── Full screen map ────────────────────────────────────────────────
           Positioned.fill(
             child: GoogleMap(
@@ -1738,7 +2257,7 @@ class _TripScreenState extends State<TripScreen>
               zoomControlsEnabled: false,
               mapToolbarEnabled: false,
               compassEnabled: false,
-              padding: const EdgeInsets.only(bottom: 260, top: 100),
+              padding: EdgeInsets.only(bottom: mapBottomPadding, top: 100),
             ),
           ),
 
@@ -1756,6 +2275,10 @@ class _TripScreenState extends State<TripScreen>
                     _buildTopBar(pickup, dest),
                     const SizedBox(height: 10),
                     _buildNavigationInstructions(),
+                    const SizedBox(height: 10),
+                    _buildRouteStageCard(pickup, dest),
+                    const SizedBox(height: 10),
+                    _buildLifecycleProgress(),
                   ],
                 ),
               ),
@@ -1768,6 +2291,7 @@ class _TripScreenState extends State<TripScreen>
             left: 0,
             right: 0,
             child: Container(
+              constraints: BoxConstraints(maxHeight: panelMaxHeight),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius:
@@ -1786,38 +2310,45 @@ class _TripScreenState extends State<TripScreen>
                     decoration: BoxDecoration(
                         color: JT.border,
                         borderRadius: BorderRadius.circular(2))),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    _buildCustomerCard(customerName, customerPhone),
-                    if (isForSomeoneElse &&
-                        passengerName.toString().isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      _buildPassengerCard(
-                          passengerName.toString(), passengerPhone?.toString()),
-                    ],
-                    if (isParcel && _trip?['notes'] != null) ...[
-                      const SizedBox(height: 8),
-                      _buildParcelCard(_trip!['notes'].toString()),
-                    ],
-                    const SizedBox(height: 10),
-                    _buildLiveStats(),
-                    const SizedBox(height: 8),
-                    _buildPaymentBadge(),
-                    if ((_status == 'in_progress' || _status == 'on_the_way') &&
-                        isParcel) ...[
-                      const SizedBox(height: 6),
-                      _buildDeliveryOtpBtn(),
-                    ],
-                    _buildActionBtn(),
-                    const SizedBox(height: 8),
-                    _buildQuickActions(customerPhone?.toString()),
-                  ]),
+                Flexible(
+                  child: SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        _buildCustomerCard(customerName, customerPhone),
+                        if (isForSomeoneElse &&
+                            passengerName.toString().isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          _buildPassengerCard(
+                              passengerName.toString(), passengerPhone?.toString()),
+                        ],
+                        if (isParcel && _trip?['notes'] != null) ...[
+                          const SizedBox(height: 8),
+                          _buildParcelCard(_trip!['notes'].toString()),
+                        ],
+                        const SizedBox(height: 10),
+                        _buildLiveStats(),
+                        const SizedBox(height: 8),
+                        _buildPaymentBadge(),
+                        if ((_status == 'in_progress' || _status == 'on_the_way') &&
+                            isParcel) ...[
+                          const SizedBox(height: 6),
+                          _buildDeliveryOtpBtn(),
+                        ],
+                        _buildActionBtn(),
+                        const SizedBox(height: 8),
+                        _buildQuickActions(customerPhone?.toString()),
+                      ]),
+                    ),
+                  ),
                 ),
               ]),
             ),
           ),
-        ]),
+            ]);
+          },
+        ),
       ),
     );
   }
@@ -1972,6 +2503,265 @@ class _TripScreenState extends State<TripScreen>
 
   // ── Customer card ─────────────────────────────────────────────────────────
 
+  Widget _buildRouteStageCard(String pickup, String dest) {
+    final stageColor =
+        _isTripLive ? JT.success : (_isWaitingAtPickup ? JT.warning : JT.primary);
+    final stageTitle = _routeStageTitle;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: stageColor.withValues(alpha: 0.18)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: stageColor.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.alt_route_rounded, color: stageColor, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      stageTitle,
+                      style: GoogleFonts.poppins(
+                        color: stageColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      _routeStageSubtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        color: JT.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: stageColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  _etaSec > 0 ? _formatEta(_etaSec) : 'Live',
+                  style: GoogleFonts.poppins(
+                    color: stageColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildMiniRouteStop(
+                  icon: Icons.radio_button_checked_rounded,
+                  label: 'Pickup',
+                  value: pickup,
+                  active: _isHeadingToPickup || _isWaitingAtPickup,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildMiniRouteStop(
+                  icon: Icons.location_on_rounded,
+                  label: 'Destination',
+                  value: dest,
+                  active: _isTripLive,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _loading ? null : _openNavigation,
+                  icon: const Icon(Icons.center_focus_strong_rounded, size: 18),
+                  label: Text(_routeOpenActionLabel),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: stageColor,
+                    side: BorderSide(color: stageColor.withValues(alpha: 0.28)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _loading
+                      ? null
+                      : () => _focusRouteOnMap(showReadySnack: true),
+                  icon: const Icon(Icons.navigation_rounded, size: 18),
+                  label: Text(_routeFocusActionLabel),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: stageColor,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniRouteStop({
+    required IconData icon,
+    required String label,
+    required String value,
+    required bool active,
+  }) {
+    final color = active ? JT.primary : JT.textSecondary;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: active ? JT.bgSoft : JT.surfaceAlt,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: active ? JT.primary.withValues(alpha: 0.20) : JT.border,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.poppins(
+                    color: color,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    color: JT.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLifecycleProgress() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: JT.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          for (int i = 0; i < _lifecycleSteps.length; i++) ...[
+            Expanded(child: _buildLifecycleStep(_lifecycleSteps[i])),
+            if (i != _lifecycleSteps.length - 1)
+              Container(
+                width: 20,
+                height: 2,
+                margin: const EdgeInsets.only(bottom: 18),
+                color: _lifecycleSteps[i].isComplete
+                    ? JT.success.withValues(alpha: 0.45)
+                    : JT.border,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLifecycleStep(_LifecycleStep step) {
+    final color = step.isComplete
+        ? JT.success
+        : step.isActive
+            ? JT.primary
+            : JT.iconInactive;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            shape: BoxShape.circle,
+            border: Border.all(color: color.withValues(alpha: 0.35)),
+          ),
+          child: Icon(step.icon, size: 18, color: color),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          step.label,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.poppins(
+            color: color,
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildCustomerCard(String name, String? phone) {
     final pm = _trip?['paymentMethod'] ?? _trip?['payment_method'] ?? 'cash';
     final pmLabel = pm == 'wallet'
@@ -2030,7 +2820,7 @@ class _TripScreenState extends State<TripScreen>
                           fontSize: 12,
                           fontWeight: FontWeight.w500)),
                 ])),
-            if (phone != null)
+            if (phone != null && _canUseRideSafetyCall)
               GestureDetector(
                   onTap: () => _startInAppCall(name),
                   child: Container(
@@ -2361,7 +3151,7 @@ class _TripScreenState extends State<TripScreen>
         spacing: 8,
         runSpacing: 8,
         children: [
-          if (phone != null)
+          if (phone != null && _canUseRideSafetyCall)
             _quickBtn(Icons.phone_rounded, 'Call', JT.primary, () {
               final n = (_trip?['customerName'] ??
                       _trip?['customer_name'] ??
@@ -2532,4 +3322,18 @@ class _TripScreenState extends State<TripScreen>
         };
     }
   }
+}
+
+class _LifecycleStep {
+  final String label;
+  final IconData icon;
+  final bool isComplete;
+  final bool isActive;
+
+  const _LifecycleStep({
+    required this.label,
+    required this.icon,
+    required this.isComplete,
+    required this.isActive,
+  });
 }
