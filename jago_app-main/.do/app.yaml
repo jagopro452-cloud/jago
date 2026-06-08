@@ -11,7 +11,7 @@ services:
     source_dir: /
     github:
       repo: jagopro452-cloud/jago
-      branch: master
+      branch: main
       deploy_on_push: true
     build_command: npm ci && npm run build
     run_command: npm start
@@ -27,6 +27,8 @@ services:
       failure_threshold: 3
     envs:
       - key: NODE_ENV
+        value: "production"
+      - key: APP_ENV
         value: "production"
       - key: PORT
         value: "8080"
@@ -79,6 +81,8 @@ services:
         value: "false"
       # To enable 2FA: set ADMIN_2FA_REQUIRED=true and ADMIN_PHONE=+91XXXXXXXXXX in DO dashboard
       - key: ENABLE_DEV_OTP_RESPONSES
+        value: "false"
+      - key: ALLOW_QA_TEST_SEEDING
         value: "false"
       - key: SOCKET_ALLOWED_ORIGINS
         value: "https://jagopro.org"
